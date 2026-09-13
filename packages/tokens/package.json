@@ -1,0 +1,8 @@
+{
+  "name": "@wellrun/tokens",
+  "version": "0.0.1",
+  "private": true,
+  "exports": {
+    "./tokens.css": "./tokens.css"
+  }
+}

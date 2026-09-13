@@ -1,0 +1,27 @@
+{
+  "name": "wellrun-school",
+  "private": true,
+  "packageManager": "pnpm@10.15.1",
+  "scripts": {
+    "dev": "turbo dev",
+    "dev:api": "pnpm --filter @wellrun/api dev",
+    "dev:discover": "pnpm --filter @wellrun/discover dev",
+    "dev:console": "pnpm --filter @wellrun/console dev",
+    "build": "turbo build",
+    "db:up": "docker compose up -d",
+    "db:push": "pnpm --filter @wellrun/api prisma:push",
+    "db:seed": "pnpm --filter @wellrun/api prisma:seed",
+    "db:migrate": "pnpm --filter @wellrun/api prisma:migrate"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.6"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "prisma"
+    ]
+  }
+}

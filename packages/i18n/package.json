@@ -1,0 +1,10 @@
+{
+  "name": "@wellrun/i18n",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./en.json": "./en.json"
+  }
+}

@@ -1,0 +1,42 @@
+@import "tailwindcss";
+@import "@wellrun/tokens/tokens.css";
+
+@theme inline {
+  --color-ink: #16161d;
+  --color-muted: #5c5c6b;
+  --color-indigo: #4642ff;
+  --color-indigo-soft: #7f66ff;
+  --color-paper: #f7f7f8;
+  --color-surface: #ffffff;
+  --color-orange: #f26522;
+  --color-line: #ececef;
+  --color-danger: #d93025;
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-instrument), ui-serif, Georgia, serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-indigo);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: rgba(70, 66, 255, 0.18);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
