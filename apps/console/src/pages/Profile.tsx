@@ -1,15 +1,13 @@
-import { FormEvent, useEffect, useState } from "react";
-import { api, type Setup } from "../lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { FormEvent, useState } from "react";
+import { api } from "../lib/api";
+import { queryKeys } from "../lib/query";
 
 export function ProfilePage() {
-  const [data, setData] = useState<Setup | null>(null);
+  const { data, isPending } = useQuery({ queryKey: queryKeys.schoolProfile, queryFn: api.schoolProfile });
   const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    api.setup().then(setData);
-  }, []);
-
-  if (!data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+  if (isPending || !data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
 
   const profile = (data.school.profile ?? {}) as Record<string, string | number>;
 

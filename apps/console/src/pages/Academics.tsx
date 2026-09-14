@@ -1,26 +1,26 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CLASS_TEMPLATE_LABELS, SUBJECT_TEMPLATES, type ClassTemplateId } from "@wellrun/shared";
-import { FormEvent, useEffect, useState } from "react";
-import { api, type Setup } from "../lib/api";
+import { FormEvent, useState } from "react";
+import { api } from "../lib/api";
+import { queryKeys } from "../lib/query";
 import { nextSection } from "../lib/setup-helpers";
 
 export function AcademicsPage() {
-  const [data, setData] = useState<Setup | null>(null);
+  const queryClient = useQueryClient();
+  const { data, isPending } = useQuery({ queryKey: queryKeys.academics, queryFn: api.academics });
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  function load() {
-    api.setup().then(setData);
+  async function reload() {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.academics });
   }
 
-  useEffect(() => {
-    load();
-  }, []);
+  if (isPending || !data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
 
-  if (!data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
-
-  const yearId = data.years[0]?.id;
-  const grouped = new Map<string, Setup["classes"]>();
-  for (const cls of data.classes) {
+  const academics = data;
+  const yearId = academics.years[0]?.id;
+  const grouped = new Map<string, typeof academics.classes>();
+  for (const cls of academics.classes) {
     const rows = grouped.get(cls.name) ?? [];
     rows.push(cls);
     grouped.set(cls.name, rows);
@@ -28,12 +28,12 @@ export function AcademicsPage() {
 
   async function addSection(name: string) {
     if (!yearId) return;
-    const existing = data!.classes.filter((cls) => cls.name === name).map((cls) => cls.section);
+    const existing = academics.classes.filter((cls) => cls.name === name).map((cls) => cls.section);
     setError(null);
     try {
       await api.createClass({ name, section: nextSection(existing), yearId });
       setMessage("Section added.");
-      load();
+      await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add section");
     }
@@ -43,7 +43,7 @@ export function AcademicsPage() {
     setError(null);
     try {
       await api.updateClass(id, { name });
-      load();
+      await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not rename class");
     }
@@ -61,7 +61,7 @@ export function AcademicsPage() {
         yearId,
       });
       event.currentTarget.reset();
-      load();
+      await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create class");
     }
@@ -122,9 +122,9 @@ export function AcademicsPage() {
               if (!template) return;
               void api
                 .applySubjects({ template })
-                .then(() => {
+                .then(async () => {
                   setMessage(`${CLASS_TEMPLATE_LABELS[template]} subjects loaded.`);
-                  load();
+                  await reload();
                 })
                 .catch((err) => setError(err instanceof Error ? err.message : "Could not load subjects"));
             }}
@@ -143,9 +143,9 @@ export function AcademicsPage() {
             event.preventDefault();
             const formEl = event.currentTarget;
             const form = new FormData(formEl);
-            void api.saveSubject({ name: String(form.get("name")) }).then(() => {
+            void api.saveSubject({ name: String(form.get("name")) }).then(async () => {
               formEl.reset();
-              load();
+              await reload();
             });
           }}
         >
@@ -155,8 +155,8 @@ export function AcademicsPage() {
           </button>
         </form>
         <ul className="mt-4 divide-y divide-line overflow-hidden rounded-2xl bg-paper">
-          {data.subjects.length ? (
-            data.subjects.map((subject) => (
+          {academics.subjects.length ? (
+            academics.subjects.map((subject) => (
               <li key={subject.id} className="px-4 py-3 text-sm">
                 {subject.name}
               </li>

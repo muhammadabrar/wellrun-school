@@ -7,12 +7,14 @@ import {
   normalizeAdmissionFields,
   type ClassTemplateId,
 } from "@wellrun/shared";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { AdmissionFieldsEditor } from "../components/AdmissionFieldsEditor";
 import { FileUpload } from "../components/FileUpload";
 import { api, currentUser, type AdmissionField, type Setup } from "../lib/api";
+import { queryKeys } from "../lib/query";
 import { fileToDataUrl, nextSection, parseImportFile } from "../lib/setup-helpers";
 
 const STEPS = [
@@ -31,8 +33,12 @@ type GradePick = { name: string; selected: boolean; sections: string[] };
 
 export function SetupPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const booted = useRef(false);
-  const [data, setData] = useState<Setup | null>(null);
+  const { data, refetch, isError, error: queryError } = useQuery({
+    queryKey: queryKeys.setup,
+    queryFn: api.setup,
+  });
   const [step, setStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -46,9 +52,7 @@ export function SetupPage() {
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [importFileName, setImportFileName] = useState("");
 
-  async function load(syncStep = false) {
-    const next = await api.setup();
-    setData(next);
+  function applySetup(next: Setup, syncStep = false) {
     if (syncStep && !next.school.setupCompleted) setStep(Math.min(next.school.setupStep || 1, 9));
     const form = next.admissionForms[0];
     setFields(normalizeAdmissionFields(form?.fields?.length ? form.fields : next.templates.admissionFields));
@@ -57,18 +61,23 @@ export function SetupPage() {
         ? next.feeItems
         : next.templates.feeItems.map((name) => ({ name, amountPkr: 0, enabled: true })),
     );
-    if (!grades.length) {
-      setGrades(CLASS_TEMPLATES.pakistan_school.map((name) => ({ name, selected: true, sections: ["A"] })));
-    }
+    setGrades((current) =>
+      current.length
+        ? current
+        : CLASS_TEMPLATES.pakistan_school.map((name) => ({ name, selected: true, sections: ["A"] })),
+    );
   }
 
   useEffect(() => {
-    load(!booted.current)
-      .then(() => {
-        booted.current = true;
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Could not load setup"));
-  }, []);
+    if (!data || booted.current) return;
+    booted.current = true;
+    applySetup(data, true);
+  }, [data]);
+
+  async function load() {
+    const next = await refetch();
+    if (next.data) applySetup(next.data);
+  }
 
   async function run(action: () => Promise<void>) {
     setError(null);
@@ -80,7 +89,13 @@ export function SetupPage() {
     }
   }
 
-  if (!data) return <div className="flex min-h-dvh items-center justify-center text-muted">Loading setup…</div>;
+  if (!data) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center text-muted">
+        {isError ? (queryError instanceof Error ? queryError.message : "Could not load setup") : "Loading setup…"}
+      </div>
+    );
+  }
   if (data.school.setupCompleted) return <Navigate to="/" replace />;
 
   const logo = data.school.media.find((m) => m.kind === "LOGO")?.url;
@@ -618,6 +633,7 @@ export function SetupPage() {
                   void run(async () => {
                     await api.saveFees({ items: feeItems });
                     await api.completeSetup();
+                    queryClient.setQueryData(queryKeys.setupStatus, { setupCompleted: true, setupStep: 9 });
                     navigate("/");
                   })
                 }
@@ -630,6 +646,7 @@ export function SetupPage() {
                 onClick={() =>
                   void run(async () => {
                     await api.completeSetup();
+                    queryClient.setQueryData(queryKeys.setupStatus, { setupCompleted: true, setupStep: 9 });
                     navigate("/");
                   })
                 }

@@ -1,22 +1,13 @@
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, SlidersHorizontal, UserPlus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { AttendanceRing } from "../components/AttendanceRing";
-import { api, type StudentList } from "../lib/api";
+import { api } from "../lib/api";
 import { pkr } from "../lib/format";
-
-const empty: StudentList = {
-  items: [],
-  total: 0,
-  page: 1,
-  pageSize: 20,
-  defaultClassId: "",
-  campus: null,
-  classes: [],
-};
+import { queryKeys } from "../lib/query";
 
 export function StudentsPage() {
-  const [data, setData] = useState<StudentList>(empty);
   const [q, setQ] = useState("");
   const [guardian, setGuardian] = useState("");
   const [address, setAddress] = useState("");
@@ -26,41 +17,26 @@ export function StudentsPage() {
   const [perfectAttendance, setPerfectAttendance] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const [page, setPage] = useState(1);
-  const [ready, setReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const filters = {
+    q,
+    guardian,
+    address,
+    dateOfBirth,
+    classId: classId || undefined,
+    topScorer: topScorer ? "true" : undefined,
+    perfectAttendance: perfectAttendance ? "true" : undefined,
+    page,
+    pageSize: 20,
+  };
+  const { data, isPending, isError, error } = useQuery({
+    queryKey: queryKeys.students(filters),
+    queryFn: () => api.students(filters),
+    placeholderData: keepPreviousData,
+  });
+  const ready = !isPending || Boolean(data);
+  const selectedClass = classId || data?.defaultClassId || "all";
 
-  useEffect(() => {
-    let cancelled = false;
-    setError(null);
-    api
-      .students({
-        q,
-        guardian,
-        address,
-        dateOfBirth,
-        classId: classId || undefined,
-        topScorer: topScorer ? "true" : undefined,
-        perfectAttendance: perfectAttendance ? "true" : undefined,
-        page,
-        pageSize: 20,
-      })
-      .then((next) => {
-        if (cancelled) return;
-        setData(next);
-        setClassId((current) => current || next.defaultClassId || "all");
-        setReady(true);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Could not load students");
-        setReady(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [q, guardian, address, dateOfBirth, classId, topScorer, perfectAttendance, page]);
-
-  const pages = Math.max(1, Math.ceil(data.total / data.pageSize));
+  const pages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.pageSize ?? 20)));
   const advancedCount = [guardian, address, dateOfBirth, topScorer, perfectAttendance].filter(Boolean).length;
 
   return (
@@ -69,8 +45,8 @@ export function StudentsPage() {
         <div>
           <h1 className="font-display text-4xl">Students</h1>
           <p className="mt-2 text-sm text-muted">
-            {data.campus ? `${data.campus.name} · ` : ""}
-            {data.total} {data.total === 1 ? "student" : "students"}
+            {data?.campus ? `${data.campus.name} · ` : ""}
+            {data?.total ?? 0} {data?.total === 1 ? "student" : "students"}
           </p>
         </div>
         <Link
@@ -81,7 +57,7 @@ export function StudentsPage() {
           New admission
         </Link>
       </div>
-      {error ? <p className="mt-4 text-sm text-danger">{error}</p> : null}
+      {isError ? <p className="mt-4 text-sm text-danger">{error instanceof Error ? error.message : "Could not load students"}</p> : null}
 
       <section className="mt-6 rounded-3xl bg-surface p-5">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto]">
@@ -100,7 +76,7 @@ export function StudentsPage() {
           <label className="text-sm font-medium">
             Class
             <select
-              value={classId}
+              value={selectedClass}
               onChange={(event) => {
                 setPage(1);
                 setClassId(event.target.value);
@@ -108,7 +84,7 @@ export function StudentsPage() {
               className="mt-2 h-11 w-full rounded-xl border border-line px-3"
             >
               <option value="all">All classes</option>
-              {data.classes.map((cls) => (
+              {data?.classes.map((cls) => (
                 <option key={cls.id} value={cls.id}>
                   {cls.name} {cls.section}
                 </option>
@@ -206,7 +182,7 @@ export function StudentsPage() {
             </tr>
           </thead>
           <tbody>
-            {data.items.map((student) => (
+            {data?.items.map((student) => (
               <tr key={student.id} className="border-t border-line">
                 <td className="px-5 py-4 font-medium">{student.rollNo}</td>
                 <td className="px-5 py-4">
@@ -243,7 +219,7 @@ export function StudentsPage() {
                 </td>
               </tr>
             ))}
-            {ready && !data.items.length ? (
+            {ready && !data?.items.length ? (
               <tr>
                 <td colSpan={7} className="px-5 py-10 text-center text-sm text-muted">
                   No students match these filters.
@@ -256,7 +232,7 @@ export function StudentsPage() {
 
       <div className="mt-4 flex items-center justify-between text-sm">
         <p className="text-muted">
-          Page {data.page} of {pages}
+          Page {data?.page ?? 1} of {pages}
         </p>
         <div className="flex gap-2">
           <button

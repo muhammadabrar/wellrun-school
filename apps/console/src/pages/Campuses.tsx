@@ -1,18 +1,17 @@
-import { FormEvent, useEffect, useState } from "react";
-import { api, type Setup } from "../lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { FormEvent, useState } from "react";
+import { api } from "../lib/api";
+import { queryKeys } from "../lib/query";
 
 export function CampusesPage() {
-  const [data, setData] = useState<Setup | null>(null);
+  const queryClient = useQueryClient();
+  const { data, isPending } = useQuery({ queryKey: queryKeys.campuses, queryFn: api.campuses });
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  function load() {
-    api.setup().then(setData);
+  async function reload() {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.campuses });
   }
-
-  useEffect(() => {
-    load();
-  }, []);
 
   async function onAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -28,7 +27,7 @@ export function CampusesPage() {
       });
       event.currentTarget.reset();
       setMessage("Campus added.");
-      load();
+      await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add campus");
     }
@@ -47,13 +46,13 @@ export function CampusesPage() {
         principal: String(form.get("principal")),
       });
       setMessage("Campus updated.");
-      load();
+      await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update campus");
     }
   }
 
-  if (!data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+  if (isPending || !data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
 
   return (
     <div className="max-w-4xl">

@@ -1,23 +1,23 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Mail, UserPlus } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
-import { api, type Invite, type SchoolClass, type Staff } from "../lib/api";
+import { FormEvent, useState } from "react";
+import { api } from "../lib/api";
+import { queryKeys } from "../lib/query";
 
 export function TeachersPage() {
-  const [staff, setStaff] = useState<Staff[]>([]);
-  const [classes, setClasses] = useState<SchoolClass[]>([]);
-  const [invites, setInvites] = useState<Invite[]>([]);
+  const queryClient = useQueryClient();
+  const { data: staff = [] } = useQuery({ queryKey: queryKeys.staff, queryFn: api.staff });
+  const { data: classes = [] } = useQuery({ queryKey: queryKeys.classes, queryFn: api.classes });
+  const { data: invites = [] } = useQuery({ queryKey: queryKeys.invites, queryFn: api.invites });
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  function load() {
-    api.staff().then(setStaff);
-    api.classes().then(setClasses);
-    api.invites().then(setInvites);
+  async function reload() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.staff }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.invites }),
+    ]);
   }
-
-  useEffect(() => {
-    load();
-  }, []);
 
   async function onStaff(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,7 +30,7 @@ export function TeachersPage() {
       subject: String(data.get("subject") || ""),
     });
     event.currentTarget.reset();
-    load();
+    await reload();
   }
 
   async function assign(staffId: string, event: FormEvent<HTMLFormElement>) {
@@ -40,7 +40,7 @@ export function TeachersPage() {
       classId: String(data.get("classId")),
       subject: String(data.get("subject") || ""),
     });
-    load();
+    await reload();
   }
 
   async function onInvite(event: FormEvent<HTMLFormElement>) {
@@ -55,7 +55,7 @@ export function TeachersPage() {
       });
       setInviteUrl(invite.acceptUrl);
       event.currentTarget.reset();
-      load();
+      await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not invite");
     }

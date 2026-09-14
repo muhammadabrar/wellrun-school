@@ -1,18 +1,19 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { t } from "@wellrun/i18n";
-import { api, currentUser } from "../lib/api";
 import { NumberPop } from "../components/motion";
+import { api, currentUser } from "../lib/api";
+import { queryKeys } from "../lib/query";
 
 export function DashboardPage() {
   const copy = t("en");
   const user = currentUser();
-  const [data, setData] = useState<Awaited<ReturnType<typeof api.dashboard>> | null>(null);
-
-  useEffect(() => {
-    if (user?.role === "PLATFORM_ADMIN") return;
-    api.dashboard().then(setData).catch(() => setData(null));
-  }, [user?.role]);
+  const { data } = useQuery({
+    queryKey: queryKeys.dashboard,
+    queryFn: api.dashboard,
+    enabled: user?.role !== "PLATFORM_ADMIN",
+  });
 
   if (user?.role === "PLATFORM_ADMIN") return <Navigate to="/admin" replace />;
 

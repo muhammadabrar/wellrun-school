@@ -1,5 +1,7 @@
-import { FormEvent, useEffect, useState } from "react";
-import { api, currentUser, type Staff, type Timetable } from "../lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { FormEvent, useState } from "react";
+import { api, currentUser } from "../lib/api";
+import { queryKeys } from "../lib/query";
 
 const days = [
   { id: 1, label: "Mon" },
@@ -11,27 +13,27 @@ const days = [
 ];
 
 export function TimetablePage() {
-  const [grid, setGrid] = useState<Timetable | null>(null);
-  const [staff, setStaff] = useState<Staff[]>([]);
+  const queryClient = useQueryClient();
   const [classId, setClassId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const admin = currentUser()?.role === "SCHOOL_ADMIN";
+  const { data: grid } = useQuery({
+    queryKey: queryKeys.timetable(classId),
+    queryFn: () => api.timetable(classId || undefined),
+  });
+  const { data: staff = [] } = useQuery({
+    queryKey: queryKeys.staff,
+    queryFn: api.staff,
+    enabled: admin,
+  });
+  const resolvedClassId = classId || grid?.classId || "";
 
-  function load(nextClass = classId) {
-    api.timetable(nextClass || undefined).then((data) => {
-      setGrid(data);
-      if (data.classId) setClassId(data.classId);
-    });
-    api.staff().catch(() => setStaff([])).then((rows) => {
-      if (rows) setStaff(rows);
-    });
+  async function reload() {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.timetable(classId) });
   }
 
-  useEffect(() => {
-    load();
-  }, []);
-
   if (!grid) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+  const timetable = grid;
 
   async function onPeriod(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,10 +42,10 @@ export function TimetablePage() {
       label: String(data.get("label")),
       startTime: String(data.get("startTime")),
       endTime: String(data.get("endTime")),
-      sortOrder: Number(data.get("sortOrder") || grid.periods.length + 1),
+      sortOrder: Number(data.get("sortOrder") || timetable.periods.length + 1),
       isBreak: data.get("isBreak") === "on",
     });
-    load();
+    await reload();
   }
 
   async function onLesson(event: FormEvent<HTMLFormElement>) {
@@ -52,14 +54,14 @@ export function TimetablePage() {
     setError(null);
     try {
       await api.saveLesson({
-        classId,
+        classId: resolvedClassId,
         weekday: Number(data.get("weekday")),
         periodId: String(data.get("periodId")),
         subject: String(data.get("subject")),
         staffId: String(data.get("staffId") || "") || undefined,
         override: data.get("override") === "on",
       });
-      load(classId);
+      await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save lesson");
     }
@@ -69,11 +71,8 @@ export function TimetablePage() {
     <div>
       <h1 className="font-display text-4xl">Timetable</h1>
       <select
-        value={classId}
-        onChange={(e) => {
-          setClassId(e.target.value);
-          load(e.target.value);
-        }}
+        value={resolvedClassId}
+        onChange={(e) => setClassId(e.target.value)}
         className="mt-6 h-11 rounded-xl border border-line bg-surface px-3"
       >
         {grid.classes.map((cls) => (

@@ -1,14 +1,15 @@
-import { useEffect, useState } from "react";
-import { api, type AbsentRow } from "../lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { api } from "../lib/api";
 import { todayIso } from "../lib/format";
+import { queryKeys } from "../lib/query";
 
 export function AbsentPage() {
   const [date, setDate] = useState(todayIso());
-  const [rows, setRows] = useState<AbsentRow[]>([]);
-
-  useEffect(() => {
-    api.absent(date).then(setRows);
-  }, [date]);
+  const { data: rows = [] } = useQuery({
+    queryKey: queryKeys.absent(date),
+    queryFn: () => api.absent(date),
+  });
 
   return (
     <div>
@@ -30,10 +31,10 @@ export function AbsentPage() {
                   {row.student.firstName} {row.student.lastName}
                 </p>
                 <p className="text-sm text-muted">
-                  {row.class.name} {row.class.section} · {row.student.admissionNo}
+                  {row.class.name} {row.class.section}
                 </p>
               </div>
-              <span className="rounded-full bg-paper px-3 py-1 text-sm">{row.status}</span>
+              <p className="text-sm">{row.status}</p>
             </div>
           ))
         )}

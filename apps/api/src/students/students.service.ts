@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import {
   admitStudentSchema,
@@ -122,18 +124,42 @@ export class StudentsService {
   }
 
   async byId(schoolId: string, id: string) {
-    const student = await this.prisma.student.findFirst({
-      where: { id, schoolId },
-      include: {
-        enrollments: { include: { class: true } },
-        guardians: { include: { guardian: true } },
-        invoices: { include: { payments: true, feePlan: true }, orderBy: { dueOn: "desc" } },
-        attendance: { orderBy: { date: "desc" }, take: 20 },
-        campus: true,
-      },
-    });
+    const [student, years, classes, form] = await Promise.all([
+      this.prisma.student.findFirst({
+        where: { id, schoolId },
+        include: {
+          campus: true,
+          enrollments: { include: { class: { include: { year: true } } }, orderBy: { createdAt: "desc" } },
+          guardians: {
+            include: {
+              guardian: {
+                include: {
+                  students: {
+                    include: {
+                      student: {
+                        include: { enrollments: { where: { active: true }, include: { class: true } } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          invoices: { include: { payments: true, feePlan: { include: { year: true } } }, orderBy: { dueOn: "desc" } },
+          attendance: { include: { class: true }, orderBy: { date: "desc" } },
+          examResults: { include: { exam: { include: { year: true } } }, orderBy: { exam: { heldOn: "desc" } } },
+        },
+      }),
+      this.prisma.academicYear.findMany({ where: { schoolId }, orderBy: { startsOn: "desc" } }),
+      this.prisma.class.findMany({
+        where: { schoolId },
+        include: { year: true },
+        orderBy: [{ name: "asc" }, { section: "asc" }],
+      }),
+      this.prisma.admissionForm.findFirst({ where: { schoolId, isDefault: true } }),
+    ]);
     if (!student) throw new NotFoundException("Student not found");
-    return student;
+    return this.toProfile(student, years, classes, form?.fields);
   }
 
   async admit(schoolId: string, actorId: string, body: unknown) {
@@ -257,10 +283,40 @@ export class StudentsService {
     return this.byId(schoolId, studentId);
   }
 
+  async savePhoto(schoolId: string, actorId: string, id: string, dataUrl: string) {
+    await assertWritableSchool(this.prisma, schoolId);
+    const student = await this.prisma.student.findFirst({ where: { id, schoolId } });
+    if (!student) throw new NotFoundException("Student not found");
+    const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+    if (!match) throw new BadRequestException("Upload a PNG or JPG image");
+    const ext = match[1].includes("png") ? "png" : match[1].includes("webp") ? "webp" : "jpg";
+    const dir = join(process.cwd(), "uploads");
+    mkdirSync(dir, { recursive: true });
+    const name = `${schoolId}-student-${id}-${Date.now()}.${ext}`;
+    writeFileSync(join(dir, name), Buffer.from(match[2], "base64"));
+    const url = `http://localhost:3000/uploads/${name}`;
+    await this.prisma.student.update({
+      where: { id },
+      data: { extra: { ...this.extraRecord(student.extra), photo: url } },
+    });
+    await audit(this.prisma, {
+      schoolId,
+      actorId,
+      action: "student_photo_saved",
+      entity: "student",
+      entityId: id,
+    });
+    return this.byId(schoolId, id);
+  }
+
   async update(schoolId: string, actorId: string, id: string, body: unknown) {
     await assertWritableSchool(this.prisma, schoolId);
-    await this.byId(schoolId, id);
+    const current = await this.prisma.student.findFirst({ where: { id, schoolId } });
+    if (!current) throw new NotFoundException("Student not found");
     const data = studentSchema.partial().parse(body);
+    const extra = { ...this.extraRecord(current.extra), ...(data.extra ?? {}) };
+    if (data.phone !== undefined) extra.phone = data.phone;
+    if (data.address !== undefined) extra.address = data.address;
     await this.prisma.student.update({
       where: { id },
       data: {
@@ -270,14 +326,7 @@ export class StudentsService {
         gender: data.gender,
         status: data.status,
         dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
-        extra:
-          data.extra || data.phone || data.address
-            ? {
-                ...(data.extra ?? {}),
-                ...(data.phone ? { phone: data.phone } : {}),
-                ...(data.address ? { address: data.address } : {}),
-              }
-            : undefined,
+        extra,
       },
     });
     if (data.classId) {
@@ -395,10 +444,189 @@ export class StudentsService {
     );
   }
 
+  private extraRecord(extra: unknown): Record<string, string> {
+    if (!extra || typeof extra !== "object" || Array.isArray(extra)) return {};
+    return Object.fromEntries(
+      Object.entries(extra as Record<string, unknown>).map(([key, value]) => [key, value == null ? "" : String(value)]),
+    );
+  }
+
   private extraText(extra: unknown, key: string) {
-    if (!extra || typeof extra !== "object") return "";
-    const value = (extra as Record<string, unknown>)[key];
-    return typeof value === "string" ? value : "";
+    return this.extraRecord(extra)[key] ?? "";
+  }
+
+  private toProfile(
+    student: {
+      id: string;
+      admissionNo: string;
+      rollNo: string;
+      firstName: string;
+      lastName: string;
+      gender: string;
+      status: string;
+      dateOfBirth: Date | null;
+      admissionDate: Date;
+      firstAdmissionDate: Date;
+      extra: unknown;
+      campus: { id: string; name: string } | null;
+      enrollments: {
+        active: boolean;
+        class: { id: string; name: string; section: string; yearId: string; year: { id: string; name: string } };
+      }[];
+      guardians: {
+        guardian: {
+          id: string;
+          name: string;
+          phone: string;
+          cnic: string;
+          email: string | null;
+          relation: string;
+          students: {
+            student: {
+              id: string;
+              firstName: string;
+              lastName: string;
+              rollNo: string;
+              extra: unknown;
+              enrollments: { class: { name: string; section: string } }[];
+            };
+          }[];
+        };
+      }[];
+      invoices: {
+        id: string;
+        amountPkr: number;
+        status: string;
+        dueOn: Date;
+        feePlan: { name: string; yearId: string; year: { id: string; name: string } };
+        payments: { id: string; amountPkr: number }[];
+      }[];
+      attendance: { id: string; date: Date; status: string; class: { name: string; section: string } }[];
+      examResults: {
+        id: string;
+        totalMarks: number;
+        obtainedMarks: number;
+        exam: { id: string; name: string; heldOn: Date; yearId: string | null; year: { id: string; name: string } | null };
+      }[];
+    },
+    years: { id: string; name: string; startsOn: Date; endsOn: Date; current: boolean }[],
+    classes: { id: string; name: string; section: string; yearId: string; year: { name: string } }[],
+    formFields: unknown,
+  ) {
+    const extra = this.extraRecord(student.extra);
+    const labels = this.fieldLabels(formFields);
+    const currentClass = student.enrollments.find((row) => row.active)?.class ?? student.enrollments[0]?.class ?? null;
+    const siblings = new Map<
+      string,
+      { id: string; firstName: string; lastName: string; rollNo: string; photo: string; class: { name: string; section: string } | null }
+    >();
+    for (const link of student.guardians) {
+      for (const other of link.guardian.students) {
+        if (other.student.id === student.id || siblings.has(other.student.id)) continue;
+        siblings.set(other.student.id, {
+          id: other.student.id,
+          firstName: other.student.firstName,
+          lastName: other.student.lastName,
+          rollNo: other.student.rollNo,
+          photo: this.extraText(other.student.extra, "photo"),
+          class: other.student.enrollments[0]?.class ?? null,
+        });
+      }
+    }
+    const hiddenExtra = new Set(["photo", "phone", "address"]);
+    return {
+      id: student.id,
+      admissionNo: student.admissionNo,
+      rollNo: student.rollNo || student.admissionNo,
+      firstName: student.firstName,
+      lastName: student.lastName,
+      gender: student.gender,
+      status: student.status,
+      dateOfBirth: student.dateOfBirth,
+      admissionDate: student.admissionDate,
+      firstAdmissionDate: student.firstAdmissionDate,
+      extra,
+      photo: extra.photo || "",
+      phone: extra.phone || student.guardians[0]?.guardian.phone || "",
+      address: extra.address || "",
+      campus: student.campus,
+      class: currentClass ? { id: currentClass.id, name: currentClass.name, section: currentClass.section, yearId: currentClass.yearId } : null,
+      guardians: student.guardians.map((link) => ({
+        guardian: {
+          id: link.guardian.id,
+          name: link.guardian.name,
+          phone: link.guardian.phone,
+          cnic: link.guardian.cnic,
+          email: link.guardian.email,
+          relation: link.guardian.relation,
+        },
+      })),
+      siblings: [...siblings.values()],
+      details: [
+        { label: "Class", value: currentClass ? `${currentClass.name} ${currentClass.section}` : "" },
+        { label: "Campus", value: student.campus?.name ?? "" },
+        { label: "Gender", value: student.gender && student.gender !== "unspecified" ? student.gender : "" },
+        { label: "Date of birth", value: student.dateOfBirth ? student.dateOfBirth.toISOString().slice(0, 10) : "" },
+        { label: "Phone", value: extra.phone || student.guardians[0]?.guardian.phone || "" },
+        { label: "Address", value: extra.address || "" },
+        { label: "Admission no.", value: student.admissionNo },
+        { label: "Admission date", value: student.admissionDate.toISOString().slice(0, 10) },
+        { label: "First admission", value: student.firstAdmissionDate.toISOString().slice(0, 10) },
+        ...Object.entries(extra)
+          .filter(([key, value]) => value && !hiddenExtra.has(key))
+          .map(([key, value]) => ({ label: labels[key] || key, value })),
+      ].filter((row) => row.value),
+      years: years.map((year) => ({
+        id: year.id,
+        name: year.name,
+        current: year.current,
+        startsOn: year.startsOn,
+        endsOn: year.endsOn,
+      })),
+      classes: classes
+        .sort((a, b) => classSortIndex(a.name) - classSortIndex(b.name) || a.section.localeCompare(b.section))
+        .map((cls) => ({ id: cls.id, name: cls.name, section: cls.section, yearId: cls.yearId, yearName: cls.year.name })),
+      exams: student.examResults.map((row) => ({
+        id: row.id,
+        name: row.exam.name,
+        heldOn: row.exam.heldOn,
+        yearId: row.exam.yearId || row.exam.year?.id || "",
+        totalMarks: row.totalMarks,
+        obtainedMarks: row.obtainedMarks,
+        pct: row.totalMarks > 0 ? Math.round((row.obtainedMarks / row.totalMarks) * 100) : 0,
+      })),
+      attendance: student.attendance.map((row) => ({
+        id: row.id,
+        date: row.date,
+        status: row.status,
+        className: `${row.class.name} ${row.class.section}`,
+      })),
+      invoices: student.invoices.map((invoice) => {
+        const paid = invoice.payments.reduce((sum, payment) => sum + payment.amountPkr, 0);
+        return {
+          id: invoice.id,
+          name: invoice.feePlan.name,
+          amountPkr: invoice.amountPkr,
+          paidPkr: paid,
+          status: invoice.status,
+          dueOn: invoice.dueOn,
+          yearId: invoice.feePlan.yearId,
+          receiptId: invoice.payments[0]?.id ?? null,
+        };
+      }),
+      enrollments: student.enrollments.map((row) => ({
+        class: { id: row.class.id, name: row.class.name, section: row.class.section },
+      })),
+    };
+  }
+
+  private fieldLabels(fields: unknown) {
+    if (!Array.isArray(fields)) return {} as Record<string, string>;
+    return Object.fromEntries(
+      fields
+        .filter((field): field is { key: string; label: string } => Boolean(field && typeof field === "object" && "key" in field && "label" in field))
+        .map((field) => [String(field.key), String(field.label)]),
+    );
   }
 
   private toListRow(student: {

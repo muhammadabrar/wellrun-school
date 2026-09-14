@@ -1,3 +1,5 @@
+import { ApiError } from "./query";
+
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 export type SessionUser = {
@@ -28,22 +30,23 @@ export function currentUser() {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init?.headers as Record<string, string>),
-  };
+  const headers: Record<string, string> = { ...(init?.headers as Record<string, string> | undefined) };
+  if (init?.body && !headers["Content-Type"] && !headers["content-type"]) {
+    headers["Content-Type"] = "application/json";
+  }
   const auth = token();
   if (auth) headers.Authorization = `Bearer ${auth}`;
   const res = await fetch(`${API}${path}`, { ...init, headers, credentials: "include" });
   if (res.status === 401) {
     setSession(null);
-    throw new Error("unauthorized");
+    throw new ApiError("unauthorized", 401);
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const message = Array.isArray(body.message) ? body.message[0] : body.message;
-    throw new Error(message ?? `Request failed: ${path}`);
+    throw new ApiError(message ?? `Request failed: ${path}`, res.status);
   }
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -91,15 +94,20 @@ export const api = {
   },
   guardians: (q?: string) =>
     request<Guardian[]>(`/console/students/guardians${q ? `?q=${encodeURIComponent(q)}` : ""}`),
-  student: (id: string) => request<Student>(`/console/students/${id}`),
+  student: (id: string) => request<StudentProfile>(`/console/students/${id}`),
   createStudent: (payload: Record<string, unknown>) =>
     request<Student>("/console/students", { method: "POST", body: JSON.stringify(payload) }),
   admitStudent: (payload: Record<string, unknown>) =>
     request<Student>("/console/students/admit", { method: "POST", body: JSON.stringify(payload) }),
   updateStudent: (id: string, payload: Record<string, unknown>) =>
-    request<Student>(`/console/students/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+    request<StudentProfile>(`/console/students/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  saveStudentPhoto: (id: string, dataUrl: string) =>
+    request<StudentProfile>(`/console/students/${id}/photo`, {
+      method: "POST",
+      body: JSON.stringify({ dataUrl }),
+    }),
   addGuardian: (id: string, payload: Record<string, unknown>) =>
-    request<Student>(`/console/students/${id}/guardians`, {
+    request<StudentProfile>(`/console/students/${id}/guardians`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -119,6 +127,34 @@ export const api = {
     request<Payment>("/console/payments", { method: "POST", body: JSON.stringify(payload) }),
   receipt: (id: string) => request<Payment>(`/console/payments/${id}`),
   setup: () => request<Setup>("/console/setup"),
+  setupStatus: () => request<{ setupCompleted: boolean; setupStep: number }>("/console/setup/status"),
+  admissionForm: () => request<{ fields: AdmissionField[] }>("/console/setup/admission-form"),
+  admission: () =>
+    request<{ fields: AdmissionField[]; classes: { id: string; name: string; section: string }[] }>(
+      "/console/setup/admission",
+    ),
+  campuses: () => request<{ campuses: Setup["campuses"] }>("/console/setup/campuses"),
+  academics: () =>
+    request<{
+      years: Setup["years"];
+      classes: { id: string; name: string; section: string; yearId: string }[];
+      subjects: { id: string; name: string; enabled: boolean }[];
+    }>("/console/setup/academics"),
+  feeStructure: () =>
+    request<{ feeItems: Setup["feeItems"]; templates: { feeItems: string[] } }>("/console/setup/fees"),
+  schoolProfile: () =>
+    request<{
+      school: {
+        name: string;
+        address: string;
+        area: string;
+        whatsapp: string;
+        phone: string;
+        website: string;
+        feeBand: string;
+        profile: Record<string, unknown> | null;
+      };
+    }>("/console/setup/profile"),
   saveOrg: (payload: Record<string, unknown>) =>
     request("/console/setup/org", { method: "POST", body: JSON.stringify(payload) }),
   saveCampus: (payload: Record<string, unknown>) =>
@@ -236,6 +272,50 @@ export type Student = {
   enrollments: { class: { id: string; name: string; section: string } }[];
   invoices: Invoice[];
   guardians: { guardian: Guardian }[];
+};
+
+export type StudentProfile = {
+  id: string;
+  admissionNo: string;
+  rollNo: string;
+  firstName: string;
+  lastName: string;
+  gender: string;
+  status: string;
+  dateOfBirth?: string | null;
+  admissionDate?: string;
+  firstAdmissionDate?: string;
+  extra: Record<string, string>;
+  photo: string;
+  phone: string;
+  address: string;
+  campus: { id: string; name: string } | null;
+  class: { id: string; name: string; section: string; yearId: string } | null;
+  guardians: { guardian: Guardian }[];
+  siblings: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    rollNo: string;
+    photo: string;
+    class: { name: string; section: string } | null;
+  }[];
+  details: { label: string; value: string }[];
+  years: { id: string; name: string; current: boolean; startsOn: string; endsOn: string }[];
+  classes: { id: string; name: string; section: string; yearId: string; yearName: string }[];
+  exams: { id: string; name: string; heldOn: string; yearId: string; totalMarks: number; obtainedMarks: number; pct: number }[];
+  attendance: { id: string; date: string; status: string; className: string }[];
+  invoices: {
+    id: string;
+    name: string;
+    amountPkr: number;
+    paidPkr: number;
+    status: string;
+    dueOn: string;
+    yearId: string;
+    receiptId: string | null;
+  }[];
+  enrollments: { class: { id: string; name: string; section: string } }[];
 };
 
 export type SchoolClass = {

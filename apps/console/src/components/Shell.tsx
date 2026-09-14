@@ -18,9 +18,11 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { Suspense, useState } from "react";
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api, currentUser, setSession } from "../lib/api";
+import { queryKeys } from "../lib/query";
 import { PageSlide } from "./motion";
 
 const studentLinks: { to: string; label: string; icon: LucideIcon }[] = [
@@ -62,16 +64,16 @@ export function Shell() {
   const [openStudents, setOpenStudents] = useState(studentsOpen);
   const showStudentLinks = openStudents || studentsOpen;
   const links = user?.role === "PLATFORM_ADMIN" ? adminLinks : schoolLinks.filter((l) => l.roles.includes(user?.role ?? ""));
+  const { data: setupStatus } = useQuery({
+    queryKey: queryKeys.setupStatus,
+    queryFn: api.setupStatus,
+    enabled: user?.role === "SCHOOL_ADMIN",
+    staleTime: 5 * 60_000,
+  });
 
-  useEffect(() => {
-    if (user?.role !== "SCHOOL_ADMIN" || location.pathname === "/setup") return;
-    api
-      .setup()
-      .then((overview) => {
-        if (!overview.school.setupCompleted) navigate("/setup", { replace: true });
-      })
-      .catch(() => undefined);
-  }, [location.pathname, navigate, user?.role]);
+  if (user?.role === "SCHOOL_ADMIN" && setupStatus && !setupStatus.setupCompleted) {
+    return <Navigate to="/setup" replace />;
+  }
 
   return (
     <div className="flex min-h-dvh">
@@ -144,9 +146,11 @@ export function Shell() {
         </div>
       </aside>
       <main className="min-w-0 flex-1 px-10 py-8">
-        <PageSlide pageKey={location.pathname}>
-          <Outlet />
-        </PageSlide>
+        <Suspense fallback={<div className="h-40 animate-pulse rounded-3xl bg-surface" />}>
+          <PageSlide pageKey={location.pathname}>
+            <Outlet />
+          </PageSlide>
+        </Suspense>
       </main>
     </div>
   );

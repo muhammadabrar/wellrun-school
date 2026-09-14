@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type SchoolClass } from "../lib/api";
-import { todayIso } from "../lib/format";
 import { SpinnerCheck, Toast } from "../components/motion";
+import { api } from "../lib/api";
+import { todayIso } from "../lib/format";
+import { queryKeys } from "../lib/query";
 
 type Status = "PRESENT" | "ABSENT" | "LATE" | "LEAVE";
 
@@ -14,37 +16,33 @@ const marks: { id: Status; label: string; on: string }[] = [
 ];
 
 export function AttendancePage() {
-  const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [classId, setClassId] = useState("");
   const [date, setDate] = useState(todayIso());
-  const [values, setValues] = useState<Record<string, Status>>({});
+  const [draft, setDraft] = useState<Record<string, Status> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const selected = classes.find((c) => c.id === classId);
+  const { data: classes = [] } = useQuery({ queryKey: queryKeys.classes, queryFn: api.classes });
+  const resolvedClassId = classId || classes[0]?.id || "";
+  const selected = classes.find((c) => c.id === resolvedClassId);
+  const { data: rows } = useQuery({
+    queryKey: queryKeys.attendance(resolvedClassId, date),
+    queryFn: () => api.attendance(resolvedClassId, date),
+    enabled: Boolean(resolvedClassId),
+  });
 
-  useEffect(() => {
-    api.classes().then((list) => {
-      setClasses(list);
-      if (list[0]) setClassId(list[0].id);
-    });
-  }, []);
+  const baseline = useMemo(() => {
+    const next: Record<string, Status> = {};
+    for (const row of rows ?? []) next[row.studentId] = row.status as Status;
+    for (const enrollment of selected?.enrollments ?? []) {
+      next[enrollment.student.id] ??= "PRESENT";
+    }
+    return next;
+  }, [rows, selected]);
 
-  useEffect(() => {
-    if (!classId) return;
-    api.attendance(classId, date).then((rows) => {
-      const next: Record<string, Status> = {};
-      for (const row of rows) next[row.studentId] = row.status as Status;
-      const cls = classes.find((c) => c.id === classId);
-      for (const enrollment of cls?.enrollments ?? []) {
-        next[enrollment.student.id] ??= "PRESENT";
-      }
-      setValues(next);
-    });
-  }, [classId, date, classes]);
-
+  const values = draft ?? baseline;
   const students = useMemo(() => selected?.enrollments.map((e) => e.student) ?? [], [selected]);
 
   async function save() {
@@ -53,7 +51,7 @@ export function AttendancePage() {
     setError(null);
     try {
       await api.saveAttendance({
-        classId,
+        classId: resolvedClassId,
         date,
         records: students.map((student) => ({
           studentId: student.id,
@@ -80,8 +78,11 @@ export function AttendancePage() {
       </div>
       <div className="mt-6 flex gap-3">
         <select
-          value={classId}
-          onChange={(e) => setClassId(e.target.value)}
+          value={resolvedClassId}
+          onChange={(e) => {
+            setClassId(e.target.value);
+            setDraft(null);
+          }}
           className="h-11 rounded-xl border border-line bg-surface px-3"
         >
           {classes.map((cls) => (
@@ -93,7 +94,10 @@ export function AttendancePage() {
         <input
           type="date"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(e) => {
+            setDate(e.target.value);
+            setDraft(null);
+          }}
           className="h-11 rounded-xl border border-line bg-surface px-3"
         />
         <button
@@ -122,7 +126,7 @@ export function AttendancePage() {
                 <button
                   key={mark.id}
                   type="button"
-                  onClick={() => setValues((m) => ({ ...m, [student.id]: mark.id }))}
+                  onClick={() => setDraft({ ...values, [student.id]: mark.id })}
                   className={`rounded-full px-3 py-2 text-sm ${
                     values[student.id] === mark.id ? mark.on : "bg-paper"
                   }`}

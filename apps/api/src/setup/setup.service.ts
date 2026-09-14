@@ -62,7 +62,7 @@ export class SetupService {
       subjects,
       admissionForms: forms.map((form) => ({
         ...form,
-        fields: normalizeAdmissionFields(form.fields as Array<{ key?: string; label: string; type?: string; required?: boolean; group?: string }>),
+        fields: this.formFields(form.fields),
       })),
       feeItems,
       memberships,
@@ -73,6 +73,110 @@ export class SetupService {
         subjectTemplates: SUBJECT_TEMPLATES,
       },
     };
+  }
+
+  async status(schoolId: string) {
+    const school = await this.prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { setupCompleted: true, setupStep: true },
+    });
+    return {
+      setupCompleted: school?.setupCompleted ?? false,
+      setupStep: school?.setupStep ?? 1,
+    };
+  }
+
+  async admissionForm(schoolId: string) {
+    const form = await this.prisma.admissionForm.findFirst({
+      where: { schoolId },
+      orderBy: { createdAt: "asc" },
+      select: { fields: true },
+    });
+    return { fields: this.formFields(form?.fields) };
+  }
+
+  async admission(schoolId: string) {
+    const [form, classes] = await Promise.all([
+      this.prisma.admissionForm.findFirst({
+        where: { schoolId },
+        orderBy: { createdAt: "asc" },
+        select: { fields: true },
+      }),
+      this.prisma.class.findMany({
+        where: { schoolId },
+        select: { id: true, name: true, section: true },
+        orderBy: [{ name: "asc" }, { section: "asc" }],
+      }),
+    ]);
+    return { fields: this.formFields(form?.fields), classes };
+  }
+
+  async campusesOverview(schoolId: string) {
+    const campuses = await this.prisma.campus.findMany({
+      where: { schoolId },
+      select: { id: true, name: true, address: true, phone: true, principal: true, code: true, isMain: true },
+      orderBy: { createdAt: "asc" },
+    });
+    return { campuses };
+  }
+
+  async academics(schoolId: string) {
+    const [years, classes, subjects] = await Promise.all([
+      this.prisma.academicYear.findMany({
+        where: { schoolId },
+        select: { id: true, name: true, startsOn: true, endsOn: true, current: true },
+        orderBy: { startsOn: "desc" },
+      }),
+      this.prisma.class.findMany({
+        where: { schoolId },
+        select: { id: true, name: true, section: true, yearId: true },
+        orderBy: [{ name: "asc" }, { section: "asc" }],
+      }),
+      this.prisma.subject.findMany({
+        where: { schoolId },
+        select: { id: true, name: true, enabled: true },
+        orderBy: { name: "asc" },
+      }),
+    ]);
+    return { years, classes, subjects };
+  }
+
+  async feeStructure(schoolId: string) {
+    const feeItems = await this.prisma.feeItem.findMany({
+      where: { schoolId },
+      select: { id: true, name: true, amountPkr: true, enabled: true },
+      orderBy: { sortOrder: "asc" },
+    });
+    return { feeItems, templates: { feeItems: FEE_TEMPLATE } };
+  }
+
+  async profile(schoolId: string) {
+    const school = await this.prisma.school.findUnique({
+      where: { id: schoolId },
+      select: {
+        name: true,
+        address: true,
+        area: true,
+        whatsapp: true,
+        phone: true,
+        website: true,
+        feeBand: true,
+        profile: true,
+      },
+    });
+    return { school };
+  }
+
+  private formFields(fields: unknown) {
+    return normalizeAdmissionFields(
+      (Array.isArray(fields) && fields.length ? fields : DEFAULT_ADMISSION_FIELDS) as Array<{
+        key?: string;
+        label: string;
+        type?: string;
+        required?: boolean;
+        group?: string;
+      }>,
+    );
   }
 
   private async writable(schoolId: string) {

@@ -1,29 +1,38 @@
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ComponentType, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Shell } from "./components/Shell";
 import { currentUser, token } from "./lib/api";
-import { AbsentPage } from "./pages/Absent";
-import { AdminPage } from "./pages/Admin";
-import { AttendancePage } from "./pages/Attendance";
-import { DashboardPage } from "./pages/Dashboard";
-import { FeesPage } from "./pages/Fees";
-import { ForgotPage } from "./pages/Forgot";
-import { InvitePage } from "./pages/Invite";
 import { LoginPage } from "./pages/Login";
-import { RegisterSchoolPage } from "./pages/RegisterSchool";
-import { ProfilePage } from "./pages/Profile";
-import { ReceiptPage } from "./pages/Receipt";
-import { ResetPage } from "./pages/Reset";
-import { AcademicsPage } from "./pages/Academics";
-import { AdmissionPage } from "./pages/Admission";
-import { AdmissionSettingsPage } from "./pages/AdmissionSettings";
-import { CampusesPage } from "./pages/Campuses";
-import { FeeStructurePage } from "./pages/FeeStructure";
-import { SetupPage } from "./pages/Setup";
-import { StudentPage } from "./pages/Student";
-import { StudentsPage } from "./pages/Students";
-import { TeachersPage } from "./pages/Teachers";
-import { TimetablePage } from "./pages/Timetable";
+
+function lazyPage<M extends Record<string, ComponentType>>(loader: () => Promise<M>, name: keyof M & string) {
+  return lazy(() => loader().then((mod) => ({ default: mod[name] as ComponentType })));
+}
+
+const RegisterSchoolPage = lazyPage(() => import("./pages/RegisterSchool"), "RegisterSchoolPage");
+const ForgotPage = lazyPage(() => import("./pages/Forgot"), "ForgotPage");
+const ResetPage = lazyPage(() => import("./pages/Reset"), "ResetPage");
+const InvitePage = lazyPage(() => import("./pages/Invite"), "InvitePage");
+const SetupPage = lazyPage(() => import("./pages/Setup"), "SetupPage");
+const DashboardPage = lazyPage(() => import("./pages/Dashboard"), "DashboardPage");
+const AdmissionPage = lazyPage(() => import("./pages/Admission"), "AdmissionPage");
+const AdmissionSettingsPage = lazyPage(() => import("./pages/AdmissionSettings"), "AdmissionSettingsPage");
+const StudentsPage = lazyPage(() => import("./pages/Students"), "StudentsPage");
+const StudentPage = lazyPage(() => import("./pages/Student"), "StudentPage");
+const AttendancePage = lazyPage(() => import("./pages/Attendance"), "AttendancePage");
+const AbsentPage = lazyPage(() => import("./pages/Absent"), "AbsentPage");
+const TimetablePage = lazyPage(() => import("./pages/Timetable"), "TimetablePage");
+const TeachersPage = lazyPage(() => import("./pages/Teachers"), "TeachersPage");
+const CampusesPage = lazyPage(() => import("./pages/Campuses"), "CampusesPage");
+const AcademicsPage = lazyPage(() => import("./pages/Academics"), "AcademicsPage");
+const FeeStructurePage = lazyPage(() => import("./pages/FeeStructure"), "FeeStructurePage");
+const ProfilePage = lazyPage(() => import("./pages/Profile"), "ProfilePage");
+const FeesPage = lazyPage(() => import("./pages/Fees"), "FeesPage");
+const ReceiptPage = lazyPage(() => import("./pages/Receipt"), "ReceiptPage");
+const AdminPage = lazyPage(() => import("./pages/Admin"), "AdminPage");
+
+function PageFallback() {
+  return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+}
 
 function RequireAuth({ children }: { children: ReactNode }) {
   if (!token()) return <Navigate to="/login" replace />;
@@ -32,19 +41,25 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return children;
 }
 
+function Screen({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<PageFallback />}>{children}</Suspense>;
+}
+
 export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterSchoolPage />} />
-      <Route path="/forgot-password" element={<ForgotPage />} />
-      <Route path="/reset-password" element={<ResetPage />} />
-      <Route path="/invite" element={<InvitePage />} />
+      <Route path="/register" element={<Screen><RegisterSchoolPage /></Screen>} />
+      <Route path="/forgot-password" element={<Screen><ForgotPage /></Screen>} />
+      <Route path="/reset-password" element={<Screen><ResetPage /></Screen>} />
+      <Route path="/invite" element={<Screen><InvitePage /></Screen>} />
       <Route
         path="/setup"
         element={
           <RequireAuth>
-            <SetupPage />
+            <Screen>
+              <SetupPage />
+            </Screen>
           </RequireAuth>
         }
       />

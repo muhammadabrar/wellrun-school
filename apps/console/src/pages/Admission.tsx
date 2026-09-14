@@ -1,13 +1,15 @@
-import { classSortIndex, normalizeAdmissionFields } from "@wellrun/shared";
+import { useQuery } from "@tanstack/react-query";
+import { classSortIndex } from "@wellrun/shared";
 import { UserPlus } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, type AdmissionField, type Guardian, type Setup } from "../lib/api";
+import { api, type AdmissionField } from "../lib/api";
+import { queryKeys } from "../lib/query";
 
 export function AdmissionPage() {
   const navigate = useNavigate();
-  const [setup, setSetup] = useState<Setup | null>(null);
-  const [guardians, setGuardians] = useState<Guardian[]>([]);
+  const { data } = useQuery({ queryKey: queryKeys.admission, queryFn: api.admission });
+  const { data: guardians = [] } = useQuery({ queryKey: queryKeys.guardians, queryFn: () => api.guardians() });
   const [mode, setMode] = useState<"existing" | "new">("new");
   const [guardianId, setGuardianId] = useState("");
   const [guardianSearch, setGuardianSearch] = useState("");
@@ -16,28 +18,19 @@ export function AdmissionPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    api.setup().then((next) => {
-      setSetup(next);
-      const first = [...next.classes].sort((a, b) => a.name.localeCompare(b.name))[0];
-      if (first) {
-        setClassName(first.name);
-        setSection(first.section);
-      }
-    });
-    api.guardians().then(setGuardians);
-  }, []);
-
-  const fields = useMemo(
-    () => normalizeAdmissionFields(setup?.admissionForms[0]?.fields ?? setup?.templates.admissionFields),
-    [setup],
+  const fields = data?.fields ?? [];
+  const firstClass = useMemo(
+    () => [...(data?.classes ?? [])].sort((a, b) => a.name.localeCompare(b.name))[0],
+    [data],
   );
+  const selectedClass = className || firstClass?.name || "";
+  const selectedSection = section || firstClass?.section || "";
   const guardianFields = fields.filter((field) => field.group === "guardian");
   const studentFields = fields.filter((field) => field.group === "student");
-  const classNames = [...new Set((setup?.classes ?? []).map((cls) => cls.name))].sort(
+  const classNames = [...new Set((data?.classes ?? []).map((cls) => cls.name))].sort(
     (a, b) => classSortIndex(a) - classSortIndex(b),
   );
-  const sections = (setup?.classes ?? []).filter((cls) => cls.name === className).map((cls) => cls.section);
+  const sections = (data?.classes ?? []).filter((cls) => cls.name === selectedClass).map((cls) => cls.section);
   const matchedGuardians = guardians.filter((row) => {
     const hay = `${row.name} ${row.phone} ${row.cnic ?? ""}`.toLowerCase();
     return hay.includes(guardianSearch.toLowerCase());
@@ -52,7 +45,7 @@ export function AdmissionPage() {
       setError("Select a guardian or switch to new guardian.");
       return;
     }
-    if (!className || !section) {
+    if (!selectedClass || !selectedSection) {
       setError("Create a class first, then admit the student.");
       return;
     }
@@ -82,8 +75,8 @@ export function AdmissionPage() {
         firstName: String(form.get("firstName") || ""),
         lastName: String(form.get("lastName") || ""),
         dateOfBirth: String(form.get("dateOfBirth") || ""),
-        className,
-        section,
+        className: selectedClass,
+        section: selectedSection,
         gender: String(form.get("gender") || "") || undefined,
         extra,
         guardianExtra,
@@ -95,7 +88,7 @@ export function AdmissionPage() {
     }
   }
 
-  if (!setup) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+  if (!data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
 
   return (
     <div className="max-w-4xl">
@@ -173,10 +166,10 @@ export function AdmissionPage() {
                     {field.label}
                     <select
                       required={field.required}
-                      value={className}
+                      value={selectedClass}
                       onChange={(event) => {
                         setClassName(event.target.value);
-                        const next = (setup.classes ?? []).find((cls) => cls.name === event.target.value);
+                        const next = (data.classes ?? []).find((cls) => cls.name === event.target.value);
                         setSection(next?.section ?? "A");
                       }}
                       className="mt-2 h-11 w-full rounded-xl border border-line px-3"
@@ -196,7 +189,7 @@ export function AdmissionPage() {
                     {field.label}
                     <select
                       required={field.required}
-                      value={section}
+                      value={selectedSection}
                       onChange={(event) => setSection(event.target.value)}
                       className="mt-2 h-11 w-full rounded-xl border border-line px-3"
                     >

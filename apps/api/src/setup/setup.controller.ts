@@ -14,6 +14,41 @@ export class SetupController {
     return this.setup.overview(requireSchoolAdmin(req.user));
   }
 
+  @Get("status")
+  status(@Req() req: { user: CurrentUser }) {
+    return this.setup.status(requireSchoolAdmin(req.user));
+  }
+
+  @Get("admission-form")
+  admissionForm(@Req() req: { user: CurrentUser }) {
+    return this.setup.admissionForm(requireSchoolAdmin(req.user));
+  }
+
+  @Get("admission")
+  admissionData(@Req() req: { user: CurrentUser }) {
+    return this.setup.admission(requireSchoolAdmin(req.user));
+  }
+
+  @Get("campuses")
+  campuses(@Req() req: { user: CurrentUser }) {
+    return this.setup.campusesOverview(requireSchoolAdmin(req.user));
+  }
+
+  @Get("academics")
+  academics(@Req() req: { user: CurrentUser }) {
+    return this.setup.academics(requireSchoolAdmin(req.user));
+  }
+
+  @Get("fees")
+  feesList(@Req() req: { user: CurrentUser }) {
+    return this.setup.feeStructure(requireSchoolAdmin(req.user));
+  }
+
+  @Get("profile")
+  profile(@Req() req: { user: CurrentUser }) {
+    return this.setup.profile(requireSchoolAdmin(req.user));
+  }
+
   @Post("org")
   org(@Req() req: { user: CurrentUser }, @Body() body: unknown) {
     return this.setup.saveOrg(requireSchoolAdmin(req.user), req.user.id, body);

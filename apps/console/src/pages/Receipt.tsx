@@ -1,17 +1,18 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { t } from "@wellrun/i18n";
-import { api, type Payment } from "../lib/api";
+import { api } from "../lib/api";
 import { pkr } from "../lib/format";
+import { queryKeys } from "../lib/query";
 
 export function ReceiptPage() {
   const copy = t("en");
   const { id } = useParams();
-  const [payment, setPayment] = useState<Payment | null>(null);
-
-  useEffect(() => {
-    if (id) api.receipt(id).then(setPayment);
-  }, [id]);
+  const { data: payment } = useQuery({
+    queryKey: queryKeys.receipt(id ?? ""),
+    queryFn: () => api.receipt(id!),
+    enabled: Boolean(id),
+  });
 
   if (!payment) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
 

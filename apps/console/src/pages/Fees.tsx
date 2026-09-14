@@ -1,25 +1,25 @@
-import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { t } from "@wellrun/i18n";
 import { api, type Invoice } from "../lib/api";
 import { pkr } from "../lib/format";
+import { queryKeys } from "../lib/query";
 import { Toast } from "../components/motion";
 
 export function FeesPage() {
   const copy = t("en");
   const navigate = useNavigate();
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const queryClient = useQueryClient();
+  const { data: invoices = [] } = useQuery({ queryKey: queryKeys.invoices, queryFn: api.invoices });
   const [toast, setToast] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.invoices().then(setInvoices);
-  }, []);
 
   async function pay(invoice: Invoice) {
     const paid = invoice.payments.reduce((sum, p) => sum + p.amountPkr, 0);
     const remaining = invoice.amountPkr - paid;
     if (remaining <= 0) return;
     const payment = await api.pay({ invoiceId: invoice.id, amountPkr: remaining, method: "cash" });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.invoices });
     setToast(`Receipt ${payment.receiptNo} issued`);
     navigate(`/fees/receipt/${payment.id}`);
   }

@@ -1,20 +1,30 @@
-import { FormEvent, useEffect, useState } from "react";
-import { api, currentUser, type AdminClaim, type AdminSchool } from "../lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { FormEvent, useState } from "react";
+import { api, currentUser } from "../lib/api";
+import { queryKeys } from "../lib/query";
 
 export function AdminPage() {
   const user = currentUser();
-  const [schools, setSchools] = useState<AdminSchool[]>([]);
-  const [claims, setClaims] = useState<AdminClaim[]>([]);
+  const queryClient = useQueryClient();
+  const enabled = user?.role === "PLATFORM_ADMIN";
+  const { data: schools = [] } = useQuery({
+    queryKey: queryKeys.adminSchools,
+    queryFn: api.adminSchools,
+    enabled,
+  });
+  const { data: claims = [] } = useQuery({
+    queryKey: queryKeys.adminClaims,
+    queryFn: api.adminClaims,
+    enabled,
+  });
   const [error, setError] = useState<string | null>(null);
 
-  function load() {
-    api.adminSchools().then(setSchools);
-    api.adminClaims().then(setClaims);
+  async function reload() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminSchools }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminClaims }),
+    ]);
   }
-
-  useEffect(() => {
-    if (user?.role === "PLATFORM_ADMIN") load();
-  }, [user?.role]);
 
   if (user?.role !== "PLATFORM_ADMIN") {
     return <p className="text-muted">Platform admin only.</p>;
@@ -31,7 +41,7 @@ export function AdminPage() {
       published: true,
     });
     event.currentTarget.reset();
-    load();
+    await reload();
   }
 
   return (
@@ -54,7 +64,7 @@ export function AdminPage() {
                   <button
                     type="button"
                     className="h-10 rounded-xl bg-indigo px-3 text-white"
-                    onClick={() => api.approveClaim(claim.id).then(load)}
+                    onClick={() => api.approveClaim(claim.id).then(() => reload())}
                   >
                     Approve
                   </button>
@@ -63,7 +73,7 @@ export function AdminPage() {
                     className="h-10 rounded-xl bg-danger px-3 text-white"
                     onClick={() => {
                       const reason = window.prompt("Rejection reason");
-                      if (reason) api.rejectClaim(claim.id, reason).then(load).catch((err) => setError(err.message));
+                      if (reason) api.rejectClaim(claim.id, reason).then(() => reload()).catch((err) => setError(err.message));
                     }}
                   >
                     Reject

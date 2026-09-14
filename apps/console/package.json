@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.102.8",
     "@wellrun/i18n": "workspace:*",
     "@wellrun/shared": "workspace:*",
     "@wellrun/tokens": "workspace:*",

@@ -1,20 +1,23 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { api } from "../lib/api";
+import { queryKeys } from "../lib/query";
 
 export function FeeStructurePage() {
-  const [items, setItems] = useState<{ name: string; amountPkr: number; enabled: boolean }[]>([]);
+  const { data, isPending } = useQuery({ queryKey: queryKeys.feeStructure, queryFn: api.feeStructure });
+  const [draft, setDraft] = useState<{ name: string; amountPkr: number; enabled: boolean }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    api.setup().then((next) => {
-      setItems(
-        next.feeItems.length
-          ? next.feeItems
-          : next.templates.feeItems.map((name) => ({ name, amountPkr: 0, enabled: true })),
-      );
-    });
-  }, []);
+  const items =
+    draft ??
+    (data
+      ? data.feeItems.length
+        ? data.feeItems
+        : data.templates.feeItems.map((name) => ({ name, amountPkr: 0, enabled: true }))
+      : []);
+
+  if (isPending && !data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
 
   return (
     <div className="max-w-3xl">
@@ -28,18 +31,18 @@ export function FeeStructurePage() {
             <li key={`${item.name}-${index}`} className="flex items-center gap-2">
               <input
                 value={item.name}
-                onChange={(e) => setItems((rows) => rows.map((row, i) => (i === index ? { ...row, name: e.target.value } : row)))}
+                onChange={(e) => setDraft(items.map((row, i) => (i === index ? { ...row, name: e.target.value } : row)))}
                 className="h-11 flex-1 rounded-xl border border-line px-3"
               />
               <input
                 type="number"
                 value={item.amountPkr}
                 onChange={(e) =>
-                  setItems((rows) => rows.map((row, i) => (i === index ? { ...row, amountPkr: Number(e.target.value) } : row)))
+                  setDraft(items.map((row, i) => (i === index ? { ...row, amountPkr: Number(e.target.value) } : row)))
                 }
                 className="h-11 w-32 rounded-xl border border-line px-3"
               />
-              <button type="button" className="text-sm text-danger" onClick={() => setItems((rows) => rows.filter((_, i) => i !== index))}>
+              <button type="button" className="text-sm text-danger" onClick={() => setDraft(items.filter((_, i) => i !== index))}>
                 Remove
               </button>
             </li>
@@ -48,7 +51,7 @@ export function FeeStructurePage() {
         <button
           type="button"
           className="mt-3 text-sm text-indigo"
-          onClick={() => setItems((rows) => [...rows, { name: "New fee", amountPkr: 0, enabled: true }])}
+          onClick={() => setDraft([...items, { name: "New fee", amountPkr: 0, enabled: true }])}
         >
           Add fee
         </button>

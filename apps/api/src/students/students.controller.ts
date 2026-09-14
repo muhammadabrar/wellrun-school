@@ -36,6 +36,11 @@ export class StudentsController {
     return this.students.admit(requireSchoolAdmin(req.user), req.user.id, body);
   }
 
+  @Post(":id/photo")
+  photo(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Body() body: { dataUrl?: string }) {
+    return this.students.savePhoto(requireSchoolAdmin(req.user), req.user.id, id, String(body.dataUrl || ""));
+  }
+
   @Post(":id/guardians")
   guardian(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Body() body: unknown) {
     return this.students.linkGuardian(requireSchoolAdmin(req.user), req.user.id, id, body);

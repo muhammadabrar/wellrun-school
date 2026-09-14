@@ -1,13 +1,20 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { normalizeAdmissionFields } from "@wellrun/shared";
 import { Save, Upload } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AdmissionFieldsEditor } from "../components/AdmissionFieldsEditor";
 import { FileUpload } from "../components/FileUpload";
 import { api, type AdmissionField } from "../lib/api";
+import { queryKeys } from "../lib/query";
 import { parseImportFile } from "../lib/setup-helpers";
 
 export function AdmissionSettingsPage() {
-  const [fields, setFields] = useState<AdmissionField[]>([]);
+  const queryClient = useQueryClient();
+  const { data, isPending } = useQuery({
+    queryKey: queryKeys.admissionForm,
+    queryFn: api.admissionForm,
+  });
+  const [draft, setDraft] = useState<AdmissionField[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [importHeaders, setImportHeaders] = useState<string[]>([]);
@@ -15,16 +22,9 @@ export function AdmissionSettingsPage() {
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [importFileName, setImportFileName] = useState("");
 
-  function load() {
-    api.setup().then((next) => {
-      const form = next.admissionForms[0];
-      setFields(normalizeAdmissionFields(form?.fields?.length ? form.fields : next.templates.admissionFields));
-    });
-  }
+  const fields = draft ?? data?.fields ?? [];
 
-  useEffect(() => {
-    load();
-  }, []);
+  if (isPending && !data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
 
   return (
     <div className="max-w-4xl">
@@ -36,7 +36,10 @@ export function AdmissionSettingsPage() {
       {message ? <p className="mt-4 text-sm text-indigo">{message}</p> : null}
 
       <section className="mt-8 rounded-3xl bg-surface p-6">
-        <AdmissionFieldsEditor fields={fields} onChange={setFields} />
+        <AdmissionFieldsEditor
+          fields={fields}
+          onChange={(next) => setDraft(normalizeAdmissionFields(next))}
+        />
         <button
           type="button"
           className="mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-indigo px-4 text-white"
@@ -44,8 +47,10 @@ export function AdmissionSettingsPage() {
             setError(null);
             try {
               await api.saveAdmissionForm({ name: "Default admission form", fields });
+              await queryClient.invalidateQueries({ queryKey: queryKeys.admissionForm });
+              await queryClient.invalidateQueries({ queryKey: queryKeys.admission });
+              setDraft(null);
               setMessage("Admission form saved.");
-              load();
             } catch (err) {
               setError(err instanceof Error ? err.message : "Could not save form");
             }
@@ -110,6 +115,7 @@ export function AdmissionSettingsPage() {
               className="col-span-2 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-ink text-white"
               onClick={async () => {
                 const result = await api.importStudents({ rows: importRows, mapping });
+                await queryClient.invalidateQueries({ queryKey: queryKeys.studentsRoot });
                 setMessage(`Imported ${result.count} students.`);
               }}
             >
