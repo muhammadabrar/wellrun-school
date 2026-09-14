@@ -15,6 +15,8 @@ import { ProfilePage } from "./pages/Profile";
 import { ReceiptPage } from "./pages/Receipt";
 import { ResetPage } from "./pages/Reset";
 import { AcademicsPage } from "./pages/Academics";
+import { AdmissionPage } from "./pages/Admission";
+import { AdmissionSettingsPage } from "./pages/AdmissionSettings";
 import { CampusesPage } from "./pages/Campuses";
 import { FeeStructurePage } from "./pages/FeeStructure";
 import { SetupPage } from "./pages/Setup";
@@ -54,6 +56,8 @@ export function App() {
         }
       >
         <Route path="/" element={<DashboardPage />} />
+        <Route path="/admission" element={<AdmissionPage />} />
+        <Route path="/admission/settings" element={<AdmissionSettingsPage />} />
         <Route path="/students" element={<StudentsPage />} />
         <Route path="/students/:id" element={<StudentPage />} />
         <Route path="/attendance" element={<AttendancePage />} />

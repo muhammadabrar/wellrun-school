@@ -52,8 +52,14 @@ export function StudentPage() {
         {student.firstName} {student.lastName}
       </h1>
       <p className="mt-1 text-muted">
-        Admission {student.admissionNo} · {student.status}
+        Roll {student.rollNo || student.admissionNo} · Admission {student.admissionNo} · {student.status}
       </p>
+      {student.admissionDate ? (
+        <p className="mt-1 text-sm text-muted">
+          Admitted {student.admissionDate.slice(0, 10)}
+          {student.firstAdmissionDate ? ` · First admission ${student.firstAdmissionDate.slice(0, 10)}` : ""}
+        </p>
+      ) : null}
       <div className="mt-8 grid grid-cols-2 gap-4">
         <section className="rounded-3xl bg-surface p-6">
           <h2 className="font-display text-xl">Family</h2>
@@ -62,6 +68,7 @@ export function StudentPage() {
               {link.guardian.name}
               <span className="block text-sm text-muted">
                 {link.guardian.relation} · {link.guardian.phone}
+                {link.guardian.cnic ? ` · ${link.guardian.cnic}` : ""}
               </span>
             </p>
           ))}

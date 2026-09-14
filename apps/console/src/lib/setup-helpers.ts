@@ -6,8 +6,8 @@ export function nextSection(sections: string[]) {
   return letters.find((letter) => !sections.includes(letter)) ?? `S${sections.length + 1}`;
 }
 
-export function fieldFromLabel(label: string, required = false): AdmissionField {
-  return { key: admissionFieldKey(label), label, type: "text", required };
+export function fieldFromLabel(label: string, required = false, group: "guardian" | "student" = "student"): AdmissionField {
+  return { key: admissionFieldKey(label), label, type: "text", required, locked: false, group };
 }
 
 export async function parseImportFile(file: File): Promise<{ headers: string[]; rows: Record<string, string>[] }> {

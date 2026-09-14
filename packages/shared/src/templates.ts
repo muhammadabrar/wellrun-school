@@ -134,8 +134,17 @@ export function admissionFieldKey(label: string) {
     guardianphone: "guardianPhone",
     parentphone: "guardianPhone",
     parentwhatsapp: "guardianPhone",
+    phonenumber: "guardianPhone",
+    cnic: "guardianCnic",
+    guardiancnic: "guardianCnic",
     relation: "guardianRelation",
     guardianrelation: "guardianRelation",
+    classid: "classId",
+    address: "address",
+    studentaddress: "address",
+    phone: "phone",
+    studentphone: "phone",
+    mobilenumber: "phone",
   };
   const compact = label.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (aliases[compact]) return aliases[compact];
@@ -195,18 +204,94 @@ export const FEE_TEMPLATE = [
   "Other",
 ] as const;
 
-export const DEFAULT_ADMISSION_FIELDS = [
-  { key: "firstName", label: "First name", type: "text", required: true },
-  { key: "lastName", label: "Last name", type: "text", required: true },
-  { key: "admissionNo", label: "Admission number", type: "text", required: true },
-  { key: "gender", label: "Gender", type: "select", required: true },
-  { key: "dateOfBirth", label: "Date of birth", type: "date", required: false },
-  { key: "className", label: "Class", type: "text", required: false },
-  { key: "section", label: "Section", type: "text", required: false },
-  { key: "guardianName", label: "Guardian name", type: "text", required: true },
-  { key: "guardianPhone", label: "Guardian phone", type: "text", required: true },
-  { key: "guardianRelation", label: "Relation", type: "text", required: false },
-] as const;
+export type AdmissionFieldGroup = "guardian" | "student";
+
+export type AdmissionFieldDef = {
+  key: string;
+  label: string;
+  type: string;
+  required: boolean;
+  locked: boolean;
+  group: AdmissionFieldGroup;
+};
+
+export const LOCKED_GUARDIAN_FIELDS: AdmissionFieldDef[] = [
+  { key: "guardianName", label: "Guardian name", type: "text", required: true, locked: true, group: "guardian" },
+  { key: "guardianPhone", label: "Phone number", type: "text", required: true, locked: true, group: "guardian" },
+  { key: "guardianCnic", label: "CNIC", type: "text", required: true, locked: true, group: "guardian" },
+  { key: "guardianRelation", label: "Relation", type: "text", required: true, locked: true, group: "guardian" },
+];
+
+export const LOCKED_STUDENT_FIELDS: AdmissionFieldDef[] = [
+  { key: "firstName", label: "First name", type: "text", required: true, locked: true, group: "student" },
+  { key: "lastName", label: "Last name", type: "text", required: true, locked: true, group: "student" },
+  { key: "dateOfBirth", label: "Date of birth", type: "date", required: true, locked: true, group: "student" },
+  { key: "className", label: "Class", type: "class", required: true, locked: true, group: "student" },
+  { key: "section", label: "Section", type: "section", required: true, locked: true, group: "student" },
+];
+
+export const LOCKED_ADMISSION_FIELDS: AdmissionFieldDef[] = [...LOCKED_GUARDIAN_FIELDS, ...LOCKED_STUDENT_FIELDS];
+
+export const SYSTEM_ADMISSION_KEYS = ["rollNo", "admissionNo", "admissionDate", "firstAdmissionDate"] as const;
+
+export const DEFAULT_ADMISSION_FIELDS: AdmissionFieldDef[] = [
+  ...LOCKED_ADMISSION_FIELDS,
+  { key: "phone", label: "Phone number", type: "text", required: false, locked: false, group: "student" },
+  { key: "address", label: "Address", type: "text", required: false, locked: false, group: "student" },
+  { key: "gender", label: "Gender", type: "select", required: false, locked: false, group: "student" },
+];
+
+const LOCKED_KEYS = new Set(LOCKED_ADMISSION_FIELDS.map((field) => field.key));
+const SYSTEM_KEYS = new Set<string>(SYSTEM_ADMISSION_KEYS);
+
+export function isLockedAdmissionKey(key: string) {
+  return LOCKED_KEYS.has(key);
+}
+
+export function isSystemAdmissionKey(key: string) {
+  return SYSTEM_KEYS.has(key);
+}
+
+export function normalizeAdmissionFields(
+  fields?: Array<{ key?: string; label: string; type?: string; required?: boolean; locked?: boolean; group?: string }>,
+): AdmissionFieldDef[] {
+  const incoming = (fields ?? []).filter((field) => {
+    const key = field.key?.trim() || admissionFieldKey(field.label);
+    return !SYSTEM_KEYS.has(key);
+  });
+  const byKey = new Map(incoming.map((field) => [field.key?.trim() || admissionFieldKey(field.label), field]));
+  const locked = LOCKED_ADMISSION_FIELDS.map((field) => ({
+    ...field,
+    label: byKey.get(field.key)?.label?.trim() || field.label,
+  }));
+  const extras = incoming
+    .map((field) => {
+      const key = field.key?.trim() || admissionFieldKey(field.label);
+      const group: AdmissionFieldGroup =
+        field.group === "guardian" || key.startsWith("guardian") ? "guardian" : "student";
+      return {
+        key,
+        label: field.label,
+        type: field.type || "text",
+        required: Boolean(field.required),
+        locked: false,
+        group,
+      };
+    })
+    .filter((field) => !LOCKED_KEYS.has(field.key));
+  return [
+    ...locked.filter((field) => field.group === "guardian"),
+    ...extras.filter((field) => field.group === "guardian"),
+    ...locked.filter((field) => field.group === "student"),
+    ...extras.filter((field) => field.group === "student"),
+  ];
+}
+
+export function classSortIndex(name: string) {
+  const order = CLASS_TEMPLATES.pakistan_school as readonly string[];
+  const index = order.findIndex((item) => item.toLowerCase() === name.toLowerCase());
+  return index === -1 ? 500 + name.charCodeAt(0) : index;
+}
 
 export const CAMPUS_ROLES = [
   { id: "SUPER_ADMIN", label: "Super admin" },

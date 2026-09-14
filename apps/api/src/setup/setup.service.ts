@@ -7,6 +7,7 @@ import {
   SUBJECT_TEMPLATES,
   admissionFieldKey,
   admissionFormSchema,
+  normalizeAdmissionFields,
   applyClassesSchema,
   applySubjectsSchema,
   campusRoleSchema,
@@ -59,7 +60,10 @@ export class SetupService {
       years,
       classes,
       subjects,
-      admissionForms: forms,
+      admissionForms: forms.map((form) => ({
+        ...form,
+        fields: normalizeAdmissionFields(form.fields as Array<{ key?: string; label: string; type?: string; required?: boolean; group?: string }>),
+      })),
       feeItems,
       memberships,
       templates: {
@@ -373,10 +377,12 @@ export class SetupService {
   async saveAdmissionForm(schoolId: string, actorId: string, body: unknown) {
     await this.writable(schoolId);
     const data = admissionFormSchema.parse(body);
-    const fields = data.fields.map((field) => ({
-      ...field,
-      key: field.key?.trim() || admissionFieldKey(field.label),
-    }));
+    const fields = normalizeAdmissionFields(
+      data.fields.map((field) => ({
+        ...field,
+        key: field.key?.trim() || admissionFieldKey(field.label),
+      })),
+    );
     const existing = await this.prisma.admissionForm.findFirst({ where: { schoolId, isDefault: true } });
     const form = existing
       ? await this.prisma.admissionForm.update({
@@ -395,7 +401,7 @@ export class SetupService {
     const existing = await this.prisma.admissionForm.findFirst({ where: { schoolId, isDefault: true } });
     if (existing) return existing;
     return this.prisma.admissionForm.create({
-      data: { schoolId, name: "Default admission form", fields: [...DEFAULT_ADMISSION_FIELDS], isDefault: true },
+      data: { schoolId, name: "Default admission form", fields: normalizeAdmissionFields(DEFAULT_ADMISSION_FIELDS), isDefault: true },
     });
   }
 
@@ -412,23 +418,32 @@ export class SetupService {
       };
       const firstName = get("firstName");
       const lastName = get("lastName");
-      const admissionNo = get("admissionNo") || `IMP-${Date.now()}-${created.length + 1}`;
       if (!firstName || !lastName) continue;
-      const exists = await this.prisma.student.findFirst({ where: { schoolId, admissionNo } });
-      if (exists) continue;
       const className = get("className");
       const section = get("section") || "A";
       const cls = classes.find(
         (c) => c.name.toLowerCase() === className.toLowerCase() && c.section.toLowerCase() === section.toLowerCase(),
       );
+      const count = await this.prisma.student.count({ where: { schoolId } });
+      const admissionNo = get("admissionNo") || `ADM-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
+      const exists = await this.prisma.student.findFirst({ where: { schoolId, admissionNo } });
+      if (exists) continue;
+      const now = new Date();
+      const classRolls = cls
+        ? await this.prisma.enrollment.count({ where: { schoolId, classId: cls.id } })
+        : created.length;
       const student = await this.prisma.student.create({
         data: {
           schoolId,
+          campusId: cls?.campusId,
           firstName,
           lastName,
           admissionNo,
+          rollNo: get("rollNo") || String(classRolls + 1),
           gender: get("gender") || "unspecified",
           dateOfBirth: get("dateOfBirth") ? new Date(get("dateOfBirth")) : undefined,
+          admissionDate: now,
+          firstAdmissionDate: now,
         },
       });
       if (cls) {
@@ -442,6 +457,7 @@ export class SetupService {
             schoolId,
             name: get("guardianName"),
             phone: get("guardianPhone"),
+            cnic: get("guardianCnic") || "",
             relation: get("guardianRelation") || "Parent",
           },
         });

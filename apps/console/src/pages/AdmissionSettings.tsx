@@ -1,0 +1,124 @@
+import { normalizeAdmissionFields } from "@wellrun/shared";
+import { Save, Upload } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AdmissionFieldsEditor } from "../components/AdmissionFieldsEditor";
+import { FileUpload } from "../components/FileUpload";
+import { api, type AdmissionField } from "../lib/api";
+import { parseImportFile } from "../lib/setup-helpers";
+
+export function AdmissionSettingsPage() {
+  const [fields, setFields] = useState<AdmissionField[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [importHeaders, setImportHeaders] = useState<string[]>([]);
+  const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [importFileName, setImportFileName] = useState("");
+
+  function load() {
+    api.setup().then((next) => {
+      const form = next.admissionForms[0];
+      setFields(normalizeAdmissionFields(form?.fields?.length ? form.fields : next.templates.admissionFields));
+    });
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  return (
+    <div className="max-w-4xl">
+      <h1 className="font-display text-4xl">Admission settings</h1>
+      <p className="mt-2 text-sm text-muted">
+        Manage the campus admission form. Locked fields stay. Roll number and admission dates are set in the background.
+      </p>
+      {error ? <p className="mt-4 text-sm text-danger">{error}</p> : null}
+      {message ? <p className="mt-4 text-sm text-indigo">{message}</p> : null}
+
+      <section className="mt-8 rounded-3xl bg-surface p-6">
+        <AdmissionFieldsEditor fields={fields} onChange={setFields} />
+        <button
+          type="button"
+          className="mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-indigo px-4 text-white"
+          onClick={async () => {
+            setError(null);
+            try {
+              await api.saveAdmissionForm({ name: "Default admission form", fields });
+              setMessage("Admission form saved.");
+              load();
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Could not save form");
+            }
+          }}
+        >
+          <Save size={18} />
+          Save form
+        </button>
+      </section>
+
+      <section className="mt-6 rounded-3xl bg-surface p-6">
+        <h2 className="font-display text-xl">Import students</h2>
+        <div className="mt-2 space-y-2 text-sm text-muted">
+          <p>Upload a CSV, Excel, or JSON file of existing students.</p>
+          <p>Match each form field to a column. Skip anything that is not in the file.</p>
+        </div>
+        <div className="mt-4">
+          <FileUpload
+            label="Student file"
+            accept=".csv,.json,.xlsx,.xls"
+            hint="CSV, Excel, or JSON"
+            fileName={importFileName}
+            onFile={async (file) => {
+              setImportFileName(file.name);
+              const parsed = await parseImportFile(file);
+              setImportHeaders(parsed.headers);
+              setImportRows(parsed.rows);
+              const auto: Record<string, string> = {};
+              for (const field of fields) {
+                const hit = parsed.headers.find(
+                  (header) =>
+                    header.toLowerCase().replace(/\s+/g, "") === field.key.toLowerCase() ||
+                    header.toLowerCase() === field.label.toLowerCase(),
+                );
+                if (hit) auto[field.key] = hit;
+              }
+              setMapping(auto);
+            }}
+          />
+        </div>
+        {importHeaders.length ? (
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            {fields.map((field) => (
+              <label key={field.key} className="text-sm">
+                {field.label}
+                <select
+                  value={mapping[field.key] ?? ""}
+                  onChange={(event) => setMapping((current) => ({ ...current, [field.key]: event.target.value }))}
+                  className="mt-1 h-10 w-full rounded-xl border border-line px-3"
+                >
+                  <option value="">Skip</option>
+                  {importHeaders.map((header) => (
+                    <option key={header} value={header}>
+                      {header}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+            <button
+              type="button"
+              className="col-span-2 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-ink text-white"
+              onClick={async () => {
+                const result = await api.importStudents({ rows: importRows, mapping });
+                setMessage(`Imported ${result.count} students.`);
+              }}
+            >
+              <Upload size={18} />
+              Import {importRows.length} rows
+            </button>
+          </div>
+        ) : null}
+      </section>
+    </div>
+  );
+}

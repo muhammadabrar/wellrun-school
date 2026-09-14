@@ -79,11 +79,23 @@ export const api = {
       outstanding: number;
       invoiceCount: number;
     }>("/console/dashboard"),
-  students: (status?: string) =>
-    request<Student[]>(`/console/students${status ? `?status=${status}` : ""}`),
+  students: (query?: Record<string, string | number | undefined>) => {
+    const params = new URLSearchParams();
+    if (query) {
+      for (const [key, value] of Object.entries(query)) {
+        if (value !== undefined && value !== "") params.set(key, String(value));
+      }
+    }
+    const suffix = params.size ? `?${params}` : "";
+    return request<StudentList>(`/console/students${suffix}`);
+  },
+  guardians: (q?: string) =>
+    request<Guardian[]>(`/console/students/guardians${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   student: (id: string) => request<Student>(`/console/students/${id}`),
   createStudent: (payload: Record<string, unknown>) =>
     request<Student>("/console/students", { method: "POST", body: JSON.stringify(payload) }),
+  admitStudent: (payload: Record<string, unknown>) =>
+    request<Student>("/console/students/admit", { method: "POST", body: JSON.stringify(payload) }),
   updateStudent: (id: string, payload: Record<string, unknown>) =>
     request<Student>(`/console/students/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   addGuardian: (id: string, payload: Record<string, unknown>) =>
@@ -172,17 +184,58 @@ export const api = {
     request("/admin/schools", { method: "POST", body: JSON.stringify(payload) }),
 };
 
+export type Guardian = {
+  id: string;
+  name: string;
+  phone: string;
+  cnic?: string;
+  email?: string | null;
+  relation: string;
+  extra?: Record<string, unknown>;
+  _count?: { students: number };
+};
+
+export type StudentRow = {
+  id: string;
+  rollNo: string;
+  admissionNo: string;
+  firstName: string;
+  lastName: string;
+  status: string;
+  guardianName: string;
+  phone: string;
+  address: string;
+  class: { id: string; name: string; section: string } | null;
+  attendancePct: number;
+  attendanceMarked: boolean;
+  pendingFees: { status: "pending" | "paid" | "none"; amountPkr: number };
+};
+
+export type StudentList = {
+  items: StudentRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  defaultClassId: string;
+  campus: { id: string; name: string } | null;
+  classes: { id: string; name: string; section: string; campusId?: string | null }[];
+};
+
 export type Student = {
   id: string;
   admissionNo: string;
+  rollNo?: string;
   firstName: string;
   lastName: string;
   gender: string;
   status: string;
   dateOfBirth?: string | null;
+  admissionDate?: string;
+  firstAdmissionDate?: string;
+  extra?: Record<string, unknown>;
   enrollments: { class: { id: string; name: string; section: string } }[];
   invoices: Invoice[];
-  guardians: { guardian: { name: string; phone: string; email?: string | null; relation: string } }[];
+  guardians: { guardian: Guardian }[];
 };
 
 export type SchoolClass = {
@@ -238,7 +291,14 @@ export type Invite = {
   acceptUrl?: string;
 };
 
-export type AdmissionField = { key: string; label: string; type: string; required?: boolean };
+export type AdmissionField = {
+  key: string;
+  label: string;
+  type: string;
+  required?: boolean;
+  locked?: boolean;
+  group?: "guardian" | "student";
+};
 
 export type Setup = {
   school: {

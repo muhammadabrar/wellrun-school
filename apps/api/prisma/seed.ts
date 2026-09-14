@@ -278,6 +278,7 @@ async function seedSchool(school: SchoolSeed, passwordHash: string) {
   });
 
   const today = new Date(`${karachiToday()}T00:00:00.000Z`);
+  const seededStudents: { id: string; score: number }[] = [];
 
   for (let i = 0; i < 8; i += 1) {
     const admissionNo = String(10230 + i);
@@ -285,10 +286,14 @@ async function seedSchool(school: SchoolSeed, passwordHash: string) {
       data: {
         schoolId: created.id,
         admissionNo,
+        rollNo: String(i + 1),
         firstName: firstNames[i],
         lastName: lastNames[i % lastNames.length],
         gender: i % 2 === 0 ? "male" : "female",
         dateOfBirth: new Date(2014, i % 12, 4 + i),
+        campusId: campus.id,
+        admissionDate: new Date("2026-04-08"),
+        firstAdmissionDate: new Date("2024-04-08"),
       },
     });
 
@@ -297,6 +302,7 @@ async function seedSchool(school: SchoolSeed, passwordHash: string) {
         schoolId: created.id,
         name: `Parent of ${firstNames[i]}`,
         phone: `0300${String(1000000 + i).slice(0, 7)}`,
+        cnic: `42101${String(10000000 + i).slice(0, 8)}`,
         email: `parent.${admissionNo}@example.com`,
         relation: "Mother",
       },
@@ -347,7 +353,25 @@ async function seedSchool(school: SchoolSeed, passwordHash: string) {
         },
       });
     }
+    seededStudents.push({ id: student.id, score: i % 3 === 0 ? 92 : 68 });
   }
+
+  const midterm = await prisma.exam.create({
+    data: {
+      schoolId: created.id,
+      yearId: year.id,
+      name: "Midterm 2026",
+      heldOn: new Date("2026-08-20"),
+    },
+  });
+  await prisma.examResult.createMany({
+    data: seededStudents.map((row) => ({
+      examId: midterm.id,
+      studentId: row.id,
+      totalMarks: 100,
+      obtainedMarks: row.score,
+    })),
+  });
 
   await prisma.staff.create({
     data: { schoolId: created.id, name: school.adminName, title: "Principal", email: school.adminEmail },

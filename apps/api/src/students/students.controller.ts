@@ -10,13 +10,30 @@ export class StudentsController {
   constructor(@Inject(StudentsService) private readonly students: StudentsService) {}
 
   @Get()
-  list(@Req() req: { user: CurrentUser }, @Query("status") status?: string) {
-    return this.students.list(requireSchoolAdmin(req.user), status);
+  list(
+    @Req() req: { user: CurrentUser },
+    @Query() query: Record<string, string | undefined>,
+  ) {
+    return this.students.list(requireSchoolAdmin(req.user), query);
+  }
+
+  @Get("guardians")
+  guardians(@Req() req: { user: CurrentUser }, @Query("q") q?: string) {
+    return this.students.guardians(requireSchoolAdmin(req.user), q);
   }
 
   @Post()
   create(@Req() req: { user: CurrentUser }, @Body() body: unknown) {
+    const payload = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+    if (payload.className || payload.guardianId || payload.guardian) {
+      return this.students.admit(requireSchoolAdmin(req.user), req.user.id, body);
+    }
     return this.students.create(requireSchoolAdmin(req.user), req.user.id, body);
+  }
+
+  @Post("admit")
+  admit(@Req() req: { user: CurrentUser }, @Body() body: unknown) {
+    return this.students.admit(requireSchoolAdmin(req.user), req.user.id, body);
   }
 
   @Post(":id/guardians")

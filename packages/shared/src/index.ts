@@ -52,19 +52,56 @@ export const createPaymentSchema = z.object({
 export const guardianSchema = z.object({
   name: z.string().min(1),
   phone: z.string().min(10),
+  cnic: z.string().min(5).optional().or(z.literal("")),
   email: z.string().email().optional().or(z.literal("")),
   relation: z.string().min(1),
+  extra: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const studentSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
-  admissionNo: z.string().min(1),
-  gender: z.string().min(1),
+  admissionNo: z.string().min(1).optional(),
+  gender: z.string().min(1).optional(),
   dateOfBirth: z.string().optional(),
   classId: z.string().optional(),
+  phone: z.string().optional(),
+  address: z.string().optional(),
   status: z.string().default("active"),
+  extra: z.record(z.string(), z.unknown()).optional(),
   guardians: z.array(guardianSchema).optional(),
+});
+
+export const admitStudentSchema = z
+  .object({
+    guardianId: z.string().optional(),
+    guardian: guardianSchema.optional(),
+    firstName: z.string().min(1),
+    lastName: z.string().min(1),
+    dateOfBirth: z.string().min(1),
+    className: z.string().min(1),
+    section: z.string().min(1),
+    classId: z.string().optional(),
+    gender: z.string().optional(),
+    phone: z.string().optional(),
+    address: z.string().optional(),
+    extra: z.record(z.string(), z.unknown()).optional(),
+    guardianExtra: z.record(z.string(), z.unknown()).optional(),
+  })
+  .refine((value) => Boolean(value.guardianId || value.guardian), {
+    message: "Add a guardian or choose one that already exists.",
+  });
+
+export const studentListQuerySchema = z.object({
+  q: z.string().optional(),
+  guardian: z.string().optional(),
+  address: z.string().optional(),
+  dateOfBirth: z.string().optional(),
+  classId: z.string().optional(),
+  topScorer: z.enum(["true", "false"]).optional(),
+  perfectAttendance: z.enum(["true", "false"]).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
 export const inviteSchema = z.object({
@@ -193,6 +230,8 @@ export const admissionFieldSchema = z.object({
   label: z.string().min(1),
   type: z.string().default("text"),
   required: z.boolean().optional(),
+  locked: z.boolean().optional(),
+  group: z.enum(["guardian", "student"]).optional(),
 });
 
 export const applySubjectsSchema = z.object({

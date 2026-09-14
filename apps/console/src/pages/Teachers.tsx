@@ -1,3 +1,4 @@
+import { Mail, UserPlus } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { api, type Invite, type SchoolClass, type Staff } from "../lib/api";
 
@@ -78,7 +79,8 @@ export function TeachersPage() {
               </option>
             ))}
           </select>
-          <button type="submit" className="mt-4 h-11 rounded-xl bg-indigo px-4 text-white">
+          <button type="submit" className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-indigo px-4 text-white">
+            <UserPlus size={18} />
             Save teacher
           </button>
         </form>
@@ -94,7 +96,8 @@ export function TeachersPage() {
           {inviteUrl ? (
             <p className="mt-3 break-all text-sm text-indigo">{inviteUrl}</p>
           ) : null}
-          <button type="submit" className="mt-4 h-11 rounded-xl bg-ink px-4 text-white">
+          <button type="submit" className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-ink px-4 text-white">
+            <Mail size={18} />
             Create invite
           </button>
         </form>

@@ -4,14 +4,16 @@ import {
   INSTITUTE_TYPES,
   PROVINCES,
   SUBJECT_TEMPLATES,
-  admissionFieldKey,
+  normalizeAdmissionFields,
   type ClassTemplateId,
 } from "@wellrun/shared";
+import { UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+import { AdmissionFieldsEditor } from "../components/AdmissionFieldsEditor";
 import { FileUpload } from "../components/FileUpload";
 import { api, currentUser, type AdmissionField, type Setup } from "../lib/api";
-import { fieldFromLabel, fileToDataUrl, nextSection, parseImportFile } from "../lib/setup-helpers";
+import { fileToDataUrl, nextSection, parseImportFile } from "../lib/setup-helpers";
 
 const STEPS = [
   "Organization",
@@ -49,7 +51,7 @@ export function SetupPage() {
     setData(next);
     if (syncStep && !next.school.setupCompleted) setStep(Math.min(next.school.setupStep || 1, 9));
     const form = next.admissionForms[0];
-    setFields(form?.fields?.length ? form.fields : next.templates.admissionFields);
+    setFields(normalizeAdmissionFields(form?.fields?.length ? form.fields : next.templates.admissionFields));
     setFeeItems(
       next.feeItems.length
         ? next.feeItems
@@ -386,7 +388,8 @@ export function SetupPage() {
               <Field name="title" label="Title" defaultValue="Teacher" />
               <Field name="email" label="Email" />
               <Field name="phone" label="Phone" />
-              <button type="submit" className="col-span-2 h-11 rounded-xl bg-indigo text-white">
+              <button type="submit" className="col-span-2 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo text-white">
+                <UserPlus size={18} />
                 Add staff
               </button>
             </form>
@@ -471,39 +474,12 @@ export function SetupPage() {
         {step === 7 ? (
           <section className="mt-8 rounded-3xl bg-surface p-6">
             <h2 className="font-display text-xl">Admission form</h2>
-            <p className="mt-2 text-sm text-muted">Name the fields parents and staff will fill. We create the technical key from the name automatically.</p>
-            <ul className="mt-4 space-y-2">
-              {fields.map((field, index) => (
-                <li key={`${field.key}-${index}`} className="grid grid-cols-[1fr_auto] items-center gap-2">
-                  <input
-                    value={field.label}
-                    onChange={(e) =>
-                      setFields((rows) =>
-                        rows.map((row, i) =>
-                          i === index ? { ...row, label: e.target.value, key: admissionFieldKey(e.target.value) } : row,
-                        ),
-                      )
-                    }
-                    className="h-10 rounded-xl border border-line px-3"
-                  />
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(field.required)}
-                      onChange={(e) => setFields((rows) => rows.map((row, i) => (i === index ? { ...row, required: e.target.checked } : row)))}
-                    />
-                    Required
-                  </label>
-                </li>
-              ))}
-            </ul>
-            <button
-              type="button"
-              className="mt-3 text-sm text-indigo"
-              onClick={() => setFields((rows) => [...rows, fieldFromLabel("New field")])}
-            >
-              Add field
-            </button>
+            <p className="mt-2 text-sm text-muted">
+              Guardian and student required fields stay on the form. Roll number and admission dates are assigned automatically later.
+            </p>
+            <div className="mt-5">
+              <AdmissionFieldsEditor fields={fields} onChange={setFields} />
+            </div>
             <div className="mt-6 flex gap-2">
               <button
                 type="button"

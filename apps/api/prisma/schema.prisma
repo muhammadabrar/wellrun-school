@@ -112,6 +112,7 @@ model School {
   lessons     TimetableLesson[]
   assignments TeacherAssignment[]
   audits      AuditLog[]
+  exams       Exam[]
 }
 
 model SchoolProfile {
@@ -189,6 +190,7 @@ model AcademicYear {
   current   Boolean   @default(false)
   classes   Class[]
   feePlans  FeePlan[]
+  exams     Exam[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
@@ -219,24 +221,33 @@ model Class {
 }
 
 model Student {
-  id           String              @id @default(cuid())
-  schoolId     String
-  school       School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  admissionNo  String
-  firstName    String
-  lastName     String
-  gender       String
-  dateOfBirth  DateTime?
-  status       String              @default("active")
-  enrollments  Enrollment[]
-  attendance   AttendanceRecord[]
-  invoices     Invoice[]
-  guardians    StudentGuardian[]
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  id                 String              @id @default(cuid())
+  schoolId           String
+  school             School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  campusId           String?
+  campus             Campus?             @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  admissionNo        String
+  rollNo             String              @default("")
+  firstName          String
+  lastName           String
+  gender             String
+  dateOfBirth        DateTime?
+  status             String              @default("active")
+  admissionDate      DateTime            @default(now())
+  firstAdmissionDate DateTime            @default(now())
+  extra              Json                @default("{}")
+  enrollments        Enrollment[]
+  attendance         AttendanceRecord[]
+  invoices           Invoice[]
+  guardians          StudentGuardian[]
+  examResults        ExamResult[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   @@unique([schoolId, admissionNo])
   @@index([schoolId])
+  @@index([campusId])
+  @@index([schoolId, rollNo])
 }
 
 model Guardian {
@@ -245,13 +256,17 @@ model Guardian {
   school    School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   name      String
   phone     String
+  cnic      String            @default("")
   email     String?
   relation  String
+  extra     Json              @default("{}")
   students  StudentGuardian[]
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
   @@index([schoolId])
+  @@index([schoolId, phone])
+  @@index([schoolId, cnic])
 }
 
 model StudentGuardian {
@@ -378,6 +393,7 @@ model Campus {
   isMain       Boolean  @default(false)
   notes        String   @default("")
   classes      Class[]
+  students     Student[]
   memberships  CampusMembership[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -569,4 +585,34 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([schoolId])
+}
+
+model Exam {
+  id        String        @id @default(cuid())
+  schoolId  String
+  school    School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  yearId    String?
+  year      AcademicYear? @relation(fields: [yearId], references: [id], onDelete: SetNull)
+  name      String
+  heldOn    DateTime      @db.Date
+  results   ExamResult[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([schoolId, heldOn])
+}
+
+model ExamResult {
+  id            String   @id @default(cuid())
+  examId        String
+  exam          Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  totalMarks    Int
+  obtainedMarks Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([examId, studentId])
+  @@index([studentId])
 }
