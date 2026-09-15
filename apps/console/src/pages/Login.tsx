@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { BrandLogo, Button } from "@wellrun/ui";
 import { api, setSession } from "../lib/api";
 
 export function LoginPage() {
@@ -30,9 +31,7 @@ export function LoginPage() {
   return (
     <main className="flex min-h-dvh items-center justify-center px-6">
       <form onSubmit={onSubmit} className="w-full max-w-md rounded-[24px] bg-surface p-10 shadow-[0_12px_40px_rgba(22,22,29,0.08)]">
-        <p className="font-display text-xs font-semibold tracking-[0.18em] text-indigo uppercase">
-          Wellrun School
-        </p>
+        <BrandLogo size="md" />
         <h1 className="mt-3 font-display text-3xl">Sign in to your school</h1>
         <p className="mt-2 text-sm text-muted">Demo: admin@greenfield.school / school123</p>
         <label className="mt-8 block text-sm font-medium">
@@ -56,13 +55,9 @@ export function LoginPage() {
           />
         </label>
         {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
-        <button
-          type="submit"
-          disabled={pending}
-          className="mt-8 h-12 w-full rounded-xl bg-indigo font-medium text-white"
-        >
-          {pending ? "Signing in…" : "Continue"}
-        </button>
+        <Button type="submit" loading={pending} size="lg" className="mt-8 w-full">
+          Continue
+        </Button>
         <p className="mt-4 text-sm">
           <Link className="text-indigo" to="/forgot-password">
             Forgot password

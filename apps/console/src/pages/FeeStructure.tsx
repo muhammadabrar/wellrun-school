@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Button, LoadingState } from "@wellrun/ui";
 import { useState } from "react";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/query";
@@ -8,6 +9,7 @@ export function FeeStructurePage() {
   const [draft, setDraft] = useState<{ name: string; amountPkr: number; enabled: boolean }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const items =
     draft ??
@@ -17,7 +19,7 @@ export function FeeStructurePage() {
         : data.templates.feeItems.map((name) => ({ name, amountPkr: 0, enabled: true }))
       : []);
 
-  if (isPending && !data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+  if (isPending && !data) return <LoadingState variant="form" />;
 
   return (
     <div className="max-w-3xl">
@@ -55,21 +57,25 @@ export function FeeStructurePage() {
         >
           Add fee
         </button>
-        <button
+        <Button
           type="button"
-          className="mt-6 block h-11 rounded-xl bg-indigo px-4 text-white"
+          className="mt-6"
+          loading={saving}
           onClick={async () => {
             setError(null);
+            setSaving(true);
             try {
               await api.saveFees({ items });
               setMessage("Fee structure saved.");
             } catch (err) {
               setError(err instanceof Error ? err.message : "Could not save fees");
+            } finally {
+              setSaving(false);
             }
           }}
         >
           Save fee structure
-        </button>
+        </Button>
       </section>
     </div>
   );

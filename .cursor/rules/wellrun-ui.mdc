@@ -1,0 +1,13 @@
+---
+description: Always apply Wellrun UI and brand rules on every interface change
+alwaysApply: true
+---
+
+# Wellrun UI
+
+Before changing console, Discover, or any School UI, follow:
+
+- `.cursor/skills/wellrun-ui/SKILL.md`
+- `.cursor/skills/wellrun-brand/SKILL.md`
+
+Use `BrandLogo` from `@wellrun/ui`. Do not duplicate controls. Forms need labels. Empty, loading, and error states must be specific. Prefer skeletons. Accessible semantics. Subtle motion that respects `prefers-reduced-motion`. Goal-based navigation. Consistency over novelty.

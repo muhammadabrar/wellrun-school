@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@wellrun/ui";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useState } from "react";
@@ -9,15 +10,19 @@ function ResetForm() {
   const params = useSearchParams();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
+    setPending(true);
     try {
       const res = await client.reset(params.get("token") ?? "", String(data.get("password")), String(data.get("confirm")));
       setMessage(res.message);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not reset");
+    } finally {
+      setPending(false);
     }
   }
 
@@ -28,9 +33,9 @@ function ResetForm() {
       <input name="confirm" type="password" minLength={8} required placeholder="Confirm" className="mt-3 h-12 w-full rounded-xl border border-line px-3" />
       {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
       {message ? <p className="mt-3 text-sm">{message}</p> : null}
-      <button type="submit" className="mt-6 h-12 w-full rounded-xl bg-indigo text-white">
+      <Button type="submit" loading={pending} size="lg" className="mt-6 w-full">
         Update password
-      </button>
+      </Button>
       <Link href="/login" className="mt-4 inline-block text-sm text-indigo">
         Sign in
       </Link>

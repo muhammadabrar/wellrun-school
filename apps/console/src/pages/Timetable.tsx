@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, FetchingIndicator, LoadingState } from "@wellrun/ui";
 import { FormEvent, useState } from "react";
 import { api, currentUser } from "../lib/api";
 import { queryKeys } from "../lib/query";
@@ -16,8 +17,9 @@ export function TimetablePage() {
   const queryClient = useQueryClient();
   const [classId, setClassId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const admin = currentUser()?.role === "SCHOOL_ADMIN";
-  const { data: grid } = useQuery({
+  const { data: grid, isPending, isFetching } = useQuery({
     queryKey: queryKeys.timetable(classId),
     queryFn: () => api.timetable(classId || undefined),
   });
@@ -32,26 +34,32 @@ export function TimetablePage() {
     await queryClient.invalidateQueries({ queryKey: queryKeys.timetable(classId) });
   }
 
-  if (!grid) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+  if (!grid) return <LoadingState variant="table" />;
   const timetable = grid;
 
   async function onPeriod(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    await api.savePeriod({
-      label: String(data.get("label")),
-      startTime: String(data.get("startTime")),
-      endTime: String(data.get("endTime")),
-      sortOrder: Number(data.get("sortOrder") || timetable.periods.length + 1),
-      isBreak: data.get("isBreak") === "on",
-    });
-    await reload();
+    setBusy("period");
+    try {
+      await api.savePeriod({
+        label: String(data.get("label")),
+        startTime: String(data.get("startTime")),
+        endTime: String(data.get("endTime")),
+        sortOrder: Number(data.get("sortOrder") || timetable.periods.length + 1),
+        isBreak: data.get("isBreak") === "on",
+      });
+      await reload();
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function onLesson(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     setError(null);
+    setBusy("lesson");
     try {
       await api.saveLesson({
         classId: resolvedClassId,
@@ -64,12 +72,15 @@ export function TimetablePage() {
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save lesson");
+    } finally {
+      setBusy(null);
     }
   }
 
   return (
     <div>
       <h1 className="font-display text-4xl">Timetable</h1>
+      <FetchingIndicator show={isFetching && !isPending} label="Updating timetable" />
       <select
         value={resolvedClassId}
         onChange={(e) => setClassId(e.target.value)}
@@ -138,9 +149,9 @@ export function TimetablePage() {
             <label className="mt-3 flex items-center gap-2 text-sm">
               <input name="isBreak" type="checkbox" /> Break
             </label>
-            <button type="submit" className="mt-4 h-11 rounded-xl bg-paper px-4">
+            <Button type="submit" variant="secondary" className="mt-4" loading={busy === "period"}>
               Save period
-            </button>
+            </Button>
           </form>
           <form onSubmit={onLesson} className="rounded-3xl bg-surface p-6">
             <h2 className="font-display text-xl">Place a lesson</h2>
@@ -171,9 +182,9 @@ export function TimetablePage() {
               <input name="override" type="checkbox" /> Override conflict
             </label>
             {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
-            <button type="submit" className="mt-4 h-11 rounded-xl bg-indigo px-4 text-white">
+            <Button type="submit" className="mt-4" loading={busy === "lesson"}>
               Save lesson
-            </button>
+            </Button>
           </form>
         </div>
       ) : null}

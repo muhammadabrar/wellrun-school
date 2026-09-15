@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, LoadingState } from "@wellrun/ui";
 import { CLASS_TEMPLATE_LABELS, SUBJECT_TEMPLATES, type ClassTemplateId } from "@wellrun/shared";
 import { FormEvent, useState } from "react";
 import { api } from "../lib/api";
@@ -10,12 +11,13 @@ export function AcademicsPage() {
   const { data, isPending } = useQuery({ queryKey: queryKeys.academics, queryFn: api.academics });
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
   async function reload() {
     await queryClient.invalidateQueries({ queryKey: queryKeys.academics });
   }
 
-  if (isPending || !data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+  if (isPending || !data) return <LoadingState variant="form" />;
 
   const academics = data;
   const yearId = academics.years[0]?.id;
@@ -54,6 +56,7 @@ export function AcademicsPage() {
     if (!yearId) return;
     const form = new FormData(event.currentTarget);
     setError(null);
+    setBusy("class");
     try {
       await api.createClass({
         name: String(form.get("name")),
@@ -64,6 +67,8 @@ export function AcademicsPage() {
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create class");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -104,9 +109,9 @@ export function AcademicsPage() {
         <form onSubmit={onClass} className="mt-4 flex gap-2">
           <input name="name" required placeholder="Class title" className="h-11 flex-1 rounded-xl border border-line px-3" />
           <input name="section" placeholder="A" className="h-11 w-20 rounded-xl border border-line px-3" />
-          <button type="submit" className="h-11 rounded-xl bg-indigo px-4 text-white">
+          <Button type="submit" loading={busy === "class"}>
             Add class
-          </button>
+          </Button>
         </form>
       </section>
 
@@ -120,12 +125,12 @@ export function AcademicsPage() {
             onChange={(event) => {
               const template = event.target.value as ClassTemplateId;
               if (!template) return;
-              void api
-                .applySubjects({ template })
-                .then(async () => {
-                  setMessage(`${CLASS_TEMPLATE_LABELS[template]} subjects loaded.`);
-                  await reload();
-                })
+            void api
+              .applySubjects({ template })
+              .then(async () => {
+                setMessage(`${CLASS_TEMPLATE_LABELS[template]} subjects loaded.`);
+                await reload();
+              })
                 .catch((err) => setError(err instanceof Error ? err.message : "Could not load subjects"));
             }}
           >
@@ -143,16 +148,20 @@ export function AcademicsPage() {
             event.preventDefault();
             const formEl = event.currentTarget;
             const form = new FormData(formEl);
-            void api.saveSubject({ name: String(form.get("name")) }).then(async () => {
-              formEl.reset();
-              await reload();
-            });
+            setBusy("subject");
+            void api
+              .saveSubject({ name: String(form.get("name")) })
+              .then(async () => {
+                formEl.reset();
+                await reload();
+              })
+              .finally(() => setBusy(null));
           }}
         >
           <input name="name" required placeholder="Add subject" className="h-11 flex-1 rounded-xl border border-line px-3" />
-          <button type="submit" className="h-11 rounded-xl bg-ink px-4 text-white">
+          <Button type="submit" variant="ink" loading={busy === "subject"}>
             Add
-          </button>
+          </Button>
         </form>
         <ul className="mt-4 divide-y divide-line overflow-hidden rounded-2xl bg-paper">
           {academics.subjects.length ? (

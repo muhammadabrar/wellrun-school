@@ -7,6 +7,7 @@ import {
   normalizeAdmissionFields,
   type ClassTemplateId,
 } from "@wellrun/shared";
+import { BrandLogo, Button, ErrorState, LoadingState } from "@wellrun/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -51,6 +52,7 @@ export function SetupPage() {
   const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [importFileName, setImportFileName] = useState("");
+  const [saving, setSaving] = useState(false);
 
   function applySetup(next: Setup, syncStep = false) {
     if (syncStep && !next.school.setupCompleted) setStep(Math.min(next.school.setupStep || 1, 9));
@@ -82,18 +84,35 @@ export function SetupPage() {
   async function run(action: () => Promise<void>) {
     setError(null);
     setMessage(null);
+    setSaving(true);
     try {
       await action();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save this step");
+    } finally {
+      setSaving(false);
     }
   }
 
   if (!data) {
+    if (isError) {
+      return (
+        <main className="flex min-h-dvh items-center justify-center px-6">
+          <ErrorState
+            title="Could not load setup"
+            description={queryError instanceof Error ? queryError.message : "Try again to continue school setup."}
+            onRetry={() => void refetch()}
+          />
+        </main>
+      );
+    }
     return (
-      <div className="flex min-h-dvh items-center justify-center text-muted">
-        {isError ? (queryError instanceof Error ? queryError.message : "Could not load setup") : "Loading setup…"}
-      </div>
+      <main className="mx-auto max-w-3xl px-6 py-16">
+        <BrandLogo size="md" />
+        <div className="mt-8">
+          <LoadingState variant="form" />
+        </div>
+      </main>
     );
   }
   if (data.school.setupCompleted) return <Navigate to="/" replace />;
@@ -105,7 +124,7 @@ export function SetupPage() {
   return (
     <main className="min-h-dvh bg-paper px-6 py-10">
       <div className="mx-auto max-w-4xl">
-        <p className="text-xs font-semibold tracking-[0.18em] text-indigo uppercase">Wellrun School</p>
+        <BrandLogo size="md" />
         <h1 className="mt-2 font-display text-4xl">Set up your school</h1>
         <p className="mt-2 text-sm text-muted">Finish these steps once. After that you manage everything from the dashboard.</p>
         <ol className="mt-6 flex flex-wrap gap-2">
@@ -208,9 +227,9 @@ export function SetupPage() {
                 }
               />
             </div>
-            <button type="submit" className="col-span-2 h-11 rounded-xl bg-indigo text-white">
+            <Button type="submit" loading={saving} className="col-span-2">
               Save and continue
-            </button>
+            </Button>
           </form>
         ) : null}
 
@@ -240,9 +259,9 @@ export function SetupPage() {
             <Field name="address" label="Address" defaultValue={data.campus?.address || data.school.address} />
             <Field name="phone" label="Phone" defaultValue={data.campus?.phone || data.school.phone} />
             <Field name="principal" label="Principal (admin)" defaultValue={data.campus?.principal || currentUser()?.name || ""} />
-            <button type="submit" className="col-span-2 h-11 rounded-xl bg-indigo text-white">
+            <Button type="submit" loading={saving} className="col-span-2">
               Save main campus
-            </button>
+            </Button>
           </form>
         ) : null}
 
@@ -268,13 +287,13 @@ export function SetupPage() {
             <Field name="name" label="Academic year" defaultValue="2026-27" required />
             <Field name="startsOn" label="Starts" type="date" defaultValue="2026-04-01" required />
             <Field name="endsOn" label="Ends" type="date" defaultValue="2027-03-31" required />
-            <button type="submit" className="h-11 rounded-xl bg-indigo text-white">
+            <Button type="submit" loading={saving}>
               {data.years.length ? "Update year" : "Save year"}
-            </button>
+            </Button>
             {data.years.length ? (
-              <button type="button" className="h-11 rounded-xl bg-paper" onClick={() => setStep(4)}>
+              <Button type="button" variant="secondary" onClick={() => setStep(4)}>
                 Continue with current year
-              </button>
+              </Button>
             ) : null}
           </form>
         ) : null}
@@ -355,9 +374,9 @@ export function SetupPage() {
               Add another class
             </button>
             <div className="mt-4 flex gap-2">
-              <button
+              <Button
                 type="button"
-                className="h-11 rounded-xl bg-indigo px-4 text-white"
+                loading={saving}
                 onClick={() =>
                   void run(async () => {
                     if (!yearId) throw new Error("Create an academic year first.");
@@ -368,10 +387,10 @@ export function SetupPage() {
                 }
               >
                 Create selected classes
-              </button>
-              <button type="button" className="h-11 rounded-xl bg-paper px-4" onClick={() => setStep(5)}>
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => setStep(5)}>
                 Skip
-              </button>
+              </Button>
             </div>
             {data.classes.length ? <p className="mt-4 text-sm text-muted">{data.classes.length} classes already created.</p> : null}
           </section>
@@ -403,18 +422,17 @@ export function SetupPage() {
               <Field name="title" label="Title" defaultValue="Teacher" />
               <Field name="email" label="Email" />
               <Field name="phone" label="Phone" />
-              <button type="submit" className="col-span-2 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo text-white">
-                <UserPlus size={18} />
+              <Button type="submit" loading={saving} className="col-span-2" icon={<UserPlus size={18} />}>
                 Add staff
-              </button>
+              </Button>
             </form>
             <div className="mt-4 flex gap-2">
-              <button type="button" className="h-11 rounded-xl bg-indigo px-4 text-white" onClick={() => setStep(6)}>
+              <Button type="button" onClick={() => setStep(6)}>
                 Continue
-              </button>
-              <button type="button" className="h-11 rounded-xl bg-paper px-4" onClick={() => setStep(6)}>
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => setStep(6)}>
                 Skip
-              </button>
+              </Button>
             </div>
           </section>
         ) : null}
@@ -460,9 +478,9 @@ export function SetupPage() {
               }}
             >
               <input name="name" required placeholder="Add subject" className="h-11 flex-1 rounded-xl border border-line px-3" />
-              <button type="submit" className="h-11 rounded-xl bg-ink px-4 text-white">
+              <Button type="submit" variant="ink" loading={saving}>
                 Add
-              </button>
+              </Button>
             </form>
             <ul className="mt-4 divide-y divide-line overflow-hidden rounded-2xl bg-paper">
               {data.subjects.length ? (
@@ -476,12 +494,12 @@ export function SetupPage() {
               )}
             </ul>
             <div className="mt-6 flex gap-2">
-              <button type="button" className="h-11 rounded-xl bg-indigo px-4 text-white" onClick={() => setStep(7)}>
+              <Button type="button" onClick={() => setStep(7)}>
                 Continue
-              </button>
-              <button type="button" className="h-11 rounded-xl bg-paper px-4" onClick={() => setStep(7)}>
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => setStep(7)}>
                 Skip
-              </button>
+              </Button>
             </div>
           </section>
         ) : null}
@@ -496,9 +514,9 @@ export function SetupPage() {
               <AdmissionFieldsEditor fields={fields} onChange={setFields} />
             </div>
             <div className="mt-6 flex gap-2">
-              <button
+              <Button
                 type="button"
-                className="h-11 rounded-xl bg-indigo px-4 text-white"
+                loading={saving}
                 onClick={() =>
                   void run(async () => {
                     await api.saveAdmissionForm({ name: "Default admission form", fields });
@@ -508,10 +526,10 @@ export function SetupPage() {
                 }
               >
                 Save and continue
-              </button>
-              <button type="button" className="h-11 rounded-xl bg-paper px-4" onClick={() => setStep(8)}>
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => setStep(8)}>
                 Skip
-              </button>
+              </Button>
             </div>
           </section>
         ) : null}
@@ -567,9 +585,11 @@ export function SetupPage() {
                     </select>
                   </label>
                 ))}
-                <button
+                <Button
                   type="button"
-                  className="col-span-2 h-11 rounded-xl bg-ink text-white"
+                  variant="ink"
+                  className="col-span-2"
+                  loading={saving}
                   onClick={() =>
                     void run(async () => {
                       const result = await api.importStudents({ rows: importRows, mapping });
@@ -578,16 +598,16 @@ export function SetupPage() {
                   }
                 >
                   Import {importRows.length} rows
-                </button>
+                </Button>
               </div>
             ) : null}
             <div className="mt-6 flex gap-2">
-              <button type="button" className="h-11 rounded-xl bg-indigo px-4 text-white" onClick={() => setStep(9)}>
+              <Button type="button" onClick={() => setStep(9)}>
                 Continue
-              </button>
-              <button type="button" className="h-11 rounded-xl bg-paper px-4" onClick={() => setStep(9)}>
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => setStep(9)}>
                 Skip
-              </button>
+              </Button>
             </div>
           </section>
         ) : null}
@@ -626,9 +646,9 @@ export function SetupPage() {
               Add fee
             </button>
             <div className="mt-6 flex gap-2">
-              <button
+              <Button
                 type="button"
-                className="h-11 rounded-xl bg-indigo px-4 text-white"
+                loading={saving}
                 onClick={() =>
                   void run(async () => {
                     await api.saveFees({ items: feeItems });
@@ -639,10 +659,11 @@ export function SetupPage() {
                 }
               >
                 Save and finish
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="h-11 rounded-xl bg-paper px-4"
+                variant="secondary"
+                loading={saving}
                 onClick={() =>
                   void run(async () => {
                     await api.completeSetup();
@@ -652,7 +673,7 @@ export function SetupPage() {
                 }
               >
                 Skip and finish
-              </button>
+              </Button>
             </div>
           </section>
         ) : null}

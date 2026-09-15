@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, EmptyState, LoadingState, Skeleton } from "@wellrun/ui";
 import { FormEvent, useState } from "react";
 import { api, currentUser } from "../lib/api";
 import { queryKeys } from "../lib/query";
@@ -7,17 +8,18 @@ export function AdminPage() {
   const user = currentUser();
   const queryClient = useQueryClient();
   const enabled = user?.role === "PLATFORM_ADMIN";
-  const { data: schools = [] } = useQuery({
+  const { data: schools, isPending: schoolsPending } = useQuery({
     queryKey: queryKeys.adminSchools,
     queryFn: api.adminSchools,
     enabled,
   });
-  const { data: claims = [] } = useQuery({
+  const { data: claims, isPending: claimsPending } = useQuery({
     queryKey: queryKeys.adminClaims,
     queryFn: api.adminClaims,
     enabled,
   });
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
   async function reload() {
     await Promise.all([
@@ -33,15 +35,20 @@ export function AdminPage() {
   async function onCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    await api.createSchool({
-      name: String(data.get("name")),
-      slug: String(data.get("slug")),
-      city: String(data.get("city")),
-      area: String(data.get("area")),
-      published: true,
-    });
-    event.currentTarget.reset();
-    await reload();
+    setBusy("create");
+    try {
+      await api.createSchool({
+        name: String(data.get("name")),
+        slug: String(data.get("slug")),
+        city: String(data.get("city")),
+        area: String(data.get("area")),
+        published: true,
+      });
+      event.currentTarget.reset();
+      await reload();
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (
@@ -49,9 +56,12 @@ export function AdminPage() {
       <h1 className="font-display text-4xl">Platform</h1>
       <section className="mt-8 rounded-3xl bg-surface p-6">
         <h2 className="font-display text-xl">Claim queue</h2>
-        {claims.length === 0 ? <p className="mt-3 text-muted">No claims yet.</p> : null}
+        {claimsPending && !claims ? <LoadingState variant="list" /> : null}
+        {!claimsPending && !claims?.length ? (
+          <EmptyState title="No claims yet" description="School staff claims will show here for review." />
+        ) : null}
         <ul className="mt-4 space-y-3">
-          {claims.map((claim) => (
+          {(claims ?? []).map((claim) => (
             <li key={claim.id} className="rounded-2xl bg-paper p-4">
               <p className="font-medium">
                 {claim.school.name} · {claim.status}
@@ -61,23 +71,38 @@ export function AdminPage() {
               </p>
               {claim.status === "PENDING" ? (
                 <div className="mt-3 flex gap-2">
-                  <button
+                  <Button
                     type="button"
-                    className="h-10 rounded-xl bg-indigo px-3 text-white"
-                    onClick={() => api.approveClaim(claim.id).then(() => reload())}
+                    size="sm"
+                    loading={busy === `approve-${claim.id}`}
+                    onClick={() => {
+                      setBusy(`approve-${claim.id}`);
+                      void api
+                        .approveClaim(claim.id)
+                        .then(() => reload())
+                        .finally(() => setBusy(null));
+                    }}
                   >
                     Approve
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
-                    className="h-10 rounded-xl bg-danger px-3 text-white"
+                    variant="danger"
+                    size="sm"
+                    loading={busy === `reject-${claim.id}`}
                     onClick={() => {
                       const reason = window.prompt("Rejection reason");
-                      if (reason) api.rejectClaim(claim.id, reason).then(() => reload()).catch((err) => setError(err.message));
+                      if (!reason) return;
+                      setBusy(`reject-${claim.id}`);
+                      void api
+                        .rejectClaim(claim.id, reason)
+                        .then(() => reload())
+                        .catch((err) => setError(err.message))
+                        .finally(() => setBusy(null));
                     }}
                   >
                     Reject
-                  </button>
+                  </Button>
                 </div>
               ) : null}
             </li>
@@ -93,12 +118,19 @@ export function AdminPage() {
           <input name="slug" required placeholder="slug" className="h-11 rounded-xl border border-line px-3" />
           <input name="city" required placeholder="City" className="h-11 rounded-xl border border-line px-3" />
           <input name="area" placeholder="Area" className="h-11 rounded-xl border border-line px-3" />
-          <button type="submit" className="col-span-4 h-11 rounded-xl bg-indigo text-white">
+          <Button type="submit" className="col-span-4" loading={busy === "create"}>
             Add unpublished school
-          </button>
+          </Button>
         </form>
         <ul className="mt-4 text-sm">
-          {schools.map((school) => (
+          {schoolsPending && !schools
+            ? Array.from({ length: 4 }, (_, i) => (
+                <li key={i} className="border-t border-line py-3">
+                  <Skeleton className="h-6 w-2/3" />
+                </li>
+              ))
+            : null}
+          {(schools ?? []).map((school) => (
             <li key={school.id} className="flex justify-between border-t border-line py-3">
               <span>
                 {school.name} · {school.city} {school.area}

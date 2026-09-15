@@ -1,3 +1,4 @@
+import { BrandLogo, LoadingState } from "@wellrun/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { t } from "@wellrun/i18n";
@@ -14,7 +15,7 @@ export function ReceiptPage() {
     enabled: Boolean(id),
   });
 
-  if (!payment) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+  if (!payment) return <LoadingState variant="form" />;
 
   const student = payment.invoice.student;
 
@@ -24,7 +25,7 @@ export function ReceiptPage() {
         Back to fees
       </Link>
       <article className="mt-4 rounded-3xl bg-surface p-10 shadow-[0_12px_40px_rgba(22,22,29,0.06)]">
-        <p className="font-display text-xs tracking-[0.18em] text-indigo uppercase">Wellrun School</p>
+        <BrandLogo />
         <h1 className="mt-2 font-display text-3xl">{copy.console.receipt}</h1>
         <p className="mt-1 text-muted">{payment.school?.name}</p>
         <dl className="mt-8 grid grid-cols-2 gap-4 text-sm">

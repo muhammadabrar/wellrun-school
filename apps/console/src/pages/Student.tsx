@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, ErrorState, LoadingState } from "@wellrun/ui";
 import { Camera, MessageCircle, Pencil, Phone } from "lucide-react";
 import { FormEvent, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -25,6 +26,7 @@ export function StudentPage() {
   const {
     data: student,
     error: queryError,
+    refetch,
   } = useQuery({
     queryKey: queryKeys.student(id ?? ""),
     queryFn: () => api.student(id!),
@@ -35,6 +37,7 @@ export function StudentPage() {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const resolvedYearId = yearId || student?.years.find((year) => year.current)?.id || student?.years[0]?.id || "";
 
   const year = student?.years.find((row) => row.id === resolvedYearId);
@@ -56,15 +59,16 @@ export function StudentPage() {
   }, [student, year]);
 
   if (!student) {
-    return (
-      <div>
-        {error || queryError ? (
-          <p className="text-sm text-danger">{error ?? (queryError instanceof Error ? queryError.message : "Could not load student")}</p>
-        ) : (
-          <div className="h-40 animate-pulse rounded-3xl bg-surface" />
-        )}
-      </div>
-    );
+    if (queryError) {
+      return (
+        <ErrorState
+          title="Could not load student"
+          description={queryError instanceof Error ? queryError.message : "Try again from the students list."}
+          onRetry={() => void refetch()}
+        />
+      );
+    }
+    return <LoadingState variant="profile" />;
   }
 
   const callHref = phoneHref(student.phone);
@@ -76,6 +80,7 @@ export function StudentPage() {
     if (!id) return;
     const form = new FormData(event.currentTarget);
     setError(null);
+    setSaving(true);
     try {
       const extra = { ...student!.extra };
       extra.phone = String(form.get("phone") || "");
@@ -97,6 +102,8 @@ export function StudentPage() {
       setTimeout(() => setToast(null), 2200);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save student");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -222,12 +229,12 @@ export function StudentPage() {
               </div>
               {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
               <div className="mt-5 flex gap-2">
-                <button type="submit" className="h-11 cursor-pointer rounded-xl bg-indigo px-4 font-medium text-white">
+                <Button type="submit" loading={saving}>
                   Save changes
-                </button>
-                <button type="button" className="h-11 cursor-pointer rounded-xl bg-paper px-4" onClick={() => setEditing(false)}>
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => setEditing(false)}>
                   Cancel
-                </button>
+                </Button>
               </div>
             </form>
           ) : (

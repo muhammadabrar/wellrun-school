@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { Button, EmptyState, ErrorState, FetchingIndicator, LoadingState } from "@wellrun/ui";
 import { ChevronLeft, ChevronRight, SlidersHorizontal, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -28,12 +29,13 @@ export function StudentsPage() {
     page,
     pageSize: 20,
   };
-  const { data, isPending, isError, error } = useQuery({
+  const { data, isPending, isFetching, isError, refetch } = useQuery({
     queryKey: queryKeys.students(filters),
     queryFn: () => api.students(filters),
     placeholderData: keepPreviousData,
   });
-  const ready = !isPending || Boolean(data);
+  const ready = Boolean(data);
+  const refreshing = isFetching && ready;
   const selectedClass = classId || data?.defaultClassId || "all";
 
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.pageSize ?? 20)));
@@ -57,7 +59,16 @@ export function StudentsPage() {
           New admission
         </Link>
       </div>
-      {isError ? <p className="mt-4 text-sm text-danger">{error instanceof Error ? error.message : "Could not load students"}</p> : null}
+      <FetchingIndicator show={refreshing} label="Updating students" />
+      {isError ? (
+        <div className="mt-4">
+          <ErrorState
+            title="Could not load students"
+            description="Check the connection and try again. Filters stay as you left them."
+            onRetry={() => void refetch()}
+          />
+        </div>
+      ) : null}
 
       <section className="mt-6 rounded-3xl bg-surface p-5">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto]">
@@ -181,7 +192,8 @@ export function StudentsPage() {
               <th className="px-5 py-3 font-medium">Status</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className={refreshing ? "opacity-70 transition-opacity" : ""}>
+            {isPending && !data ? <LoadingState variant="tableBody" /> : null}
             {data?.items.map((student) => (
               <tr key={student.id} className="border-t border-line">
                 <td className="px-5 py-4 font-medium">{student.rollNo}</td>
@@ -221,8 +233,20 @@ export function StudentsPage() {
             ))}
             {ready && !data?.items.length ? (
               <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-sm text-muted">
-                  No students match these filters.
+                <td colSpan={7} className="px-5 py-6">
+                  <EmptyState
+                    title="No students match these filters"
+                    description="Clear a filter or admit a student to this campus."
+                    action={
+                      <Link
+                        to="/admission"
+                        className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo px-4 font-medium text-white"
+                      >
+                        <UserPlus size={18} />
+                        New admission
+                      </Link>
+                    }
+                  />
                 </td>
               </tr>
             ) : null}
@@ -235,15 +259,16 @@ export function StudentsPage() {
           Page {data?.page ?? 1} of {pages}
         </p>
         <div className="flex gap-2">
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             disabled={page <= 1}
-            className="inline-flex h-10 items-center gap-1 rounded-xl bg-surface px-3 disabled:opacity-40"
             onClick={() => setPage((value) => Math.max(1, value - 1))}
           >
             <ChevronLeft size={16} />
             Previous
-          </button>
+          </Button>
           {Array.from({ length: pages }, (_, index) => index + 1)
             .filter((value) => value === 1 || value === pages || Math.abs(value - page) <= 1)
             .map((value, index, list) => (
@@ -258,15 +283,16 @@ export function StudentsPage() {
                 </button>
               </span>
             ))}
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             disabled={page >= pages}
-            className="inline-flex h-10 items-center gap-1 rounded-xl bg-surface px-3 disabled:opacity-40"
             onClick={() => setPage((value) => Math.min(pages, value + 1))}
           >
             Next
             <ChevronRight size={16} />
-          </button>
+          </Button>
         </div>
       </div>
     </div>

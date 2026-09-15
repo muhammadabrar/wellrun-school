@@ -1,5 +1,6 @@
 import { lazy, Suspense, type ComponentType, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import { LoadingState } from "@wellrun/ui";
 import { Shell } from "./components/Shell";
 import { currentUser, token } from "./lib/api";
 import { LoginPage } from "./pages/Login";
@@ -31,7 +32,7 @@ const ReceiptPage = lazyPage(() => import("./pages/Receipt"), "ReceiptPage");
 const AdminPage = lazyPage(() => import("./pages/Admin"), "AdminPage");
 
 function PageFallback() {
-  return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+  return <LoadingState variant="page" />;
 }
 
 function RequireAuth({ children }: { children: ReactNode }) {

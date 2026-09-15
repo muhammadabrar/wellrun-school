@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { BrandLogo } from "@wellrun/ui";
 import { client, getSession, setSession, type SessionUser } from "@/lib/client";
 
 export function DiscoverNav() {
@@ -13,8 +14,8 @@ export function DiscoverNav() {
 
   return (
     <div className="flex items-center justify-between text-sm">
-      <Link href="/" className="font-display text-xs font-semibold tracking-[0.18em] text-indigo uppercase">
-        Wellrun School
+      <Link href="/" className="inline-flex items-center" aria-label="WellRun School home">
+        <BrandLogo />
       </Link>
       <div className="flex items-center gap-3">
         <Link href="/compare" className="text-muted">

@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@wellrun/ui";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { client, getSession } from "@/lib/client";
@@ -9,6 +10,7 @@ export function ClaimForm({ slug, claimed }: { slug: string; claimed: boolean })
   const [mine, setMine] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
     const session = getSession();
@@ -27,6 +29,7 @@ export function ClaimForm({ slug, claimed }: { slug: string; claimed: boolean })
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     setError(null);
+    setPending(true);
     try {
       await client.claim({
         slug,
@@ -38,6 +41,8 @@ export function ClaimForm({ slug, claimed }: { slug: string; claimed: boolean })
       setMessage("Claim submitted. We will review it and email you.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not submit claim");
+    } finally {
+      setPending(false);
     }
   }
 
@@ -63,9 +68,9 @@ export function ClaimForm({ slug, claimed }: { slug: string; claimed: boolean })
           <input name="whatsapp" required placeholder="Official WhatsApp 03…" className="h-11 rounded-xl border border-line px-3" />
           <input name="note" placeholder="Optional note" className="h-11 rounded-xl border border-line px-3" />
           {error ? <p className="text-sm text-danger">{error}</p> : null}
-          <button type="submit" className="h-11 rounded-xl bg-ink text-white">
+          <Button type="submit" variant="ink" loading={pending}>
             Claim this school
-          </button>
+          </Button>
         </form>
       )}
     </section>

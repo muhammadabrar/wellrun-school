@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Button, LoadingState } from "@wellrun/ui";
 import { FormEvent, useState } from "react";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/query";
@@ -6,27 +7,33 @@ import { queryKeys } from "../lib/query";
 export function ProfilePage() {
   const { data, isPending } = useQuery({ queryKey: queryKeys.schoolProfile, queryFn: api.schoolProfile });
   const [message, setMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  if (isPending || !data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+  if (isPending || !data) return <LoadingState variant="form" />;
 
   const profile = (data.school.profile ?? {}) as Record<string, string | number>;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    await api.updateProfile({
-      about: String(form.get("about")),
-      location: String(form.get("location")),
-      principal: String(form.get("principal")),
-      whatsapp: String(form.get("whatsapp")),
-      phone: String(form.get("phone")),
-      website: String(form.get("website")),
-      address: String(form.get("address")),
-      area: String(form.get("area")),
-      feeBand: String(form.get("feeBand")),
-      feeNotes: String(form.get("feeNotes")),
-    });
-    setMessage("Public profile updated. Changes show on Discover.");
+    setSaving(true);
+    try {
+      await api.updateProfile({
+        about: String(form.get("about")),
+        location: String(form.get("location")),
+        principal: String(form.get("principal")),
+        whatsapp: String(form.get("whatsapp")),
+        phone: String(form.get("phone")),
+        website: String(form.get("website")),
+        address: String(form.get("address")),
+        area: String(form.get("area")),
+        feeBand: String(form.get("feeBand")),
+        feeNotes: String(form.get("feeNotes")),
+      });
+      setMessage("Public profile updated. Changes show on Discover.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -53,9 +60,9 @@ export function ProfilePage() {
         </select>
         <input name="feeNotes" defaultValue={String(profile.feeNotes ?? "")} placeholder="Fee notes" className="h-11 rounded-xl border border-line px-3" />
         {message ? <p className="text-sm text-indigo">{message}</p> : null}
-        <button type="submit" className="h-11 rounded-xl bg-indigo text-white">
+        <Button type="submit" loading={saving}>
           Publish changes
-        </button>
+        </Button>
       </form>
     </div>
   );

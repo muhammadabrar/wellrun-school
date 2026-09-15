@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, LoadingState } from "@wellrun/ui";
 import { normalizeAdmissionFields } from "@wellrun/shared";
 import { Save, Upload } from "lucide-react";
 import { useState } from "react";
@@ -21,10 +22,12 @@ export function AdmissionSettingsPage() {
   const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [importFileName, setImportFileName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const fields = draft ?? data?.fields ?? [];
 
-  if (isPending && !data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+  if (isPending && !data) return <LoadingState variant="form" />;
 
   return (
     <div className="max-w-4xl">
@@ -40,11 +43,14 @@ export function AdmissionSettingsPage() {
           fields={fields}
           onChange={(next) => setDraft(normalizeAdmissionFields(next))}
         />
-        <button
+        <Button
           type="button"
-          className="mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-indigo px-4 text-white"
+          className="mt-6"
+          loading={saving}
+          icon={<Save size={18} />}
           onClick={async () => {
             setError(null);
+            setSaving(true);
             try {
               await api.saveAdmissionForm({ name: "Default admission form", fields });
               await queryClient.invalidateQueries({ queryKey: queryKeys.admissionForm });
@@ -53,12 +59,13 @@ export function AdmissionSettingsPage() {
               setMessage("Admission form saved.");
             } catch (err) {
               setError(err instanceof Error ? err.message : "Could not save form");
+            } finally {
+              setSaving(false);
             }
           }}
         >
-          <Save size={18} />
           Save form
-        </button>
+        </Button>
       </section>
 
       <section className="mt-6 rounded-3xl bg-surface p-6">
@@ -110,18 +117,25 @@ export function AdmissionSettingsPage() {
                 </select>
               </label>
             ))}
-            <button
+            <Button
               type="button"
-              className="col-span-2 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-ink text-white"
+              variant="ink"
+              className="col-span-2"
+              loading={importing}
+              icon={<Upload size={18} />}
               onClick={async () => {
-                const result = await api.importStudents({ rows: importRows, mapping });
-                await queryClient.invalidateQueries({ queryKey: queryKeys.studentsRoot });
-                setMessage(`Imported ${result.count} students.`);
+                setImporting(true);
+                try {
+                  const result = await api.importStudents({ rows: importRows, mapping });
+                  await queryClient.invalidateQueries({ queryKey: queryKeys.studentsRoot });
+                  setMessage(`Imported ${result.count} students.`);
+                } finally {
+                  setImporting(false);
+                }
               }}
             >
-              <Upload size={18} />
               Import {importRows.length} rows
-            </button>
+            </Button>
           </div>
         ) : null}
       </section>

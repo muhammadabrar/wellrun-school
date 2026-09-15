@@ -87,6 +87,9 @@ importers:
       '@wellrun/tokens':
         specifier: workspace:*
         version: link:../../packages/tokens
+      '@wellrun/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       lucide-react:
         specifier: ^0.544.0
         version: 0.544.0(react@19.3.0)
@@ -136,6 +139,9 @@ importers:
       '@wellrun/tokens':
         specifier: workspace:*
         version: link:../../packages/tokens
+      '@wellrun/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       lucide-react:
         specifier: ^0.544.0
         version: 0.544.0(react@19.3.0)
@@ -177,6 +183,16 @@ importers:
         version: 3.25.76
 
   packages/tokens: {}
+
+  packages/ui:
+    dependencies:
+      react:
+        specifier: ^19.0.0
+        version: 19.3.0
+    devDependencies:
+      '@types/react':
+        specifier: ^19.1.12
+        version: 19.3.0
 
 packages:
 

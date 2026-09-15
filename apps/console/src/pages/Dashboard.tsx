@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { t } from "@wellrun/i18n";
+import { ErrorState, FetchingIndicator, LoadingState } from "@wellrun/ui";
 import { NumberPop } from "../components/motion";
 import { api, currentUser } from "../lib/api";
 import { queryKeys } from "../lib/query";
@@ -9,7 +10,7 @@ import { queryKeys } from "../lib/query";
 export function DashboardPage() {
   const copy = t("en");
   const user = currentUser();
-  const { data } = useQuery({
+  const { data, isPending, isError, isFetching, refetch } = useQuery({
     queryKey: queryKeys.dashboard,
     queryFn: api.dashboard,
     enabled: user?.role !== "PLATFORM_ADMIN",
@@ -17,14 +18,22 @@ export function DashboardPage() {
 
   if (user?.role === "PLATFORM_ADMIN") return <Navigate to="/admin" replace />;
 
-  if (!data) {
-    return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+  if (isPending && !data) return <LoadingState variant="metrics" />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        title="Could not load dashboard"
+        description="Try again. The school totals will show once the request succeeds."
+        onRetry={() => void refetch()}
+      />
+    );
   }
 
   return (
     <div>
       <p className="text-sm text-muted">{data.schoolName}</p>
       <h1 className="mt-1 font-display text-4xl">{copy.console.dashboard}</h1>
+      <FetchingIndicator show={isFetching && !isPending} label="Updating totals" />
       <div className="mt-8 grid grid-cols-3 gap-4">
         <Card label={copy.console.absences}>
           <NumberPop value={data.absentToday} />

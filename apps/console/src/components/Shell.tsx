@@ -1,3 +1,4 @@
+import { BrandLogo, LoadingState } from "@wellrun/ui";
 import {
   BookOpen,
   Briefcase,
@@ -78,12 +79,12 @@ export function Shell() {
   return (
     <div className="flex min-h-dvh">
       <aside className="sticky top-0 flex h-dvh w-64 shrink-0 flex-col border-r border-line bg-surface px-5 py-6">
-        <p className="font-display text-xs font-semibold tracking-[0.18em] text-indigo uppercase">
-          Wellrun
-        </p>
-        <p className="mt-1 font-display text-xl">
-          {user?.role === "PLATFORM_ADMIN" ? "Platform" : "School console"}
-        </p>
+        <div>
+          <BrandLogo />
+          <p className="mt-2 font-display text-xl">
+            {user?.role === "PLATFORM_ADMIN" ? "Platform" : "School console"}
+          </p>
+        </div>
         <nav className="mt-10 flex flex-col gap-1">
           {user?.role === "SCHOOL_ADMIN" ? (
             <>
@@ -146,7 +147,7 @@ export function Shell() {
         </div>
       </aside>
       <main className="min-w-0 flex-1 px-10 py-8">
-        <Suspense fallback={<div className="h-40 animate-pulse rounded-3xl bg-surface" />}>
+        <Suspense fallback={<LoadingState variant="page" />}>
           <PageSlide pageKey={location.pathname}>
             <Outlet />
           </PageSlide>

@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, LoadingState } from "@wellrun/ui";
 import { FormEvent, useState } from "react";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/query";
@@ -8,6 +9,7 @@ export function CampusesPage() {
   const { data, isPending } = useQuery({ queryKey: queryKeys.campuses, queryFn: api.campuses });
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
   async function reload() {
     await queryClient.invalidateQueries({ queryKey: queryKeys.campuses });
@@ -17,6 +19,7 @@ export function CampusesPage() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     setError(null);
+    setBusy("add");
     try {
       await api.addCampus({
         name: String(form.get("name")),
@@ -30,6 +33,8 @@ export function CampusesPage() {
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add campus");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -37,6 +42,7 @@ export function CampusesPage() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     setError(null);
+    setBusy(id);
     try {
       await api.updateCampus(id, {
         name: String(form.get("name")),
@@ -49,10 +55,12 @@ export function CampusesPage() {
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update campus");
+    } finally {
+      setBusy(null);
     }
   }
 
-  if (isPending || !data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+  if (isPending || !data) return <LoadingState variant="form" />;
 
   return (
     <div className="max-w-4xl">
@@ -69,9 +77,9 @@ export function CampusesPage() {
             <input name="address" defaultValue={campus.address} className="h-11 rounded-xl border border-line px-3" />
             <input name="phone" defaultValue={campus.phone} className="h-11 rounded-xl border border-line px-3" />
             <input name="principal" defaultValue={campus.principal} className="h-11 rounded-xl border border-line px-3" />
-            <button type="submit" className="h-11 rounded-xl bg-paper">
+            <Button type="submit" variant="secondary" loading={busy === campus.id}>
               Save
-            </button>
+            </Button>
           </form>
         ))}
         <form onSubmit={onAdd} className="grid grid-cols-2 gap-3 rounded-3xl bg-surface p-6">
@@ -81,9 +89,9 @@ export function CampusesPage() {
           <input name="address" placeholder="Address" className="h-11 rounded-xl border border-line px-3" />
           <input name="phone" placeholder="Phone" className="h-11 rounded-xl border border-line px-3" />
           <input name="principal" placeholder="Principal" className="h-11 rounded-xl border border-line px-3" />
-          <button type="submit" className="col-span-2 h-11 rounded-xl bg-indigo text-white">
+          <Button type="submit" loading={busy === "add"} className="col-span-2">
             Add campus
-          </button>
+          </Button>
         </form>
       </div>
     </div>

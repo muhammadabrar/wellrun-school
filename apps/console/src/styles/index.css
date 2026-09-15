@@ -1,10 +1,13 @@
 @import "tailwindcss";
 @import "@wellrun/tokens/tokens.css";
+@source "../../../../packages/ui/src";
 
 @theme inline {
   --color-ink: #16161d;
   --color-muted: #5c5c6b;
   --color-indigo: #4642ff;
+  --color-indigo-soft: #7f66ff;
+  --color-indigo-deep: #3a36e0;
   --color-paper: #f7f7f8;
   --color-surface: #ffffff;
   --color-orange: #f26522;

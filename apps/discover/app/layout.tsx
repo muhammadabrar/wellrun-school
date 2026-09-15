@@ -29,6 +29,9 @@ export const metadata: Metadata = {
   description:
     "Discover and compare schools in Pakistan. Profiles, fees, facilities, and reviews in one place.",
   metadataBase: new URL("http://localhost:3001"),
+  icons: {
+    icon: "/favicon.svg",
+  },
   openGraph: {
     title: copy.brand,
     description: copy.discover.tagline,

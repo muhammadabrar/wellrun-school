@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
+import { BrandLogo, Button } from "@wellrun/ui";
 import { client, getSession, setSession } from "@/lib/client";
 
 export default function SignupPage() {
@@ -42,23 +43,37 @@ export default function SignupPage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-md items-center px-4">
       <form onSubmit={onSubmit} className="w-full rounded-[24px] bg-surface p-8">
-        <Link href="/" className="text-sm text-indigo">
-          Back
+        <Link href="/" className="inline-flex" aria-label="WellRun School home">
+          <BrandLogo size="md" />
         </Link>
         <h1 className="mt-3 font-serif text-3xl">Create an account</h1>
         <p className="mt-2 text-sm text-muted">Parents start here. School staff are invited or claim a profile.</p>
-        <input name="name" required placeholder="Full name" className="mt-6 h-12 w-full rounded-xl border border-line px-3" />
-        <input name="email" type="email" required placeholder="Email" className="mt-3 h-12 w-full rounded-xl border border-line px-3" />
-        <input name="password" type="password" minLength={8} required placeholder="Password (8+ characters)" className="mt-3 h-12 w-full rounded-xl border border-line px-3" />
-        <input name="confirm" type="password" minLength={8} required placeholder="Confirm password" className="mt-3 h-12 w-full rounded-xl border border-line px-3" />
+        <label className="mt-6 block text-sm font-medium">
+          Full name
+          <input name="name" required autoComplete="name" className="mt-2 h-12 w-full rounded-xl border border-line px-3" />
+        </label>
+        <label className="mt-4 block text-sm font-medium">
+          Email
+          <input name="email" type="email" required autoComplete="email" className="mt-2 h-12 w-full rounded-xl border border-line px-3" />
+        </label>
+        <p className="mt-1 text-sm text-muted">We’ll use this email for account notifications.</p>
+        <label className="mt-4 block text-sm font-medium">
+          Password
+          <input name="password" type="password" minLength={8} required autoComplete="new-password" className="mt-2 h-12 w-full rounded-xl border border-line px-3" />
+        </label>
+        <p className="mt-1 text-sm text-muted">At least 8 characters.</p>
+        <label className="mt-4 block text-sm font-medium">
+          Confirm password
+          <input name="confirm" type="password" minLength={8} required autoComplete="new-password" className="mt-2 h-12 w-full rounded-xl border border-line px-3" />
+        </label>
         <label className="mt-4 flex items-start gap-2 text-sm">
           <input name="terms" type="checkbox" className="mt-1" />
           I agree to the terms and privacy notice.
         </label>
         {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
-        <button type="submit" disabled={pending} className="mt-6 h-12 w-full rounded-xl bg-indigo font-medium text-white">
-          {pending ? "Creating…" : "Create account"}
-        </button>
+        <Button type="submit" loading={pending} size="lg" className="mt-6 w-full">
+          Create account
+        </Button>
         <p className="mt-4 text-sm">
           Already have an account?{" "}
           <Link href="/login" className="text-indigo">

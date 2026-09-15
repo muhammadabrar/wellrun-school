@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { t } from "@wellrun/i18n";
+import { Button } from "@wellrun/ui";
 import { CompareTray } from "@/components/compare-tray";
 import { DiscoverNav } from "@/components/nav";
 import { FEE_BANDS, SCHOOL_TYPES, avgRating, coverOf, getTaxonomy, listSchools, pkr } from "@/lib/api";
@@ -37,9 +38,9 @@ export default async function HomePage({
               placeholder={copy.discover.searchPlaceholder}
               className="h-12 min-w-0 flex-1 rounded-2xl border border-line bg-surface px-4 text-base"
             />
-            <button type="submit" className="h-12 rounded-2xl bg-indigo px-4 text-sm font-medium text-white">
+            <Button type="submit" size="lg" className="rounded-2xl">
               Search
-            </button>
+            </Button>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <select name="city" defaultValue={query.city ?? ""} className="h-11 rounded-2xl border border-line bg-surface px-3 text-sm">

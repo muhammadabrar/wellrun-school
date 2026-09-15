@@ -1,7 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { Button, EmptyState, FetchingIndicator, Skeleton } from "@wellrun/ui";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { SpinnerCheck, Toast } from "../components/motion";
+import { Toast } from "../components/motion";
 import { api } from "../lib/api";
 import { todayIso } from "../lib/format";
 import { queryKeys } from "../lib/query";
@@ -20,17 +21,17 @@ export function AttendancePage() {
   const [date, setDate] = useState(todayIso());
   const [draft, setDraft] = useState<Record<string, Status> | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: classes = [] } = useQuery({ queryKey: queryKeys.classes, queryFn: api.classes });
+  const { data: classes = [], isPending: classesPending } = useQuery({ queryKey: queryKeys.classes, queryFn: api.classes });
   const resolvedClassId = classId || classes[0]?.id || "";
   const selected = classes.find((c) => c.id === resolvedClassId);
-  const { data: rows } = useQuery({
+  const { data: rows, isPending: rowsPending, isFetching } = useQuery({
     queryKey: queryKeys.attendance(resolvedClassId, date),
     queryFn: () => api.attendance(resolvedClassId, date),
     enabled: Boolean(resolvedClassId),
+    placeholderData: keepPreviousData,
   });
 
   const baseline = useMemo(() => {
@@ -47,7 +48,6 @@ export function AttendancePage() {
 
   async function save() {
     setSaving(true);
-    setSaved(false);
     setError(null);
     try {
       await api.saveAttendance({
@@ -58,7 +58,6 @@ export function AttendancePage() {
           status: values[student.id] ?? "PRESENT",
         })),
       });
-      setSaved(true);
       setToast("Attendance saved");
       setTimeout(() => setToast(null), 2200);
     } catch (err) {
@@ -100,19 +99,30 @@ export function AttendancePage() {
           }}
           className="h-11 rounded-xl border border-line bg-surface px-3"
         />
-        <button
-          type="button"
-          onClick={save}
-          className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo px-4 font-medium text-white"
-        >
-          <SpinnerCheck done={saved && !saving} />
+        <Button type="button" loading={saving} onClick={() => void save()}>
           Save attendance
-        </button>
+        </Button>
       </div>
+      <FetchingIndicator show={isFetching && Boolean(rows)} label="Updating register" />
       {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
-      {!classes.length ? <p className="mt-8 text-muted">No classes assigned to this account.</p> : null}
+      {!classesPending && !classes.length ? (
+        <EmptyState
+          title="No classes assigned"
+          description="Add a class first, then mark attendance for that section."
+        />
+      ) : null}
 
-      <div className="mt-6 overflow-hidden rounded-3xl bg-surface">
+      {classesPending || (rowsPending && !rows) ? (
+        <div className="mt-6 overflow-hidden rounded-3xl bg-surface" aria-busy="true">
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="flex items-center justify-between border-t border-line px-5 py-4 first:border-t-0">
+              <Skeleton className="h-8 w-48" />
+              <Skeleton className="h-8 w-64" />
+            </div>
+          ))}
+        </div>
+      ) : (
+      <div className={`mt-6 overflow-hidden rounded-3xl bg-surface ${isFetching ? "opacity-80" : ""}`}>
         {students.map((student) => (
           <div key={student.id} className="flex items-center justify-between border-t border-line px-5 py-4 first:border-t-0">
             <div>
@@ -138,6 +148,7 @@ export function AttendancePage() {
           </div>
         ))}
       </div>
+      )}
       <Toast message={toast} />
     </div>
   );

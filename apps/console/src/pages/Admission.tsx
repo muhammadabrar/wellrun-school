@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Button, LoadingState } from "@wellrun/ui";
 import { classSortIndex } from "@wellrun/shared";
 import { UserPlus } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
@@ -17,6 +18,7 @@ export function AdmissionPage() {
   const [section, setSection] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   const fields = data?.fields ?? [];
   const firstClass = useMemo(
@@ -60,6 +62,7 @@ export function AdmissionPage() {
       else extra[field.key] = value;
     }
     try {
+      setPending(true);
       const student = await api.admitStudent({
         guardianId: mode === "existing" ? guardianId : undefined,
         guardian:
@@ -85,10 +88,12 @@ export function AdmissionPage() {
       navigate(`/students/${student.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not admit student");
+    } finally {
+      setPending(false);
     }
   }
 
-  if (!data) return <div className="h-40 animate-pulse rounded-3xl bg-surface" />;
+  if (!data) return <LoadingState variant="form" />;
 
   return (
     <div className="max-w-4xl">
@@ -208,10 +213,9 @@ export function AdmissionPage() {
         </section>
 
         <div className="flex gap-3">
-          <button type="submit" className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo px-5 font-medium text-white">
-            <UserPlus size={18} />
+          <Button type="submit" loading={pending} icon={<UserPlus size={18} />}>
             Admit student
-          </button>
+          </Button>
           <Link to="/students" className="flex h-11 items-center rounded-xl bg-paper px-5">
             Cancel
           </Link>
