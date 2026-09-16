@@ -9,6 +9,7 @@ import { AuthModule } from "./auth/auth.module";
 import { ClaimsModule } from "./claims/claims.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { FeesModule } from "./fees/fees.module";
+import { HealthController } from "./health.controller";
 import { PrismaModule } from "./prisma/prisma.module";
 import { SchoolsModule } from "./schools/schools.module";
 import { SetupModule } from "./setup/setup.module";
@@ -37,5 +38,6 @@ import { TimetableModule } from "./timetable/timetable.module";
     TimetableModule,
     AiModule,
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}
