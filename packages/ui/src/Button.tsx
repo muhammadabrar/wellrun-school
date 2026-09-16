@@ -6,23 +6,16 @@ type Variant = "primary" | "secondary" | "ink" | "danger";
 type Size = "sm" | "md" | "lg";
 
 const sizes: Record<Size, string> = {
-  sm: "h-10 px-3 text-sm",
-  md: "h-11 px-4",
-  lg: "h-12 px-5 text-base",
+  sm: "h-7 px-2.5 text-[0.8rem]",
+  md: "h-8 px-2.5 text-sm",
+  lg: "h-9 px-3 text-sm",
 };
 
 const idle: Record<Variant, string> = {
-  primary: "bg-indigo text-white hover:bg-indigo-deep",
-  secondary: "bg-paper text-ink hover:bg-line",
+  primary: "bg-indigo text-white hover:bg-indigo/80",
+  secondary: "border border-line bg-surface text-ink hover:bg-paper",
   ink: "bg-ink text-white hover:bg-ink/90",
-  danger: "bg-danger text-white hover:bg-danger/90",
-};
-
-const loadingTone: Record<Variant, string> = {
-  primary: "bg-indigo-deep text-white",
-  secondary: "bg-line text-muted",
-  ink: "bg-muted text-white",
-  danger: "bg-danger/80 text-white",
+  danger: "bg-danger/10 text-danger hover:bg-danger/20",
 };
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -50,9 +43,10 @@ export function Button({
       disabled={isDisabled}
       aria-busy={loading || undefined}
       className={cx(
-        "inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl font-medium transition-colors",
+        "inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-transparent font-medium whitespace-nowrap transition-colors select-none",
+        "focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
         sizes[size],
-        isDisabled && !loading ? "cursor-not-allowed bg-line text-muted" : loading ? `cursor-wait ${loadingTone[variant]}` : idle[variant],
+        isDisabled && !loading ? "bg-line text-muted-foreground" : idle[variant],
         className,
       )}
       {...props}

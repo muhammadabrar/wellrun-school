@@ -1,9 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { Button, LoadingState } from "@wellrun/ui";
 import { classSortIndex } from "@wellrun/shared";
+import { LoadingState, PageHeader } from "@wellrun/ui";
 import { UserPlus } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { DatePicker } from "@/components/form/date-picker";
+import { FormSelect } from "@/components/form/form-select";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api, type AdmissionField } from "../lib/api";
 import { queryKeys } from "../lib/query";
 
@@ -97,128 +104,127 @@ export function AdmissionPage() {
 
   return (
     <div className="max-w-4xl">
-      <h1 className="font-display text-4xl">Admission</h1>
-      <p className="mt-2 text-sm text-muted">Start with the guardian, then fill the student form for this campus.</p>
-      {error ? <p className="mt-4 text-sm text-danger">{error}</p> : null}
-      {message ? <p className="mt-4 text-sm text-indigo">{message}</p> : null}
+      <PageHeader
+        title="Quick admission"
+        description="Confirm a student in one step. For documents, assessment, and fees, use the full application."
+      />
+      <p className="mt-2 text-sm text-muted-foreground">
+        <Link to="/admissions/new" className="text-primary">
+          Open the full application
+        </Link>
+      </p>
+      {error ? <p className="mt-4 text-sm text-destructive">{error}</p> : null}
+      {message ? <p className="mt-4 text-sm text-primary">{message}</p> : null}
 
-      <form onSubmit={onSubmit} className="mt-8 space-y-6">
-        <section className="rounded-3xl bg-surface p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-display text-xl">Guardian</h2>
-            <div className="flex rounded-xl bg-paper p-1">
-              <button
-                type="button"
-                className={`h-9 rounded-lg px-3 text-sm ${mode === "new" ? "bg-indigo text-white" : ""}`}
-                onClick={() => setMode("new")}
-              >
-                New guardian
-              </button>
-              <button
-                type="button"
-                className={`h-9 rounded-lg px-3 text-sm ${mode === "existing" ? "bg-indigo text-white" : ""}`}
-                onClick={() => setMode("existing")}
-              >
-                Existing guardian
-              </button>
+      <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-6">
+        <Card>
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle>Guardian</CardTitle>
+              <CardDescription>Link an existing family or add a new guardian.</CardDescription>
             </div>
-          </div>
-
-          {mode === "existing" ? (
-            <div className="mt-4">
-              <input
-                value={guardianSearch}
-                onChange={(event) => setGuardianSearch(event.target.value)}
-                placeholder="Search by name, phone, or CNIC"
-                className="h-11 w-full rounded-xl border border-line px-3"
-              />
-              <ul className="mt-3 max-h-64 space-y-2 overflow-auto">
-                {matchedGuardians.map((guardian) => (
-                  <li key={guardian.id}>
-                    <button
-                      type="button"
-                      onClick={() => setGuardianId(guardian.id)}
-                      className={`w-full rounded-2xl px-4 py-3 text-left ${guardianId === guardian.id ? "bg-indigo text-white" : "bg-paper"}`}
-                    >
-                      <span className="font-medium">{guardian.name}</span>
-                      <span className={`mt-1 block text-sm ${guardianId === guardian.id ? "text-white/80" : "text-muted"}`}>
-                        {guardian.relation} · {guardian.phone}
-                        {guardian.cnic ? ` · ${guardian.cnic}` : ""}
-                      </span>
-                    </button>
-                  </li>
+            <ToggleGroup variant="outline" value={[mode]} onValueChange={(value) => setMode((value[0] as typeof mode) || "new")}>
+              <ToggleGroupItem value="new">New guardian</ToggleGroupItem>
+              <ToggleGroupItem value="existing">Existing guardian</ToggleGroupItem>
+            </ToggleGroup>
+          </CardHeader>
+          <CardContent>
+            {mode === "existing" ? (
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="guardianSearch">Search by name, phone, or CNIC</FieldLabel>
+                  <Input
+                    id="guardianSearch"
+                    value={guardianSearch}
+                    onChange={(event) => setGuardianSearch(event.target.value)}
+                    placeholder="Name, phone, or CNIC"
+                  />
+                </Field>
+                <ul className="max-h-64 space-y-2 overflow-auto">
+                  {matchedGuardians.map((guardian) => (
+                    <li key={guardian.id}>
+                      <button
+                        type="button"
+                        onClick={() => setGuardianId(guardian.id)}
+                        className={`w-full rounded-lg px-4 py-3 text-left ${guardianId === guardian.id ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+                      >
+                        <span className="font-medium">{guardian.name}</span>
+                        <span className={`mt-1 block text-sm ${guardianId === guardian.id ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                          {guardian.relation} · {guardian.phone}
+                          {guardian.cnic ? ` · ${guardian.cnic}` : ""}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                  {!matchedGuardians.length ? <li className="text-sm text-muted-foreground">No guardians match that search.</li> : null}
+                </ul>
+              </FieldGroup>
+            ) : (
+              <FieldGroup className="grid grid-cols-2">
+                {guardianFields.map((field) => (
+                  <FormField key={field.key} field={field} />
                 ))}
-                {!matchedGuardians.length ? <li className="text-sm text-muted">No guardians match that search.</li> : null}
-              </ul>
-            </div>
-          ) : (
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              {guardianFields.map((field) => (
-                <FormField key={field.key} field={field} />
-              ))}
-            </div>
-          )}
-        </section>
+              </FieldGroup>
+            )}
+          </CardContent>
+        </Card>
 
-        <section className="rounded-3xl bg-surface p-6">
-          <h2 className="font-display text-xl">Student</h2>
-          <p className="mt-2 text-sm text-muted">Roll number, admission date, and first admission date are assigned when you save.</p>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            {studentFields.map((field) => {
-              if (field.type === "class") {
-                return (
-                  <label key={field.key} className="block text-sm font-medium">
-                    {field.label}
-                    <select
-                      required={field.required}
-                      value={selectedClass}
-                      onChange={(event) => {
-                        setClassName(event.target.value);
-                        const next = (data.classes ?? []).find((cls) => cls.name === event.target.value);
-                        setSection(next?.section ?? "A");
-                      }}
-                      className="mt-2 h-11 w-full rounded-xl border border-line px-3"
-                    >
-                      {classNames.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                );
-              }
-              if (field.type === "section") {
-                return (
-                  <label key={field.key} className="block text-sm font-medium">
-                    {field.label}
-                    <select
-                      required={field.required}
-                      value={selectedSection}
-                      onChange={(event) => setSection(event.target.value)}
-                      className="mt-2 h-11 w-full rounded-xl border border-line px-3"
-                    >
-                      {sections.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                );
-              }
-              return <FormField key={field.key} field={field} />;
-            })}
-          </div>
-        </section>
+        <Card>
+          <CardHeader>
+            <CardTitle>Student</CardTitle>
+            <CardDescription>Roll number, admission date, and first admission date are assigned when you save.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FieldGroup className="grid grid-cols-2">
+              {studentFields.map((field) => {
+                if (field.type === "class") {
+                  return (
+                    <Field key={field.key}>
+                      <FieldLabel htmlFor="className">{field.label}</FieldLabel>
+                      <FormSelect
+                        id="className"
+                        value={selectedClass || undefined}
+                        onValueChange={(value) => {
+                          const nextName = value ?? "";
+                          setClassName(nextName);
+                          const next = (data.classes ?? []).find((cls) => cls.name === nextName);
+                          setSection(next?.section ?? "A");
+                        }}
+                        options={classNames.map((name) => ({ value: name, label: name }))}
+                        placeholder="Select class"
+                        required={field.required}
+                      />
+                    </Field>
+                  );
+                }
+                if (field.type === "section") {
+                  return (
+                    <Field key={field.key}>
+                      <FieldLabel htmlFor="section">{field.label}</FieldLabel>
+                      <FormSelect
+                        id="section"
+                        value={selectedSection || undefined}
+                        onValueChange={(value) => setSection(value ?? "")}
+                        options={sections.map((name) => ({ value: name, label: name }))}
+                        placeholder="Select section"
+                        required={field.required}
+                      />
+                    </Field>
+                  );
+                }
+                return <FormField key={field.key} field={field} />;
+              })}
+            </FieldGroup>
+          </CardContent>
+        </Card>
 
         <div className="flex gap-3">
-          <Button type="submit" loading={pending} icon={<UserPlus size={18} />}>
+          <Button type="submit" loading={pending} icon={<UserPlus data-icon="inline-start" />}>
             Admit student
           </Button>
-          <Link to="/students" className="flex h-11 items-center rounded-xl bg-paper px-5">
+          <Button variant="outline" render={<Link to="/students" />}>
             Cancel
-          </Link>
+          </Button>
         </div>
       </form>
     </div>
@@ -228,38 +234,52 @@ export function AdmissionPage() {
 function FormField({ field }: { field: AdmissionField }) {
   if (field.type === "select" || field.key === "gender") {
     return (
-      <label className="block text-sm font-medium">
-        {field.label}
-        <select name={field.key} required={field.required} className="mt-2 h-11 w-full rounded-xl border border-line px-3">
-          <option value="female">Female</option>
-          <option value="male">Male</option>
-          <option value="other">Other</option>
-        </select>
-      </label>
+      <Field>
+        <FieldLabel htmlFor={field.key}>{field.label}</FieldLabel>
+        <FormSelect
+          id={field.key}
+          name={field.key}
+          required={field.required}
+          options={[
+            { value: "female", label: "Female" },
+            { value: "male", label: "Male" },
+            { value: "other", label: "Other" },
+          ]}
+        />
+      </Field>
     );
   }
   if (field.key === "guardianRelation") {
     return (
-      <label className="block text-sm font-medium">
-        {field.label}
-        <select name={field.key} required={field.required} defaultValue="Mother" className="mt-2 h-11 w-full rounded-xl border border-line px-3">
-          <option>Mother</option>
-          <option>Father</option>
-          <option>Guardian</option>
-          <option>Other</option>
-        </select>
-      </label>
+      <Field>
+        <FieldLabel htmlFor={field.key}>{field.label}</FieldLabel>
+        <FormSelect
+          id={field.key}
+          name={field.key}
+          defaultValue="Mother"
+          required={field.required}
+          options={[
+            { value: "Mother", label: "Mother" },
+            { value: "Father", label: "Father" },
+            { value: "Guardian", label: "Guardian" },
+            { value: "Other", label: "Other" },
+          ]}
+        />
+      </Field>
+    );
+  }
+  if (field.type === "date") {
+    return (
+      <Field>
+        <FieldLabel htmlFor={field.key}>{field.label}</FieldLabel>
+        <DatePicker id={field.key} name={field.key} required={field.required} />
+      </Field>
     );
   }
   return (
-    <label className="block text-sm font-medium">
-      {field.label}
-      <input
-        name={field.key}
-        type={field.type === "date" ? "date" : "text"}
-        required={field.required}
-        className="mt-2 h-11 w-full rounded-xl border border-line px-3"
-      />
-    </label>
+    <Field>
+      <FieldLabel htmlFor={field.key}>{field.label}</FieldLabel>
+      <Input id={field.key} name={field.key} required={field.required} />
+    </Field>
   );
 }

@@ -15,6 +15,9 @@ const ResetPage = lazyPage(() => import("./pages/Reset"), "ResetPage");
 const InvitePage = lazyPage(() => import("./pages/Invite"), "InvitePage");
 const SetupPage = lazyPage(() => import("./pages/Setup"), "SetupPage");
 const DashboardPage = lazyPage(() => import("./pages/Dashboard"), "DashboardPage");
+const AdmissionsPage = lazyPage(() => import("./pages/Admissions"), "AdmissionsPage");
+const AdmissionWizardPage = lazyPage(() => import("./pages/AdmissionWizard"), "AdmissionWizardPage");
+const AdmissionReviewPage = lazyPage(() => import("./pages/AdmissionReview"), "AdmissionReviewPage");
 const AdmissionPage = lazyPage(() => import("./pages/Admission"), "AdmissionPage");
 const AdmissionSettingsPage = lazyPage(() => import("./pages/AdmissionSettings"), "AdmissionSettingsPage");
 const StudentsPage = lazyPage(() => import("./pages/Students"), "StudentsPage");
@@ -72,6 +75,9 @@ export function App() {
         }
       >
         <Route path="/" element={<DashboardPage />} />
+        <Route path="/admissions" element={<AdmissionsPage />} />
+        <Route path="/admissions/new" element={<AdmissionWizardPage />} />
+        <Route path="/admissions/:id" element={<AdmissionReviewPage />} />
         <Route path="/admission" element={<AdmissionPage />} />
         <Route path="/admission/settings" element={<AdmissionSettingsPage />} />
         <Route path="/students" element={<StudentsPage />} />

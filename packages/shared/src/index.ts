@@ -98,6 +98,8 @@ export const studentListQuerySchema = z.object({
   address: z.string().optional(),
   dateOfBirth: z.string().optional(),
   classId: z.string().optional(),
+  campusId: z.string().optional(),
+  status: z.string().optional(),
   topScorer: z.enum(["true", "false"]).optional(),
   perfectAttendance: z.enum(["true", "false"]).optional(),
   page: z.coerce.number().int().min(1).default(1),
@@ -321,6 +323,135 @@ export const periodSchema = z.object({
   endTime: z.string(),
   isBreak: z.boolean().optional(),
   sortOrder: z.number().int(),
+});
+
+export const admissionStatuses = [
+  "DRAFT",
+  "SUBMITTED",
+  "UNDER_REVIEW",
+  "ASSESSMENT_PENDING",
+  "INTERVIEW_PENDING",
+  "ACCEPTED",
+  "WAITLISTED",
+  "REJECTED",
+  "FEE_PENDING",
+  "DOCUMENTS_PENDING",
+  "ADMISSION_CONFIRMED",
+  "WITHDRAWN",
+] as const;
+
+export const assessmentModes = ["NONE", "TEST", "INTERVIEW", "BOTH"] as const;
+export const studentTypes = ["new", "transfer", "returning"] as const;
+export const communicationTypes = ["NOTE", "MEETING", "EMAIL", "SMS", "NOTIFICATION"] as const;
+
+export const admissionListQuerySchema = z.object({
+  q: z.string().optional(),
+  status: z.string().optional(),
+  campusId: z.string().optional(),
+  className: z.string().optional(),
+  yearId: z.string().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const admissionScoreSchema = z.object({
+  subject: z.string().min(1),
+  maxMarks: z.coerce.number().int().positive(),
+  obtainedMarks: z.coerce.number().int().min(0),
+});
+
+export const admissionDraftSchema = z.object({
+  studentId: z.string().optional(),
+  studentType: z.enum(studentTypes).optional(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  middleName: z.string().optional(),
+  gender: z.string().optional(),
+  dateOfBirth: z.string().optional(),
+  cnic: z.string().optional(),
+  bloodGroup: z.string().optional(),
+  nationality: z.string().optional(),
+  address: z.string().optional(),
+  photoUrl: z.string().optional(),
+  extra: z.record(z.string(), z.unknown()).optional(),
+  yearId: z.string().optional(),
+  campusId: z.string().optional(),
+  className: z.string().optional(),
+  section: z.string().optional(),
+  targetClassId: z.string().optional(),
+  previousSchool: z.string().optional(),
+  previousClass: z.string().optional(),
+  previousYear: z.string().optional(),
+  previousResult: z.string().optional(),
+  previousPct: z.string().optional(),
+  transferNotes: z.string().optional(),
+  guardianId: z.string().optional(),
+  family: z.record(z.string(), z.unknown()).optional(),
+  assessmentMode: z.enum(assessmentModes).optional(),
+  interviewAt: z.string().optional(),
+  interviewer: z.string().optional(),
+  interviewNotes: z.string().optional(),
+  recommendation: z.string().optional(),
+  scores: z.array(admissionScoreSchema).optional(),
+});
+
+export const admissionDecisionSchema = z.object({
+  note: z.string().optional(),
+});
+
+export const admissionConfirmSchema = z.object({
+  classId: z.string().optional(),
+});
+
+export const admissionDuplicatesQuerySchema = z.object({
+  cnic: z.string().optional(),
+  phone: z.string().optional(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  dateOfBirth: z.string().optional(),
+  guardianPhone: z.string().optional(),
+});
+
+export const studentBulkSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1),
+  action: z.enum(["assign_class", "promote", "transfer", "deactivate", "export"]),
+  classId: z.string().optional(),
+  confirm: z.literal(true),
+});
+
+export const studentMoveSchema = z.object({
+  classId: z.string().min(1),
+});
+
+export const studentDeactivateSchema = z.object({
+  reason: z.string().optional(),
+});
+
+export const examCreateSchema = z.object({
+  name: z.string().min(1),
+  heldOn: z.string().min(1),
+  yearId: z.string().optional(),
+});
+
+export const examResultWriteSchema = z.object({
+  studentId: z.string().min(1),
+  subject: z.string().default(""),
+  totalMarks: z.coerce.number().int().positive(),
+  obtainedMarks: z.coerce.number().int().min(0),
+});
+
+export const communicationCreateSchema = z.object({
+  type: z.enum(["NOTE", "MEETING"]),
+  subject: z.string().optional(),
+  body: z.string().min(1),
+  recipient: z.string().optional(),
+});
+
+export const documentUploadSchema = z.object({
+  kind: z.string().min(1),
+  label: z.string().min(1),
+  required: z.boolean().optional(),
+  dataUrl: z.string().min(20),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;

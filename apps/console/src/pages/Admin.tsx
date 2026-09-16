@@ -1,5 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, EmptyState, LoadingState, Skeleton } from "@wellrun/ui";
+import { EmptyState, LoadingState, Skeleton } from "@wellrun/ui";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { FormEvent, useState } from "react";
 import { api, currentUser } from "../lib/api";
 import { queryKeys } from "../lib/query";
@@ -29,7 +31,7 @@ export function AdminPage() {
   }
 
   if (user?.role !== "PLATFORM_ADMIN") {
-    return <p className="text-muted">Platform admin only.</p>;
+    return <p className="text-muted-foreground">Platform admin only.</p>;
   }
 
   async function onCreate(event: FormEvent<HTMLFormElement>) {
@@ -66,7 +68,7 @@ export function AdminPage() {
               <p className="font-medium">
                 {claim.school.name} · {claim.status}
               </p>
-              <p className="text-sm text-muted">
+              <p className="text-sm text-muted-foreground">
                 {claim.user.name} ({claim.user.email}) · {claim.roleAtSchool} · {claim.whatsapp}
               </p>
               {claim.status === "PENDING" ? (
@@ -87,7 +89,7 @@ export function AdminPage() {
                   </Button>
                   <Button
                     type="button"
-                    variant="danger"
+                    variant="destructive"
                     size="sm"
                     loading={busy === `reject-${claim.id}`}
                     onClick={() => {
@@ -114,10 +116,10 @@ export function AdminPage() {
       <section className="mt-6 rounded-3xl bg-surface p-6">
         <h2 className="font-display text-xl">Schools</h2>
         <form onSubmit={onCreate} className="mt-4 grid grid-cols-4 gap-2">
-          <input name="name" required placeholder="School name" className="h-11 rounded-xl border border-line px-3" />
-          <input name="slug" required placeholder="slug" className="h-11 rounded-xl border border-line px-3" />
-          <input name="city" required placeholder="City" className="h-11 rounded-xl border border-line px-3" />
-          <input name="area" placeholder="Area" className="h-11 rounded-xl border border-line px-3" />
+          <Input name="name" required placeholder="School name" />
+          <Input name="slug" required placeholder="slug" />
+          <Input name="city" required placeholder="City" />
+          <Input name="area" placeholder="Area" />
           <Button type="submit" className="col-span-4" loading={busy === "create"}>
             Add unpublished school
           </Button>
@@ -135,7 +137,7 @@ export function AdminPage() {
               <span>
                 {school.name} · {school.city} {school.area}
               </span>
-              <span className="text-muted">
+              <span className="text-muted-foreground">
                 {school.claimStatus} {school.published ? "" : "· hidden"}
               </span>
             </li>

@@ -1,7 +1,12 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { BrandLogo, Button } from "@wellrun/ui";
-import { api, setSession } from "../lib/api";
+import { BrandLogo } from "@wellrun/ui";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import { api, setSession } from "@/lib/api";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -30,44 +35,41 @@ export function LoginPage() {
 
   return (
     <main className="flex min-h-dvh items-center justify-center px-6">
-      <form onSubmit={onSubmit} className="w-full max-w-md rounded-[24px] bg-surface p-10 shadow-[0_12px_40px_rgba(22,22,29,0.08)]">
-        <BrandLogo size="md" />
-        <h1 className="mt-3 font-display text-3xl">Sign in to your school</h1>
-        <p className="mt-2 text-sm text-muted">Demo: admin@greenfield.school / school123</p>
-        <label className="mt-8 block text-sm font-medium">
-          Email
-          <input
-            name="email"
-            type="email"
-            required
-            defaultValue="admin@greenfield.school"
-            className="mt-2 h-12 w-full rounded-xl border border-line px-3"
-          />
-        </label>
-        <label className="mt-4 block text-sm font-medium">
-          Password
-          <input
-            name="password"
-            type="password"
-            required
-            defaultValue="school123"
-            className="mt-2 h-12 w-full rounded-xl border border-line px-3"
-          />
-        </label>
-        {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
-        <Button type="submit" loading={pending} size="lg" className="mt-8 w-full">
-          Continue
-        </Button>
-        <p className="mt-4 text-sm">
-          <Link className="text-indigo" to="/forgot-password">
-            Forgot password
-          </Link>
-          {" · "}
-          <Link className="text-indigo" to="/register">
-            Register a school
-          </Link>
-        </p>
-      </form>
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <BrandLogo size="md" />
+          <CardTitle className="font-display text-3xl">Sign in to your school</CardTitle>
+          <CardDescription>Demo: admin@greenfield.school / school123</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onSubmit}>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="email">Email</FieldLabel>
+                <Input id="email" name="email" type="email" required defaultValue="admin@greenfield.school" />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="password">Password</FieldLabel>
+                <Input id="password" name="password" type="password" required defaultValue="school123" />
+              </Field>
+              {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              <Button type="submit" size="lg" className="w-full" disabled={pending}>
+                {pending ? <Spinner data-icon="inline-start" /> : null}
+                Continue
+              </Button>
+            </FieldGroup>
+          </form>
+          <p className="mt-4 text-sm">
+            <Link className="text-primary" to="/forgot-password">
+              Forgot password
+            </Link>
+            {" · "}
+            <Link className="text-primary" to="/register">
+              Register a school
+            </Link>
+          </p>
+        </CardContent>
+      </Card>
     </main>
   );
 }

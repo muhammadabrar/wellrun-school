@@ -1,6 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { Button, LoadingState } from "@wellrun/ui";
+import { LoadingState, PageHeader } from "@wellrun/ui";
 import { FormEvent, useState } from "react";
+import { FormSelect } from "@/components/form/form-select";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/query";
 
@@ -38,32 +44,72 @@ export function ProfilePage() {
 
   return (
     <div>
-      <h1 className="font-display text-4xl">Public profile</h1>
-      <p className="mt-2 text-muted">This is what parents see on Discover for {data.school.name}.</p>
-      <form onSubmit={onSubmit} className="mt-8 grid max-w-3xl gap-3 rounded-3xl bg-surface p-6">
-        <textarea name="about" defaultValue={String(profile.about ?? "")} rows={5} className="rounded-xl border border-line p-3" />
-        <input name="principal" defaultValue={String(profile.principal ?? "")} placeholder="Principal" className="h-11 rounded-xl border border-line px-3" />
-        <input name="location" defaultValue={String(profile.location ?? "")} placeholder="Location" className="h-11 rounded-xl border border-line px-3" />
-        <input name="address" defaultValue={data.school.address} placeholder="Address" className="h-11 rounded-xl border border-line px-3" />
-        <input name="area" defaultValue={data.school.area} placeholder="Area" className="h-11 rounded-xl border border-line px-3" />
-        <input name="whatsapp" defaultValue={data.school.whatsapp} placeholder="WhatsApp" className="h-11 rounded-xl border border-line px-3" />
-        <input name="phone" defaultValue={data.school.phone} placeholder="Phone" className="h-11 rounded-xl border border-line px-3" />
-        <input name="website" defaultValue={data.school.website} placeholder="Website" className="h-11 rounded-xl border border-line px-3" />
-        <select name="feeBand" defaultValue={data.school.feeBand} className="h-11 rounded-xl border border-line px-3">
-          <option value="under_5k">Under Rs. 5,000</option>
-          <option value="5k_10k">Rs. 5,000–10,000</option>
-          <option value="10k_20k">Rs. 10,000–20,000</option>
-          <option value="20k_40k">Rs. 20,000–40,000</option>
-          <option value="40k_80k">Rs. 40,000–80,000</option>
-          <option value="80k_plus">Rs. 80,000+</option>
-          <option value="not_published">Not published</option>
-        </select>
-        <input name="feeNotes" defaultValue={String(profile.feeNotes ?? "")} placeholder="Fee notes" className="h-11 rounded-xl border border-line px-3" />
-        {message ? <p className="text-sm text-indigo">{message}</p> : null}
-        <Button type="submit" loading={saving}>
-          Publish changes
-        </Button>
-      </form>
+      <PageHeader title="Public profile" description={`This is what parents see on Discover for ${data.school.name}.`} />
+      <Card className="mt-8 max-w-3xl">
+        <CardContent className="pt-6">
+          <form onSubmit={onSubmit}>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="about">About</FieldLabel>
+                <Textarea id="about" name="about" defaultValue={String(profile.about ?? "")} rows={5} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="principal">Principal</FieldLabel>
+                <Input id="principal" name="principal" defaultValue={String(profile.principal ?? "")} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="location">Location</FieldLabel>
+                <Input id="location" name="location" defaultValue={String(profile.location ?? "")} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="address">Address</FieldLabel>
+                <Input id="address" name="address" defaultValue={data.school.address} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="area">Area</FieldLabel>
+                <Input id="area" name="area" defaultValue={data.school.area} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="whatsapp">WhatsApp</FieldLabel>
+                <Input id="whatsapp" name="whatsapp" defaultValue={data.school.whatsapp} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="phone">Phone</FieldLabel>
+                <Input id="phone" name="phone" defaultValue={data.school.phone} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="website">Website</FieldLabel>
+                <Input id="website" name="website" defaultValue={data.school.website} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="feeBand">Fee band</FieldLabel>
+                <FormSelect
+                  id="feeBand"
+                  name="feeBand"
+                  defaultValue={data.school.feeBand}
+                  options={[
+                    { value: "under_5k", label: "Under Rs. 5,000" },
+                    { value: "5k_10k", label: "Rs. 5,000–10,000" },
+                    { value: "10k_20k", label: "Rs. 10,000–20,000" },
+                    { value: "20k_40k", label: "Rs. 20,000–40,000" },
+                    { value: "40k_80k", label: "Rs. 40,000–80,000" },
+                    { value: "80k_plus", label: "Rs. 80,000+" },
+                    { value: "not_published", label: "Not published" },
+                  ]}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="feeNotes">Fee notes</FieldLabel>
+                <Input id="feeNotes" name="feeNotes" defaultValue={String(profile.feeNotes ?? "")} />
+              </Field>
+              {message ? <p className="text-sm text-primary">{message}</p> : null}
+              <Button type="submit" loading={saving}>
+                Publish changes
+              </Button>
+            </FieldGroup>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

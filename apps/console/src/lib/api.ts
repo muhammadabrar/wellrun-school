@@ -111,6 +111,62 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  studentTab: <T>(id: string, tab: string) => request<T>(`/console/students/${id}/${tab}`),
+  promoteStudent: (id: string, classId: string) =>
+    request<StudentProfile>(`/console/students/${id}/promote`, { method: "POST", body: JSON.stringify({ classId }) }),
+  transferStudent: (id: string, classId: string) =>
+    request<StudentProfile>(`/console/students/${id}/transfer`, { method: "POST", body: JSON.stringify({ classId }) }),
+  deactivateStudent: (id: string) =>
+    request<StudentProfile>(`/console/students/${id}/deactivate`, { method: "POST", body: JSON.stringify({}) }),
+  bulkStudents: (payload: { ids: string[]; action: string; classId?: string; confirm: true }) =>
+    request<{ updated?: number; ids?: string[]; action: string }>("/console/students/bulk", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  addStudentCommunication: (id: string, payload: Record<string, unknown>) =>
+    request(`/console/students/${id}/communications`, { method: "POST", body: JSON.stringify(payload) }),
+  uploadStudentDocument: (id: string, payload: Record<string, unknown>) =>
+    request(`/console/students/${id}/documents`, { method: "POST", body: JSON.stringify(payload) }),
+  exams: () => request<ExamRow[]>("/console/exams"),
+  createExam: (payload: Record<string, unknown>) =>
+    request<ExamRow>("/console/exams", { method: "POST", body: JSON.stringify(payload) }),
+  writeExamResult: (examId: string, payload: Record<string, unknown>) =>
+    request(`/console/exams/${examId}/results`, { method: "POST", body: JSON.stringify(payload) }),
+  admissions: (query?: Record<string, string | number | undefined>) => {
+    const params = new URLSearchParams();
+    if (query) {
+      for (const [key, value] of Object.entries(query)) {
+        if (value !== undefined && value !== "") params.set(key, String(value));
+      }
+    }
+    const suffix = params.size ? `?${params}` : "";
+    return request<AdmissionList>(`/console/admissions${suffix}`);
+  },
+  admissionsSummary: () => request<AdmissionSummary>("/console/admissions/summary"),
+  admissionApplication: (id: string) => request<AdmissionDetail>(`/console/admissions/${id}`),
+  createAdmission: (payload: Record<string, unknown> = {}) =>
+    request<AdmissionDetail>("/console/admissions", { method: "POST", body: JSON.stringify(payload) }),
+  patchAdmission: (id: string, payload: Record<string, unknown>) =>
+    request<AdmissionDetail>(`/console/admissions/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  admissionAction: (id: string, action: string, payload: Record<string, unknown> = {}) =>
+    request<AdmissionDetail>(`/console/admissions/${id}/${action}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  uploadAdmissionDocument: (id: string, payload: Record<string, unknown>) =>
+    request<AdmissionDetail>(`/console/admissions/${id}/documents`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  removeAdmissionDocument: (id: string, documentId: string) =>
+    request<AdmissionDetail>(`/console/admissions/${id}/documents/${documentId}`, { method: "DELETE" }),
+  admissionDuplicates: (query: Record<string, string | undefined>) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value) params.set(key, value);
+    }
+    return request<{ matches: DuplicateMatch[] }>(`/console/admissions/duplicates?${params}`);
+  },
   classes: () => request<SchoolClass[]>("/console/attendance/classes"),
   attendance: (classId: string, date: string) =>
     request<{ studentId: string; status: string }[]>(
@@ -238,9 +294,11 @@ export type StudentRow = {
   firstName: string;
   lastName: string;
   status: string;
+  photo?: string;
   guardianName: string;
   phone: string;
   address: string;
+  campus?: { id: string; name: string } | null;
   class: { id: string; name: string; section: string } | null;
   attendancePct: number;
   attendanceMarked: boolean;
@@ -254,7 +312,9 @@ export type StudentList = {
   pageSize: number;
   defaultClassId: string;
   campus: { id: string; name: string } | null;
+  campuses?: { id: string; name: string }[];
   classes: { id: string; name: string; section: string; campusId?: string | null }[];
+  canMutate?: boolean;
 };
 
 export type Student = {
@@ -292,7 +352,7 @@ export type StudentProfile = {
   campus: { id: string; name: string } | null;
   class: { id: string; name: string; section: string; yearId: string } | null;
   guardians: { guardian: Guardian }[];
-  siblings: {
+  siblings?: {
     id: string;
     firstName: string;
     lastName: string;
@@ -301,21 +361,27 @@ export type StudentProfile = {
     class: { name: string; section: string } | null;
   }[];
   details: { label: string; value: string }[];
+  metrics: {
+    attendancePct: number | null;
+    attendanceMarked: boolean;
+    feesDue: number;
+    latestExamPct: number | null;
+    enrollmentYears: number;
+  };
   years: { id: string; name: string; current: boolean; startsOn: string; endsOn: string }[];
-  classes: { id: string; name: string; section: string; yearId: string; yearName: string }[];
-  exams: { id: string; name: string; heldOn: string; yearId: string; totalMarks: number; obtainedMarks: number; pct: number }[];
-  attendance: { id: string; date: string; status: string; className: string }[];
-  invoices: {
-    id: string;
-    name: string;
-    amountPkr: number;
-    paidPkr: number;
-    status: string;
-    dueOn: string;
-    yearId: string;
-    receiptId: string | null;
-  }[];
-  enrollments: { class: { id: string; name: string; section: string } }[];
+  classes: { id: string; name: string; section: string; yearId: string; yearName: string; campusName?: string }[];
+  canMutate?: boolean;
+};
+
+export type Invoice = {
+  id: string;
+  amountPkr: number;
+  status: string;
+  dueOn: string;
+  student: { id: string; firstName: string; lastName: string; admissionNo: string } | null;
+  application?: { id: string; firstName: string; lastName: string; applicationNo: string } | null;
+  feePlan: { name: string };
+  payments: { id: string; amountPkr: number }[];
 };
 
 export type SchoolClass = {
@@ -326,14 +392,131 @@ export type SchoolClass = {
   enrollments: { student: Student }[];
 };
 
-export type Invoice = {
+export type ExamRow = {
   id: string;
-  amountPkr: number;
-  status: string;
-  dueOn: string;
-  student: { id: string; firstName: string; lastName: string; admissionNo: string };
-  feePlan: { name: string };
-  payments: { id: string; amountPkr: number }[];
+  name: string;
+  heldOn: string;
+  yearId?: string | null;
+};
+
+export type AdmissionStatus =
+  | "DRAFT"
+  | "SUBMITTED"
+  | "UNDER_REVIEW"
+  | "ASSESSMENT_PENDING"
+  | "INTERVIEW_PENDING"
+  | "ACCEPTED"
+  | "WAITLISTED"
+  | "REJECTED"
+  | "FEE_PENDING"
+  | "DOCUMENTS_PENDING"
+  | "ADMISSION_CONFIRMED"
+  | "WITHDRAWN";
+
+export type AdmissionRow = {
+  id: string;
+  applicationNo: string;
+  status: AdmissionStatus;
+  firstName: string;
+  lastName: string;
+  className: string;
+  section: string;
+  campus: string;
+  guardianName: string;
+  guardianPhone: string;
+  createdAt: string;
+  assessmentPct: number | null;
+  docs: { uploaded: number; total: number };
+  feeDue: number;
+  nextAction: string;
+};
+
+export type AdmissionList = {
+  items: AdmissionRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  years: { id: string; name: string; current: boolean }[];
+  campuses: { id: string; name: string }[];
+  classes: { id: string; name: string; section: string; yearId: string; campusId: string | null }[];
+};
+
+export type AdmissionSummary = {
+  total: number;
+  open: number;
+  draft: number;
+  submitted: number;
+  underReview: number;
+  assessmentPending: number;
+  interviewPending: number;
+  accepted: number;
+  feePending: number;
+  documentsPending: number;
+  waitlisted: number;
+  rejected: number;
+  confirmed: number;
+  withdrawn: number;
+};
+
+export type AdmissionDetail = {
+  id: string;
+  applicationNo: string;
+  status: AdmissionStatus;
+  firstName: string;
+  lastName: string;
+  middleName: string;
+  gender: string;
+  dateOfBirth?: string | null;
+  cnic: string;
+  bloodGroup: string;
+  nationality: string;
+  address: string;
+  photoUrl: string;
+  extra: Record<string, string>;
+  yearId: string | null;
+  campusId: string | null;
+  className: string;
+  section: string;
+  targetClassId: string | null;
+  studentType: string;
+  previousSchool: string;
+  previousClass: string;
+  previousYear: string;
+  previousResult: string;
+  previousPct: string;
+  transferNotes: string;
+  guardianId: string | null;
+  studentId: string | null;
+  family: Record<string, string>;
+  assessmentMode: "NONE" | "TEST" | "INTERVIEW" | "BOTH";
+  interviewAt?: string | null;
+  interviewer: string;
+  interviewNotes: string;
+  recommendation: string;
+  decisionNote: string;
+  submittedAt?: string | null;
+  guardian: Guardian | null;
+  campus: { id: string; name: string } | null;
+  year: { id: string; name: string } | null;
+  targetClass: { id: string; name: string; section: string } | null;
+  student: { id: string; admissionNo: string } | null;
+  scores: { id: string; subject: string; maxMarks: number; obtainedMarks: number; pct: number }[];
+  assessmentPct: number | null;
+  documents: { id: string; kind: string; label: string; required: boolean; url: string }[];
+  invoices: { id: string; name: string; amountPkr: number; paidPkr: number; status: string; dueOn: string; receiptId: string | null }[];
+  blockers: string[];
+  nextAction: string;
+  feeItems: { id: string; name: string; amountPkr: number }[];
+  classes: { id: string; name: string; section: string; yearId: string; campusId: string | null; yearName: string; campusName: string }[];
+  campuses: { id: string; name: string }[];
+  years: { id: string; name: string; current: boolean }[];
+};
+
+export type DuplicateMatch = {
+  kind: string;
+  reason: string;
+  student?: { id: string; admissionNo: string; firstName: string; lastName: string };
+  application?: { id: string; applicationNo: string; firstName: string; lastName: string; status: string };
 };
 
 export type Payment = {
@@ -400,7 +583,7 @@ export type Setup = {
     setupStep: number;
     profile: Record<string, unknown> | null;
     media: { kind: string; url: string }[];
-  };
+  } | null;
   campus: { id: string; name: string; address: string; phone: string; notes: string; principal: string; code: string; isMain: boolean } | null;
   campuses: { id: string; name: string; address: string; phone: string; principal: string; code: string; isMain: boolean }[];
   years: { id: string; name: string; startsOn: string; endsOn: string; current: boolean }[];

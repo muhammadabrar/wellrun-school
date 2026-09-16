@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { EmptyState, FetchingIndicator, Skeleton } from "@wellrun/ui";
+import { DatePicker } from "@/components/form/date-picker";
 import { useState } from "react";
 import { api } from "../lib/api";
 import { todayIso } from "../lib/format";
@@ -16,12 +17,9 @@ export function AbsentPage() {
   return (
     <div>
       <h1 className="font-display text-4xl">Absent list</h1>
-      <input
-        type="date"
-        value={date}
-        onChange={(e) => setDate(e.target.value)}
-        className="mt-6 h-11 rounded-xl border border-line bg-surface px-3"
-      />
+      <div className="mt-6 max-w-xs">
+        <DatePicker value={date} onChange={(value) => value && setDate(value)} />
+      </div>
       <FetchingIndicator show={isFetching && Boolean(rows)} label="Updating absences" />
       <div className="mt-6 overflow-hidden rounded-3xl bg-surface">
         {isPending && !rows ? (
@@ -40,7 +38,7 @@ export function AbsentPage() {
                 <p className="font-medium">
                   {row.student.firstName} {row.student.lastName}
                 </p>
-                <p className="text-sm text-muted">
+                <p className="text-sm text-muted-foreground">
                   {row.class.name} {row.class.section}
                 </p>
               </div>

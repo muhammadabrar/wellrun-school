@@ -9,7 +9,7 @@ export class FeesService {
   invoices(schoolId: string) {
     return this.prisma.invoice.findMany({
       where: { schoolId },
-      include: { student: true, feePlan: true, payments: true },
+      include: { student: true, feePlan: true, payments: true, application: true },
       orderBy: { dueOn: "desc" },
     });
   }
@@ -41,9 +41,28 @@ export class FeesService {
           method: input.method,
           receiptNo,
         },
-        include: { invoice: { include: { student: true, feePlan: true } } },
+        include: { invoice: { include: { student: true, feePlan: true, application: true } } },
       });
       await tx.invoice.update({ where: { id: invoice.id }, data: { status } });
+      if (invoice.applicationId && status === "PAID") {
+        const application = await tx.admissionApplication.findFirst({
+          where: { id: invoice.applicationId },
+          include: { invoices: { include: { payments: true } } },
+        });
+        if (application && ["FEE_PENDING", "ACCEPTED", "DOCUMENTS_PENDING"].includes(application.status)) {
+          const remaining = application.invoices.reduce((sum, row) => {
+            if (row.status === "VOID" || row.status === "DRAFT") return sum;
+            const paidAmount = row.payments.reduce((total, item) => total + item.amountPkr, 0);
+            return sum + Math.max(row.amountPkr - paidAmount, 0);
+          }, 0);
+          if (remaining <= 0) {
+            await tx.admissionApplication.update({
+              where: { id: application.id },
+              data: { status: "DOCUMENTS_PENDING" },
+            });
+          }
+        }
+      }
       return payment;
     });
   }

@@ -27,29 +27,31 @@ export function ReceiptPage() {
       <article className="mt-4 rounded-3xl bg-surface p-10 shadow-[0_12px_40px_rgba(22,22,29,0.06)]">
         <BrandLogo />
         <h1 className="mt-2 font-display text-3xl">{copy.console.receipt}</h1>
-        <p className="mt-1 text-muted">{payment.school?.name}</p>
+        <p className="mt-1 text-muted-foreground">{payment.school?.name}</p>
         <dl className="mt-8 grid grid-cols-2 gap-4 text-sm">
           <div>
-            <dt className="text-muted">Receipt</dt>
+            <dt className="text-muted-foreground">Receipt</dt>
             <dd className="font-medium">{payment.receiptNo}</dd>
           </div>
           <div>
-            <dt className="text-muted">Date</dt>
+            <dt className="text-muted-foreground">Date</dt>
             <dd>{new Date(payment.paidAt).toLocaleDateString("en-PK")}</dd>
           </div>
           <div>
-            <dt className="text-muted">Student</dt>
+            <dt className="text-muted-foreground">Student</dt>
             <dd>
-              {student.firstName} {student.lastName} ({student.admissionNo})
+              {student
+                ? `${student.firstName} ${student.lastName} (${student.admissionNo})`
+                : "Admission applicant"}
             </dd>
           </div>
           <div>
-            <dt className="text-muted">For</dt>
+            <dt className="text-muted-foreground">For</dt>
             <dd>{payment.invoice.feePlan.name}</dd>
           </div>
         </dl>
         <p className="mt-8 font-display text-4xl">{pkr(payment.amountPkr)}</p>
-        <p className="mt-2 text-sm text-muted">Received by cash. Keep this receipt for school records.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Received by cash. Keep this receipt for school records.</p>
       </article>
     </div>
   );

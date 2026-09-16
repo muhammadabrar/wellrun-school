@@ -1,5 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, LoadingState } from "@wellrun/ui";
+import { LoadingState } from "@wellrun/ui";
+import { Button } from "@/components/ui/button";
+import { FormSelect } from "@/components/form/form-select";
+import { Input } from "@/components/ui/input";
 import { CLASS_TEMPLATE_LABELS, SUBJECT_TEMPLATES, type ClassTemplateId } from "@wellrun/shared";
 import { FormEvent, useState } from "react";
 import { api } from "../lib/api";
@@ -75,7 +78,7 @@ export function AcademicsPage() {
   return (
     <div className="max-w-4xl">
       <h1 className="font-display text-4xl">Classes & subjects</h1>
-      <p className="mt-2 text-sm text-muted">Rename grades, add sections, and keep a simple subject list.</p>
+      <p className="mt-2 text-sm text-muted-foreground">Rename grades, add sections, and keep a simple subject list.</p>
       {error ? <p className="mt-4 text-sm text-danger">{error}</p> : null}
       {message ? <p className="mt-4 text-sm text-indigo">{message}</p> : null}
 
@@ -84,9 +87,8 @@ export function AcademicsPage() {
         <ul className="mt-4 space-y-3">
           {[...grouped.entries()].map(([name, rows]) => (
             <li key={name} className="rounded-2xl bg-paper px-3 py-3">
-              <input
+              <Input
                 defaultValue={name}
-                className="h-10 w-full rounded-xl border border-line px-3"
                 onBlur={(event) => {
                   const next = event.target.value.trim();
                   if (!next || next === name) return;
@@ -107,8 +109,8 @@ export function AcademicsPage() {
           ))}
         </ul>
         <form onSubmit={onClass} className="mt-4 flex gap-2">
-          <input name="name" required placeholder="Class title" className="h-11 flex-1 rounded-xl border border-line px-3" />
-          <input name="section" placeholder="A" className="h-11 w-20 rounded-xl border border-line px-3" />
+          <Input name="name" required placeholder="Class title" className="flex-1" />
+          <Input name="section" placeholder="A" className="w-20" />
           <Button type="submit" loading={busy === "class"}>
             Add class
           </Button>
@@ -119,28 +121,24 @@ export function AcademicsPage() {
         <h2 className="font-display text-xl">Subjects</h2>
         <label className="mt-4 block text-sm font-medium">
           Load template
-          <select
-            defaultValue=""
-            className="mt-2 h-11 w-full rounded-xl border border-line px-3"
-            onChange={(event) => {
-              const template = event.target.value as ClassTemplateId;
+          <FormSelect
+            placeholder="Choose a template"
+            onValueChange={(value) => {
+              const template = value as ClassTemplateId;
               if (!template) return;
-            void api
-              .applySubjects({ template })
-              .then(async () => {
-                setMessage(`${CLASS_TEMPLATE_LABELS[template]} subjects loaded.`);
-                await reload();
-              })
+              void api
+                .applySubjects({ template })
+                .then(async () => {
+                  setMessage(`${CLASS_TEMPLATE_LABELS[template]} subjects loaded.`);
+                  await reload();
+                })
                 .catch((err) => setError(err instanceof Error ? err.message : "Could not load subjects"));
             }}
-          >
-            <option value="">Choose a template</option>
-            {(Object.keys(SUBJECT_TEMPLATES) as ClassTemplateId[]).map((id) => (
-              <option key={id} value={id}>
-                {CLASS_TEMPLATE_LABELS[id]}
-              </option>
-            ))}
-          </select>
+            options={(Object.keys(SUBJECT_TEMPLATES) as ClassTemplateId[]).map((id) => ({
+              value: id,
+              label: CLASS_TEMPLATE_LABELS[id],
+            }))}
+          />
         </label>
         <form
           className="mt-4 flex gap-2"
@@ -158,8 +156,8 @@ export function AcademicsPage() {
               .finally(() => setBusy(null));
           }}
         >
-          <input name="name" required placeholder="Add subject" className="h-11 flex-1 rounded-xl border border-line px-3" />
-          <Button type="submit" variant="ink" loading={busy === "subject"}>
+          <Input name="name" required placeholder="Add subject" className="flex-1" />
+          <Button type="submit" variant="secondary" loading={busy === "subject"}>
             Add
           </Button>
         </form>
@@ -171,7 +169,7 @@ export function AcademicsPage() {
               </li>
             ))
           ) : (
-            <li className="px-4 py-3 text-sm text-muted">No subjects yet. Choose a template or add one.</li>
+            <li className="px-4 py-3 text-sm text-muted-foreground">No subjects yet. Choose a template or add one.</li>
           )}
         </ul>
       </section>

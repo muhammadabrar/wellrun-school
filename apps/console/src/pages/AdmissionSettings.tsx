@@ -1,10 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, LoadingState } from "@wellrun/ui";
+import { LoadingState } from "@wellrun/ui";
+import { Button } from "@/components/ui/button";
 import { normalizeAdmissionFields } from "@wellrun/shared";
 import { Save, Upload } from "lucide-react";
 import { useState } from "react";
 import { AdmissionFieldsEditor } from "../components/AdmissionFieldsEditor";
 import { FileUpload } from "../components/FileUpload";
+import { FormSelect } from "@/components/form/form-select";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { api, type AdmissionField } from "../lib/api";
 import { queryKeys } from "../lib/query";
 import { parseImportFile } from "../lib/setup-helpers";
@@ -32,7 +35,7 @@ export function AdmissionSettingsPage() {
   return (
     <div className="max-w-4xl">
       <h1 className="font-display text-4xl">Admission settings</h1>
-      <p className="mt-2 text-sm text-muted">
+      <p className="mt-2 text-sm text-muted-foreground">
         Manage the campus admission form. Locked fields stay. Roll number and admission dates are set in the background.
       </p>
       {error ? <p className="mt-4 text-sm text-danger">{error}</p> : null}
@@ -70,7 +73,7 @@ export function AdmissionSettingsPage() {
 
       <section className="mt-6 rounded-3xl bg-surface p-6">
         <h2 className="font-display text-xl">Import students</h2>
-        <div className="mt-2 space-y-2 text-sm text-muted">
+        <div className="mt-2 space-y-2 text-sm text-muted-foreground">
           <p>Upload a CSV, Excel, or JSON file of existing students.</p>
           <p>Match each form field to a column. Skip anything that is not in the file.</p>
         </div>
@@ -101,25 +104,21 @@ export function AdmissionSettingsPage() {
         {importHeaders.length ? (
           <div className="mt-4 grid grid-cols-2 gap-2">
             {fields.map((field) => (
-              <label key={field.key} className="text-sm">
-                {field.label}
-                <select
-                  value={mapping[field.key] ?? ""}
-                  onChange={(event) => setMapping((current) => ({ ...current, [field.key]: event.target.value }))}
-                  className="mt-1 h-10 w-full rounded-xl border border-line px-3"
-                >
-                  <option value="">Skip</option>
-                  {importHeaders.map((header) => (
-                    <option key={header} value={header}>
-                      {header}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <Field key={field.key}>
+                <FieldLabel>{field.label}</FieldLabel>
+                <FormSelect
+                  value={mapping[field.key] || "skip"}
+                  onValueChange={(value) => setMapping((current) => ({ ...current, [field.key]: value === "skip" || !value ? "" : value }))}
+                  options={[
+                    { value: "skip", label: "Skip" },
+                    ...importHeaders.map((header) => ({ value: header, label: header })),
+                  ]}
+                />
+              </Field>
             ))}
             <Button
               type="button"
-              variant="ink"
+              variant="secondary"
               className="col-span-2"
               loading={importing}
               icon={<Upload size={18} />}

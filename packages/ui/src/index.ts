@@ -1,6 +1,10 @@
+export { Badge } from "./Badge";
 export { BrandLogo } from "./BrandLogo";
 export { Button } from "./Button";
+export { Dialog } from "./Dialog";
 export { FetchingIndicator } from "./FetchingIndicator";
 export { EmptyState, ErrorState } from "./States";
 export { LoadingState, Skeleton } from "./LoadingState";
+export { PageHeader } from "./PageHeader";
 export { Spinner } from "./Spinner";
+export { TabPanel, Tabs } from "./Tabs";

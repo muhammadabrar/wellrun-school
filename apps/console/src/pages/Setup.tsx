@@ -7,14 +7,19 @@ import {
   normalizeAdmissionFields,
   type ClassTemplateId,
 } from "@wellrun/shared";
-import { BrandLogo, Button, ErrorState, LoadingState } from "@wellrun/ui";
+import { BrandLogo, ErrorState, LoadingState } from "@wellrun/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { AdmissionFieldsEditor } from "../components/AdmissionFieldsEditor";
 import { FileUpload } from "../components/FileUpload";
-import { api, currentUser, type AdmissionField, type Setup } from "../lib/api";
+import { DatePicker } from "@/components/form/date-picker";
+import { FormSelect } from "@/components/form/form-select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ApiError } from "../lib/query";
+import { api, currentUser, setSession, type AdmissionField, type Setup } from "../lib/api";
 import { queryKeys } from "../lib/query";
 import { fileToDataUrl, nextSection, parseImportFile } from "../lib/setup-helpers";
 
@@ -55,6 +60,7 @@ export function SetupPage() {
   const [saving, setSaving] = useState(false);
 
   function applySetup(next: Setup, syncStep = false) {
+    if (!next.school) return;
     if (syncStep && !next.school.setupCompleted) setStep(Math.min(next.school.setupStep || 1, 9));
     const form = next.admissionForms[0];
     setFields(normalizeAdmissionFields(form?.fields?.length ? form.fields : next.templates.admissionFields));
@@ -96,12 +102,26 @@ export function SetupPage() {
 
   if (!data) {
     if (isError) {
+      const expired = queryError instanceof ApiError && queryError.status === 401;
       return (
         <main className="flex min-h-dvh items-center justify-center px-6">
           <ErrorState
-            title="Could not load setup"
-            description={queryError instanceof Error ? queryError.message : "Try again to continue school setup."}
-            onRetry={() => void refetch()}
+            title={expired ? "Sign in again" : "Could not load setup"}
+            description={
+              expired
+                ? "This session is from before the database was replaced. Sign in with the seeded school admin."
+                : queryError instanceof Error
+                  ? queryError.message
+                  : "Try again to continue school setup."
+            }
+            onRetry={() => {
+              if (expired) {
+                setSession(null);
+                navigate("/login", { replace: true });
+                return;
+              }
+              void refetch();
+            }}
           />
         </main>
       );
@@ -112,6 +132,20 @@ export function SetupPage() {
         <div className="mt-8">
           <LoadingState variant="form" />
         </div>
+      </main>
+    );
+  }
+  if (!data.school) {
+    return (
+      <main className="flex min-h-dvh items-center justify-center px-6">
+        <ErrorState
+          title="School not found"
+          description="This session belongs to a previous database. Sign in again after seeding."
+          onRetry={() => {
+            setSession(null);
+            navigate("/login", { replace: true });
+          }}
+        />
       </main>
     );
   }
@@ -126,7 +160,7 @@ export function SetupPage() {
       <div className="mx-auto max-w-4xl">
         <BrandLogo size="md" />
         <h1 className="mt-2 font-display text-4xl">Set up your school</h1>
-        <p className="mt-2 text-sm text-muted">Finish these steps once. After that you manage everything from the dashboard.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Finish these steps once. After that you manage everything from the dashboard.</p>
         <ol className="mt-6 flex flex-wrap gap-2">
           {STEPS.map((label, index) => (
             <li key={label}>
@@ -173,13 +207,11 @@ export function SetupPage() {
             <Field name="name" label="Institute title" defaultValue={data.school.name} required />
             <label className="block text-sm font-medium">
               Type
-              <select name="type" defaultValue={data.school.type} className="mt-2 h-11 w-full rounded-xl border border-line px-3">
-                {INSTITUTE_TYPES.map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
+              <FormSelect
+                name="type"
+                defaultValue={data.school.type}
+                options={INSTITUTE_TYPES.map((type) => ({ value: type.id, label: type.label }))}
+              />
             </label>
             <Field name="educationLevel" label="Education level" defaultValue={data.school.educationLevel} placeholder="Primary, secondary…" />
             <Field name="registrationNo" label="Registration number" defaultValue={data.school.registrationNo} />
@@ -190,14 +222,12 @@ export function SetupPage() {
             <Field name="city" label="City" defaultValue={data.school.city} required />
             <label className="block text-sm font-medium">
               Province
-              <select name="province" defaultValue={data.school.province} className="mt-2 h-11 w-full rounded-xl border border-line px-3">
-                <option value="">Select</option>
-                {PROVINCES.map((province) => (
-                  <option key={province} value={province}>
-                    {province}
-                  </option>
-                ))}
-              </select>
+              <FormSelect
+                name="province"
+                defaultValue={data.school.province || undefined}
+                placeholder="Select"
+                options={PROVINCES.map((province) => ({ value: province, label: province }))}
+              />
             </label>
             <Field name="country" label="Country" defaultValue={data.school.country || "Pakistan"} />
             <div className="col-span-2 grid grid-cols-2 gap-3">
@@ -253,7 +283,7 @@ export function SetupPage() {
               });
             }}
           >
-            <p className="col-span-2 text-sm text-muted">Copied from the organization profile. You can add more campuses later from Campus settings.</p>
+            <p className="col-span-2 text-sm text-muted-foreground">Copied from the organization profile. You can add more campuses later from Campus settings.</p>
             <Field name="name" label="Campus name" defaultValue={data.campus?.name || data.school.name} required />
             <Field name="code" label="Campus code" defaultValue={data.campus?.code || "MAIN"} />
             <Field name="address" label="Address" defaultValue={data.campus?.address || data.school.address} />
@@ -283,15 +313,21 @@ export function SetupPage() {
               });
             }}
           >
-            <p className="text-sm text-muted">Current years: {data.years.map((y) => y.name).join(", ") || "none yet"}</p>
+            <p className="text-sm text-muted-foreground">Current years: {data.years.map((y) => y.name).join(", ") || "none yet"}</p>
             <Field name="name" label="Academic year" defaultValue="2026-27" required />
-            <Field name="startsOn" label="Starts" type="date" defaultValue="2026-04-01" required />
-            <Field name="endsOn" label="Ends" type="date" defaultValue="2027-03-31" required />
+            <label className="block text-sm font-medium">
+              Starts
+              <DatePicker name="startsOn" defaultValue="2026-04-01" required />
+            </label>
+            <label className="block text-sm font-medium">
+              Ends
+              <DatePicker name="endsOn" defaultValue="2027-03-31" required />
+            </label>
             <Button type="submit" loading={saving}>
               {data.years.length ? "Update year" : "Save year"}
             </Button>
             {data.years.length ? (
-              <Button type="button" variant="secondary" onClick={() => setStep(4)}>
+              <Button type="button" variant="outline" onClick={() => setStep(4)}>
                 Continue with current year
               </Button>
             ) : null}
@@ -301,7 +337,7 @@ export function SetupPage() {
         {step === 4 ? (
           <section className="mt-8 rounded-3xl bg-surface p-6">
             <h2 className="font-display text-xl">Select academic template</h2>
-            <p className="mt-2 text-sm text-muted">Start from a template, then rename grades and add sections.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Start from a template, then rename grades and add sections.</p>
             <div className="mt-4 grid grid-cols-4 gap-2">
               {(Object.keys(CLASS_TEMPLATES) as ClassTemplateId[]).map((id) => (
                 <button
@@ -388,18 +424,18 @@ export function SetupPage() {
               >
                 Create selected classes
               </Button>
-              <Button type="button" variant="secondary" onClick={() => setStep(5)}>
+              <Button type="button" variant="outline" onClick={() => setStep(5)}>
                 Skip
               </Button>
             </div>
-            {data.classes.length ? <p className="mt-4 text-sm text-muted">{data.classes.length} classes already created.</p> : null}
+            {data.classes.length ? <p className="mt-4 text-sm text-muted-foreground">{data.classes.length} classes already created.</p> : null}
           </section>
         ) : null}
 
         {step === 5 ? (
           <section className="mt-8 rounded-3xl bg-surface p-6">
             <h2 className="font-display text-xl">Create staff / teacher</h2>
-            <p className="mt-2 text-sm text-muted">Add one or two people now. Full staff records live on the Staff page after setup.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Add one or two people now. Full staff records live on the Staff page after setup.</p>
             <form
               className="mt-4 grid grid-cols-2 gap-3"
               onSubmit={(event) => {
@@ -430,7 +466,7 @@ export function SetupPage() {
               <Button type="button" onClick={() => setStep(6)}>
                 Continue
               </Button>
-              <Button type="button" variant="secondary" onClick={() => setStep(6)}>
+              <Button type="button" variant="outline" onClick={() => setStep(6)}>
                 Skip
               </Button>
             </div>
@@ -440,13 +476,15 @@ export function SetupPage() {
         {step === 6 ? (
           <section className="mt-8 rounded-3xl bg-surface p-6">
             <h2 className="font-display text-xl">Subject library</h2>
-            <p className="mt-2 text-sm text-muted">Load a subject list from a template, then add or keep the names you need. You can attach subjects to classes later.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Load a subject list from a template, then add or keep the names you need. You can attach subjects to classes later.</p>
             <label className="mt-4 block text-sm font-medium">
               Subject template
-              <select
-                value={subjectTemplate}
-                onChange={(event) => {
-                  const id = event.target.value as ClassTemplateId;
+              <FormSelect
+                value={subjectTemplate || undefined}
+                placeholder="Choose a template"
+                onValueChange={(value) => {
+                  const id = value as ClassTemplateId;
+                  if (!id) return;
                   setSubjectTemplate(id);
                   void run(async () => {
                     await api.applySubjects({ template: id });
@@ -454,15 +492,11 @@ export function SetupPage() {
                     setMessage(`${CLASS_TEMPLATE_LABELS[id]} subjects loaded.`);
                   });
                 }}
-                className="mt-2 h-11 w-full rounded-xl border border-line px-3"
-              >
-                <option value="">Choose a template</option>
-                {(Object.keys(SUBJECT_TEMPLATES) as ClassTemplateId[]).map((id) => (
-                  <option key={id} value={id}>
-                    {CLASS_TEMPLATE_LABELS[id]}
-                  </option>
-                ))}
-              </select>
+                options={(Object.keys(SUBJECT_TEMPLATES) as ClassTemplateId[]).map((id) => ({
+                  value: id,
+                  label: CLASS_TEMPLATE_LABELS[id],
+                }))}
+              />
             </label>
             <form
               className="mt-4 flex gap-2"
@@ -477,8 +511,8 @@ export function SetupPage() {
                 });
               }}
             >
-              <input name="name" required placeholder="Add subject" className="h-11 flex-1 rounded-xl border border-line px-3" />
-              <Button type="submit" variant="ink" loading={saving}>
+              <Input name="name" required placeholder="Add subject" className="flex-1" />
+              <Button type="submit" variant="secondary" loading={saving}>
                 Add
               </Button>
             </form>
@@ -490,14 +524,14 @@ export function SetupPage() {
                   </li>
                 ))
               ) : (
-                <li className="px-4 py-3 text-sm text-muted">No subjects yet. Choose a template or add one.</li>
+                <li className="px-4 py-3 text-sm text-muted-foreground">No subjects yet. Choose a template or add one.</li>
               )}
             </ul>
             <div className="mt-6 flex gap-2">
               <Button type="button" onClick={() => setStep(7)}>
                 Continue
               </Button>
-              <Button type="button" variant="secondary" onClick={() => setStep(7)}>
+              <Button type="button" variant="outline" onClick={() => setStep(7)}>
                 Skip
               </Button>
             </div>
@@ -507,7 +541,7 @@ export function SetupPage() {
         {step === 7 ? (
           <section className="mt-8 rounded-3xl bg-surface p-6">
             <h2 className="font-display text-xl">Admission form</h2>
-            <p className="mt-2 text-sm text-muted">
+            <p className="mt-2 text-sm text-muted-foreground">
               Guardian and student required fields stay on the form. Roll number and admission dates are assigned automatically later.
             </p>
             <div className="mt-5">
@@ -527,7 +561,7 @@ export function SetupPage() {
               >
                 Save and continue
               </Button>
-              <Button type="button" variant="secondary" onClick={() => setStep(8)}>
+              <Button type="button" variant="outline" onClick={() => setStep(8)}>
                 Skip
               </Button>
             </div>
@@ -537,7 +571,7 @@ export function SetupPage() {
         {step === 8 ? (
           <section className="mt-8 rounded-3xl bg-surface p-6">
             <h2 className="font-display text-xl">Import existing students</h2>
-            <div className="mt-3 space-y-2 text-sm text-muted">
+            <div className="mt-3 space-y-2 text-sm text-muted-foreground">
               <p>Use this if the school already has a student list. You can skip and add students later from the Students page.</p>
               <p>1. Export or save the list as CSV, Excel, or JSON.</p>
               <p>2. Upload the file. We read the first sheet or the column headers.</p>
@@ -569,25 +603,21 @@ export function SetupPage() {
             {importHeaders.length ? (
               <div className="mt-4 grid grid-cols-2 gap-2">
                 {fields.map((field) => (
-                  <label key={field.key} className="text-sm">
+                  <label key={field.key} className="text-sm font-medium">
                     {field.label}
-                    <select
-                      value={mapping[field.key] ?? ""}
-                      onChange={(e) => setMapping((m) => ({ ...m, [field.key]: e.target.value }))}
-                      className="mt-1 h-10 w-full rounded-xl border border-line px-3"
-                    >
-                      <option value="">Skip</option>
-                      {importHeaders.map((header) => (
-                        <option key={header} value={header}>
-                          {header}
-                        </option>
-                      ))}
-                    </select>
+                    <FormSelect
+                      value={mapping[field.key] || "skip"}
+                      onValueChange={(value) => setMapping((m) => ({ ...m, [field.key]: value === "skip" || !value ? "" : value }))}
+                      options={[
+                        { value: "skip", label: "Skip" },
+                        ...importHeaders.map((header) => ({ value: header, label: header })),
+                      ]}
+                    />
                   </label>
                 ))}
                 <Button
                   type="button"
-                  variant="ink"
+                  variant="secondary"
                   className="col-span-2"
                   loading={saving}
                   onClick={() =>
@@ -605,7 +635,7 @@ export function SetupPage() {
               <Button type="button" onClick={() => setStep(9)}>
                 Continue
               </Button>
-              <Button type="button" variant="secondary" onClick={() => setStep(9)}>
+              <Button type="button" variant="outline" onClick={() => setStep(9)}>
                 Skip
               </Button>
             </div>
@@ -615,7 +645,7 @@ export function SetupPage() {
         {step === 9 ? (
           <section className="mt-8 rounded-3xl bg-surface p-6">
             <h2 className="font-display text-xl">Fee structure</h2>
-            <p className="mt-2 text-sm text-muted">Edit amounts, remove a fee, or add picnic / event fees. You can finish this later from Fee structure.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Edit amounts, remove a fee, or add picnic / event fees. You can finish this later from Fee structure.</p>
             <ul className="mt-4 space-y-2">
               {feeItems.map((item, index) => (
                 <li key={`${item.name}-${index}`} className="flex items-center gap-2">
@@ -662,7 +692,7 @@ export function SetupPage() {
               </Button>
               <Button
                 type="button"
-                variant="secondary"
+                variant="outline"
                 loading={saving}
                 onClick={() =>
                   void run(async () => {
@@ -700,14 +730,13 @@ function Field({
   return (
     <label className="block text-sm font-medium">
       {label}
-      <input
-        name={name}
-        type={type}
-        required={required}
-        defaultValue={defaultValue}
-        placeholder={placeholder}
-        className="mt-2 h-11 w-full rounded-xl border border-line px-3"
-      />
+      <span className="mt-2 block">
+        {type === "date" ? (
+          <DatePicker name={name} defaultValue={defaultValue} required={required} />
+        ) : (
+          <Input name={name} required={required} defaultValue={defaultValue} placeholder={placeholder} />
+        )}
+      </span>
     </label>
   );
 }

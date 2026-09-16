@@ -31,7 +31,7 @@ export function DashboardPage() {
 
   return (
     <div>
-      <p className="text-sm text-muted">{data.schoolName}</p>
+      <p className="text-sm text-muted-foreground">{data.schoolName}</p>
       <h1 className="mt-1 font-display text-4xl">{copy.console.dashboard}</h1>
       <FetchingIndicator show={isFetching && !isPending} label="Updating totals" />
       <div className="mt-8 grid grid-cols-3 gap-4">
@@ -45,7 +45,7 @@ export function DashboardPage() {
           Rs. <NumberPop value={data.outstanding} />
         </Card>
       </div>
-      <p className="mt-6 text-sm text-muted">
+      <p className="mt-6 text-sm text-muted-foreground">
         {data.invoiceCount} fee invoices this term. Open Fees to record a payment and print a receipt.
       </p>
     </div>
@@ -55,7 +55,7 @@ export function DashboardPage() {
 function Card({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="rounded-3xl bg-surface p-6 shadow-[0_12px_40px_rgba(22,22,29,0.06)]">
-      <p className="text-sm text-muted">{label}</p>
+      <p className="text-sm text-muted-foreground">{label}</p>
       <p className="mt-3 font-display text-3xl">{children}</p>
     </div>
   );

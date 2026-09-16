@@ -52,6 +52,7 @@ export class SetupService {
         include: { user: { select: { id: true, name: true, email: true } }, campus: true },
       }),
     ]);
+    if (!school) throw new NotFoundException("School not found. Sign in again after seeding.");
     const campus = campuses.find((c) => c.isMain) ?? campuses[0] ?? null;
     return {
       school,
@@ -80,9 +81,10 @@ export class SetupService {
       where: { id: schoolId },
       select: { setupCompleted: true, setupStep: true },
     });
+    if (!school) throw new NotFoundException("School not found. Sign in again after seeding.");
     return {
-      setupCompleted: school?.setupCompleted ?? false,
-      setupStep: school?.setupStep ?? 1,
+      setupCompleted: school.setupCompleted,
+      setupStep: school.setupStep,
     };
   }
 
@@ -552,7 +554,7 @@ export class SetupService {
       });
       if (cls) {
         await this.prisma.enrollment.create({
-          data: { schoolId, studentId: student.id, classId: cls.id, active: true },
+          data: { schoolId, studentId: student.id, classId: cls.id, active: true, rollNo: student.rollNo, status: "active" },
         });
       }
       if (get("guardianName") && get("guardianPhone")) {

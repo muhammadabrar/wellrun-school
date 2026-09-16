@@ -1,5 +1,8 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Button, EmptyState, FetchingIndicator, Skeleton } from "@wellrun/ui";
+import { EmptyState, FetchingIndicator, Skeleton } from "@wellrun/ui";
+import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/form/date-picker";
+import { FormSelect } from "@/components/form/form-select";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Toast } from "../components/motion";
@@ -75,29 +78,23 @@ export function AttendancePage() {
           Today’s absent list
         </Link>
       </div>
-      <div className="mt-6 flex gap-3">
-        <select
-          value={resolvedClassId}
-          onChange={(e) => {
-            setClassId(e.target.value);
+      <div className="mt-6 flex flex-wrap items-end gap-3">
+        <FormSelect
+          value={resolvedClassId || undefined}
+          onValueChange={(value) => {
+            setClassId(value ?? "");
             setDraft(null);
           }}
-          className="h-11 rounded-xl border border-line bg-surface px-3"
-        >
-          {classes.map((cls) => (
-            <option key={cls.id} value={cls.id}>
-              {cls.name} {cls.section}
-            </option>
-          ))}
-        </select>
-        <input
-          type="date"
+          options={classes.map((cls) => ({ value: cls.id, label: `${cls.name} ${cls.section}` }))}
+          placeholder="Select class"
+        />
+        <DatePicker
           value={date}
-          onChange={(e) => {
-            setDate(e.target.value);
+          onChange={(value) => {
+            if (!value) return;
+            setDate(value);
             setDraft(null);
           }}
-          className="h-11 rounded-xl border border-line bg-surface px-3"
         />
         <Button type="button" loading={saving} onClick={() => void save()}>
           Save attendance
@@ -129,7 +126,7 @@ export function AttendancePage() {
               <p className="font-medium">
                 {student.firstName} {student.lastName}
               </p>
-              <p className="text-sm text-muted">{student.admissionNo}</p>
+              <p className="text-sm text-muted-foreground">{student.admissionNo}</p>
             </div>
             <div className="flex gap-2">
               {marks.map((mark) => (

@@ -7,10 +7,14 @@ import {
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { readCookie } from "../common/cookies";
+import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(@Inject(JwtService) private readonly jwt: JwtService) {}
+  constructor(
+    @Inject(JwtService) private readonly jwt: JwtService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+  ) {}
 
   async canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest();
@@ -20,9 +24,32 @@ export class AuthGuard implements CanActivate {
     const token = bearer ?? cookie;
     if (!token) throw new UnauthorizedException("Sign in required");
     try {
-      request.user = await this.jwt.verifyAsync(token);
+      const payload = await this.jwt.verifyAsync<{ id?: string }>(token);
+      if (!payload.id) throw new UnauthorizedException("Session expired");
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.id },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          schoolId: true,
+          disabled: true,
+          school: { select: { id: true } },
+        },
+      });
+      if (!user || user.disabled) throw new UnauthorizedException("Session expired");
+      if (user.schoolId && !user.school) throw new UnauthorizedException("Session expired");
+      request.user = {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        schoolId: user.schoolId,
+      };
       return true;
-    } catch {
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
       throw new UnauthorizedException("Session expired");
     }
   }

@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { join } from "path";
 import { AdminModule } from "./admin/admin.module";
 import { AiModule } from "./ai/ai.module";
+import { AdmissionsModule } from "./admissions/admissions.module";
 import { AttendanceModule } from "./attendance/attendance.module";
 import { AuthModule } from "./auth/auth.module";
 import { ClaimsModule } from "./claims/claims.module";
@@ -25,6 +26,7 @@ import { TimetableModule } from "./timetable/timetable.module";
     AuthModule,
     SchoolsModule,
     StudentsModule,
+    AdmissionsModule,
     AttendanceModule,
     FeesModule,
     DashboardModule,

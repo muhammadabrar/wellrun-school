@@ -1,6 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, LoadingState } from "@wellrun/ui";
+import { LoadingState, PageHeader } from "@wellrun/ui";
 import { FormEvent, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/query";
 
@@ -64,35 +68,80 @@ export function CampusesPage() {
 
   return (
     <div className="max-w-4xl">
-      <h1 className="font-display text-4xl">Campuses</h1>
-      <p className="mt-2 text-sm text-muted">The main campus was created during setup. Add branches here.</p>
-      {error ? <p className="mt-4 text-sm text-danger">{error}</p> : null}
-      {message ? <p className="mt-4 text-sm text-indigo">{message}</p> : null}
+      <PageHeader title="Campuses" description="The main campus was created during setup. Add branches here." />
+      {error ? <p className="mt-4 text-sm text-destructive">{error}</p> : null}
+      {message ? <p className="mt-4 text-sm text-primary">{message}</p> : null}
       <div className="mt-8 space-y-4">
         {data.campuses.map((campus) => (
-          <form key={campus.id} onSubmit={(event) => onEdit(campus.id, event)} className="grid grid-cols-2 gap-3 rounded-3xl bg-surface p-6">
-            <p className="col-span-2 text-sm text-muted">{campus.isMain ? "Main campus" : "Branch"}</p>
-            <input name="name" defaultValue={campus.name} required className="h-11 rounded-xl border border-line px-3" />
-            <input name="code" defaultValue={campus.code} className="h-11 rounded-xl border border-line px-3" />
-            <input name="address" defaultValue={campus.address} className="h-11 rounded-xl border border-line px-3" />
-            <input name="phone" defaultValue={campus.phone} className="h-11 rounded-xl border border-line px-3" />
-            <input name="principal" defaultValue={campus.principal} className="h-11 rounded-xl border border-line px-3" />
-            <Button type="submit" variant="secondary" loading={busy === campus.id}>
-              Save
-            </Button>
-          </form>
+          <Card key={campus.id}>
+            <CardHeader>
+              <CardDescription>{campus.isMain ? "Main campus" : "Branch"}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={(event) => onEdit(campus.id, event)}>
+                <FieldGroup className="grid grid-cols-2">
+                  <Field>
+                    <FieldLabel htmlFor={`${campus.id}-name`}>Name</FieldLabel>
+                    <Input id={`${campus.id}-name`} name="name" defaultValue={campus.name} required />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`${campus.id}-code`}>Code</FieldLabel>
+                    <Input id={`${campus.id}-code`} name="code" defaultValue={campus.code} />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`${campus.id}-address`}>Address</FieldLabel>
+                    <Input id={`${campus.id}-address`} name="address" defaultValue={campus.address} />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`${campus.id}-phone`}>Phone</FieldLabel>
+                    <Input id={`${campus.id}-phone`} name="phone" defaultValue={campus.phone} />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`${campus.id}-principal`}>Principal</FieldLabel>
+                    <Input id={`${campus.id}-principal`} name="principal" defaultValue={campus.principal} />
+                  </Field>
+                  <Button type="submit" variant="outline" loading={busy === campus.id}>
+                    Save
+                  </Button>
+                </FieldGroup>
+              </form>
+            </CardContent>
+          </Card>
         ))}
-        <form onSubmit={onAdd} className="grid grid-cols-2 gap-3 rounded-3xl bg-surface p-6">
-          <h2 className="col-span-2 font-display text-xl">Add campus</h2>
-          <input name="name" required placeholder="Campus name" className="h-11 rounded-xl border border-line px-3" />
-          <input name="code" placeholder="BRANCH" className="h-11 rounded-xl border border-line px-3" />
-          <input name="address" placeholder="Address" className="h-11 rounded-xl border border-line px-3" />
-          <input name="phone" placeholder="Phone" className="h-11 rounded-xl border border-line px-3" />
-          <input name="principal" placeholder="Principal" className="h-11 rounded-xl border border-line px-3" />
-          <Button type="submit" loading={busy === "add"} className="col-span-2">
-            Add campus
-          </Button>
-        </form>
+        <Card>
+          <CardHeader>
+            <CardTitle>Add campus</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={onAdd}>
+              <FieldGroup className="grid grid-cols-2">
+                <Field>
+                  <FieldLabel htmlFor="new-name">Campus name</FieldLabel>
+                  <Input id="new-name" name="name" required />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="new-code">Code</FieldLabel>
+                  <Input id="new-code" name="code" placeholder="BRANCH" />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="new-address">Address</FieldLabel>
+                  <Input id="new-address" name="address" />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="new-phone">Phone</FieldLabel>
+                  <Input id="new-phone" name="phone" />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="new-principal">Principal</FieldLabel>
+                  <Input id="new-principal" name="principal" />
+                </Field>
+                <Button type="submit" loading={busy === "add"} className="col-span-2">
+                  Add campus
+                </Button>
+              </FieldGroup>
+            </form>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

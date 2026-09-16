@@ -1,5 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, LoadingState } from "@wellrun/ui";
+import { LoadingState } from "@wellrun/ui";
+import { Button } from "@/components/ui/button";
+import { FormSelect } from "@/components/form/form-select";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Mail, UserPlus } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { api } from "../lib/api";
@@ -30,7 +34,7 @@ export function TeachersPage() {
         name: String(data.get("name")),
         title: String(data.get("title") || "Teacher"),
         email: String(data.get("email") || ""),
-        classId: String(data.get("classId") || "") || undefined,
+            classId: String(data.get("classId") || "") === "later" ? undefined : String(data.get("classId") || "") || undefined,
         subject: String(data.get("subject") || ""),
       });
       event.currentTarget.reset();
@@ -80,39 +84,68 @@ export function TeachersPage() {
     <div>
       <h1 className="font-display text-4xl">Staff</h1>
       <div className="mt-8 grid grid-cols-2 gap-4">
-        <form onSubmit={onStaff} className="rounded-3xl bg-surface p-6">
+        <form onSubmit={onStaff} className="rounded-xl bg-card p-6 ring-1 ring-foreground/10">
           <h2 className="font-display text-xl">Add teacher record</h2>
-          <input name="name" required placeholder="Name" className="mt-4 h-11 w-full rounded-xl border border-line px-3" />
-          <input name="title" placeholder="Title" defaultValue="Teacher" className="mt-3 h-11 w-full rounded-xl border border-line px-3" />
-          <input name="email" type="email" placeholder="Login email" className="mt-3 h-11 w-full rounded-xl border border-line px-3" />
-          <input name="subject" placeholder="Subject" className="mt-3 h-11 w-full rounded-xl border border-line px-3" />
-          <select name="classId" className="mt-3 h-11 w-full rounded-xl border border-line px-3">
-            <option value="">Assign class later</option>
-            {classes.map((cls) => (
-              <option key={cls.id} value={cls.id}>
-                {cls.name} {cls.section}
-              </option>
-            ))}
-          </select>
-          <Button type="submit" className="mt-4" loading={busy === "staff"} icon={<UserPlus size={18} />}>
-            Save teacher
-          </Button>
+          <FieldGroup className="mt-4">
+            <Field>
+              <FieldLabel htmlFor="staff-name">Name</FieldLabel>
+              <Input id="staff-name" name="name" required />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="staff-title">Title</FieldLabel>
+              <Input id="staff-title" name="title" defaultValue="Teacher" />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="staff-email">Login email</FieldLabel>
+              <Input id="staff-email" name="email" type="email" />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="staff-subject">Subject</FieldLabel>
+              <Input id="staff-subject" name="subject" />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="staff-class">Class</FieldLabel>
+              <FormSelect
+                id="staff-class"
+                name="classId"
+                placeholder="Assign class later"
+                options={[{ value: "later", label: "Assign class later" }, ...classes.map((cls) => ({ value: cls.id, label: `${cls.name} ${cls.section}` }))]}
+              />
+            </Field>
+            <Button type="submit" loading={busy === "staff"} icon={<UserPlus data-icon="inline-start" />}>
+              Save teacher
+            </Button>
+          </FieldGroup>
         </form>
-        <form onSubmit={onInvite} className="rounded-3xl bg-surface p-6">
+        <form onSubmit={onInvite} className="rounded-xl bg-card p-6 ring-1 ring-foreground/10">
           <h2 className="font-display text-xl">Invite login</h2>
-          <input name="name" placeholder="Name" className="mt-4 h-11 w-full rounded-xl border border-line px-3" />
-          <input name="email" type="email" required placeholder="Email" className="mt-3 h-11 w-full rounded-xl border border-line px-3" />
-          <select name="role" className="mt-3 h-11 w-full rounded-xl border border-line px-3">
-            <option value="TEACHER">Teacher</option>
-            <option value="SCHOOL_ADMIN">School admin</option>
-          </select>
-          {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
-          {inviteUrl ? (
-            <p className="mt-3 break-all text-sm text-indigo">{inviteUrl}</p>
-          ) : null}
-          <Button type="submit" variant="ink" className="mt-4" loading={busy === "invite"} icon={<Mail size={18} />}>
-            Create invite
-          </Button>
+          <FieldGroup className="mt-4">
+            <Field>
+              <FieldLabel htmlFor="invite-name">Name</FieldLabel>
+              <Input id="invite-name" name="name" />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="invite-email">Email</FieldLabel>
+              <Input id="invite-email" name="email" type="email" required />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="invite-role">Role</FieldLabel>
+              <FormSelect
+                id="invite-role"
+                name="role"
+                defaultValue="TEACHER"
+                options={[
+                  { value: "TEACHER", label: "Teacher" },
+                  { value: "SCHOOL_ADMIN", label: "School admin" },
+                ]}
+              />
+            </Field>
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            {inviteUrl ? <p className="break-all text-sm text-primary">{inviteUrl}</p> : null}
+            <Button type="submit" variant="secondary" loading={busy === "invite"} icon={<Mail data-icon="inline-start" />}>
+              Create invite
+            </Button>
+          </FieldGroup>
         </form>
       </div>
       <div className="mt-6 space-y-3">
@@ -120,7 +153,7 @@ export function TeachersPage() {
         {(staff ?? []).map((person) => (
           <section key={person.id} className="rounded-3xl bg-surface p-6">
             <p className="font-medium">{person.name}</p>
-            <p className="text-sm text-muted">
+            <p className="text-sm text-muted-foreground">
               {person.title} {person.email ? `· ${person.email}` : ""}
             </p>
             <p className="mt-2 text-sm">
@@ -128,22 +161,19 @@ export function TeachersPage() {
                 "No classes assigned"}
             </p>
             <form onSubmit={(e) => assign(person.id, e)} className="mt-3 flex gap-2">
-              <select name="classId" className="h-11 rounded-xl border border-line px-3">
-                {classes.map((cls) => (
-                  <option key={cls.id} value={cls.id}>
-                    {cls.name} {cls.section}
-                  </option>
-                ))}
-              </select>
-              <input name="subject" placeholder="Subject" className="h-11 rounded-xl border border-line px-3" />
-              <Button type="submit" variant="secondary" loading={busy === `assign-${person.id}`}>
+              <FormSelect
+                name="classId"
+                options={classes.map((cls) => ({ value: cls.id, label: `${cls.name} ${cls.section}` }))}
+              />
+              <Input name="subject" placeholder="Subject" />
+              <Button type="submit" variant="outline" loading={busy === `assign-${person.id}`}>
                 Assign
               </Button>
             </form>
           </section>
         ))}
       </div>
-      <p className="mt-6 text-sm text-muted">{invites.length} invite(s) sent.</p>
+      <p className="mt-6 text-sm text-muted-foreground">{invites.length} invite(s) sent.</p>
     </div>
   );
 }

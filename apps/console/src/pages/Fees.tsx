@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, EmptyState, LoadingState } from "@wellrun/ui";
+import { EmptyState, LoadingState } from "@wellrun/ui";
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { t } from "@wellrun/i18n";
@@ -43,7 +44,7 @@ export function FeesPage() {
       ) : (
         <div className="mt-8 overflow-hidden rounded-3xl bg-surface">
           <table className="w-full text-left">
-            <thead className="text-sm text-muted">
+            <thead className="text-sm text-muted-foreground">
               <tr>
                 <th className="px-5 py-3 font-medium">Student</th>
                 <th className="px-5 py-3 font-medium">Plan</th>
@@ -58,8 +59,14 @@ export function FeesPage() {
                 return (
                   <tr key={invoice.id} className="border-t border-line">
                     <td className="px-5 py-4">
-                      {invoice.student.firstName} {invoice.student.lastName}
-                      <span className="block text-sm text-muted">{invoice.student.admissionNo}</span>
+                      {invoice.student
+                        ? `${invoice.student.firstName} ${invoice.student.lastName}`
+                        : invoice.application
+                          ? `${invoice.application.firstName} ${invoice.application.lastName}`
+                          : "Applicant"}
+                      <span className="block text-sm text-muted-foreground">
+                        {invoice.student?.admissionNo ?? invoice.application?.applicationNo ?? ""}
+                      </span>
                     </td>
                     <td className="px-5 py-4">{invoice.feePlan.name}</td>
                     <td className="px-5 py-4">{pkr(invoice.amountPkr)}</td>

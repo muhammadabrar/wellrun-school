@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, FetchingIndicator, LoadingState } from "@wellrun/ui";
+import { FetchingIndicator, LoadingState } from "@wellrun/ui";
+import { Button } from "@/components/ui/button";
 import { FormEvent, useState } from "react";
 import { api, currentUser } from "../lib/api";
 import { queryKeys } from "../lib/query";
@@ -97,7 +98,7 @@ export function TimetablePage() {
         <table className="w-full min-w-[48rem] text-left text-sm">
           <thead>
             <tr>
-              <th className="px-4 py-3 text-muted">Period</th>
+              <th className="px-4 py-3 text-muted-foreground">Period</th>
               {days.map((day) => (
                 <th key={day.id} className="px-4 py-3">
                   {day.label}
@@ -110,7 +111,7 @@ export function TimetablePage() {
               <tr key={period.id} className="border-t border-line">
                 <th className="px-4 py-3 font-medium">
                   {period.label}
-                  <span className="block text-xs font-normal text-muted">
+                  <span className="block text-xs font-normal text-muted-foreground">
                     {period.startTime}–{period.endTime}
                   </span>
                 </th>
@@ -119,11 +120,11 @@ export function TimetablePage() {
                   return (
                     <td key={day.id} className="px-4 py-3">
                       {period.isBreak ? (
-                        <span className="text-muted">Break</span>
+                        <span className="text-muted-foreground">Break</span>
                       ) : lesson ? (
                         <span>
                           {lesson.subject}
-                          <span className="block text-xs text-muted">{lesson.staff?.name}</span>
+                          <span className="block text-xs text-muted-foreground">{lesson.staff?.name}</span>
                         </span>
                       ) : (
                         "—"
@@ -149,7 +150,7 @@ export function TimetablePage() {
             <label className="mt-3 flex items-center gap-2 text-sm">
               <input name="isBreak" type="checkbox" /> Break
             </label>
-            <Button type="submit" variant="secondary" className="mt-4" loading={busy === "period"}>
+            <Button type="submit" variant="outline" className="mt-4" loading={busy === "period"}>
               Save period
             </Button>
           </form>

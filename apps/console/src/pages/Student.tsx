@@ -1,62 +1,56 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, ErrorState, LoadingState } from "@wellrun/ui";
-import { Camera, MessageCircle, Pencil, Phone } from "lucide-react";
-import { FormEvent, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Badge, Dialog, EmptyState, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
+import { Camera, IdCard, MessageCircle, Phone } from "lucide-react";
+import { FormEvent, useRef, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { FormSelect } from "@/components/form/form-select";
+import { Button } from "@/components/ui/button";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { AttendanceRing } from "../components/AttendanceRing";
 import { Toast } from "../components/motion";
-import { api } from "../lib/api";
+import { api, currentUser } from "../lib/api";
 import { pkr } from "../lib/format";
 import { queryKeys } from "../lib/query";
 import { fileToDataUrl } from "../lib/setup-helpers";
 
-type Tab = "exams" | "attendance" | "fees";
-
-const tabs: { id: Tab; label: string }[] = [
-  { id: "exams", label: "Exams" },
+const tabItems = [
+  { id: "overview", label: "Overview" },
+  { id: "enrollments", label: "Enrollments" },
   { id: "attendance", label: "Attendance" },
   { id: "fees", label: "Fees" },
+  { id: "results", label: "Results" },
+  { id: "documents", label: "Documents" },
+  { id: "family", label: "Family" },
+  { id: "communications", label: "Notes" },
+  { id: "activity", label: "Activity" },
 ];
 
 export function StudentPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab") || "overview";
   const photoInput = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
-  const {
-    data: student,
-    error: queryError,
-    refetch,
-  } = useQuery({
+  const canMutate = currentUser()?.role === "SCHOOL_ADMIN";
+  const { data: student, error: queryError, refetch } = useQuery({
     queryKey: queryKeys.student(id ?? ""),
     queryFn: () => api.student(id!),
     enabled: Boolean(id),
   });
-  const [tab, setTab] = useState<Tab>("exams");
-  const [yearId, setYearId] = useState("");
-  const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const tabQuery = useQuery({
+    queryKey: queryKeys.studentTab(id ?? "", tab),
+    queryFn: () => api.studentTab(id!, tab === "overview" ? "enrollments" : tab),
+    enabled: Boolean(id) && tab !== "overview",
+  });
   const [toast, setToast] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const resolvedYearId = yearId || student?.years.find((year) => year.current)?.id || student?.years[0]?.id || "";
-
-  const year = student?.years.find((row) => row.id === resolvedYearId);
-  const yearData = useMemo(() => {
-    if (!student) return { exams: [], attendance: [], invoices: [] };
-    const starts = year ? new Date(year.startsOn).getTime() : 0;
-    const ends = year ? new Date(year.endsOn).getTime() : Number.POSITIVE_INFINITY;
-    const inYear = (value: string, linkedYearId?: string) => {
-      if (!year) return true;
-      if (linkedYearId && linkedYearId === year.id) return true;
-      const time = new Date(value).getTime();
-      return time >= starts && time <= ends;
-    };
-    return {
-      exams: student.exams.filter((row) => inYear(row.heldOn, row.yearId)),
-      attendance: student.attendance.filter((row) => inYear(row.date)),
-      invoices: student.invoices.filter((row) => inYear(row.dueOn, row.yearId)),
-    };
-  }, [student, year]);
+  const [dialog, setDialog] = useState<"promote" | "transfer" | "deactivate" | "print" | null>(null);
+  const [classId, setClassId] = useState("");
+  const [pending, setPending] = useState(false);
+  const [note, setNote] = useState({ type: "NOTE", body: "" });
 
   if (!student) {
     if (queryError) {
@@ -71,49 +65,30 @@ export function StudentPage() {
     return <LoadingState variant="profile" />;
   }
 
-  const callHref = phoneHref(student.phone);
-  const whatsappHref = whatsappLink(student.phone);
-  const attendancePct = attendancePercent(yearData.attendance);
+  const metrics = [
+    student.metrics.attendancePct != null ? { label: "Attendance", value: `${student.metrics.attendancePct}%` } : null,
+    student.metrics.feesDue ? { label: "Fees due", value: pkr(student.metrics.feesDue) } : null,
+    student.metrics.latestExamPct != null ? { label: "Latest exam", value: `${student.metrics.latestExamPct}%` } : null,
+    student.metrics.enrollmentYears ? { label: "Years enrolled", value: String(student.metrics.enrollmentYears) } : null,
+  ].filter(Boolean) as { label: string; value: string }[];
 
-  async function onSave(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function move(action: "promote" | "transfer" | "deactivate") {
     if (!id) return;
-    const form = new FormData(event.currentTarget);
-    setError(null);
-    setSaving(true);
+    setPending(true);
     try {
-      const extra = { ...student!.extra };
-      extra.phone = String(form.get("phone") || "");
-      extra.address = String(form.get("address") || "");
-      const next = await api.updateStudent(id, {
-        firstName: String(form.get("firstName") || ""),
-        lastName: String(form.get("lastName") || ""),
-        dateOfBirth: String(form.get("dateOfBirth") || "") || undefined,
-        gender: String(form.get("gender") || "") || undefined,
-        status: String(form.get("status") || "active"),
-        classId: String(form.get("classId") || "") || undefined,
-        phone: extra.phone,
-        address: extra.address,
-        extra,
-      });
+      const next =
+        action === "deactivate"
+          ? await api.deactivateStudent(id)
+          : action === "promote"
+            ? await api.promoteStudent(id, classId)
+            : await api.transferStudent(id, classId);
       queryClient.setQueryData(queryKeys.student(id), next);
-      setEditing(false);
-      setToast("Student updated.");
-      setTimeout(() => setToast(null), 2200);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save student");
+      await queryClient.invalidateQueries({ queryKey: queryKeys.studentTab(id, "enrollments") });
+      setToast(action === "deactivate" ? "Student marked inactive." : "Enrollment updated.");
     } finally {
-      setSaving(false);
+      setPending(false);
+      setDialog(null);
     }
-  }
-
-  async function onPhoto(file: File) {
-    if (!id) return;
-    const dataUrl = await fileToDataUrl(file);
-    const next = await api.saveStudentPhoto(id, dataUrl);
-    queryClient.setQueryData(queryKeys.student(id), next);
-    setToast("Photo saved.");
-    setTimeout(() => setToast(null), 2200);
   }
 
   return (
@@ -121,356 +96,391 @@ export function StudentPage() {
       <Link to="/students" className="text-sm text-indigo">
         All students
       </Link>
-
-      <div className="mt-4 flex flex-wrap items-start gap-6">
-        <div className="min-w-[20rem] grow basis-[36rem] space-y-6">
-          <section className="rounded-3xl bg-surface p-6">
-            <div className="flex flex-wrap items-start gap-5">
-              <button
-                type="button"
-                className="relative shrink-0 cursor-pointer"
-                onClick={() => photoInput.current?.click()}
-                aria-label="Change photo"
-              >
-                <Avatar name={`${student.firstName} ${student.lastName}`} photo={student.photo} />
-                <span className="absolute right-0 bottom-0 flex h-8 w-8 items-center justify-center rounded-full bg-indigo text-white">
-                  <Camera size={14} />
-                </span>
-              </button>
-              <input
-                ref={photoInput}
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void onPhoto(file);
-                }}
-              />
-              <div className="min-w-0 flex-1">
-                <h1 className="font-display text-4xl">
-                  {student.firstName} {student.lastName}
-                </h1>
-                <p className="mt-1 text-muted">
-                  Roll {student.rollNo}
-                  {student.class ? ` · ${student.class.name} ${student.class.section}` : ""}
-                </p>
-                <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-xs ${student.status === "active" ? "bg-paper text-indigo" : "bg-paper text-muted"}`}>
-                  {student.status === "active" ? "Active" : student.status}
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-6 flex flex-wrap gap-2">
-              <a
-                href={callHref || undefined}
-                aria-disabled={!callHref}
-                className={`inline-flex h-11 items-center gap-2 rounded-xl px-4 text-sm font-medium ${callHref ? "cursor-pointer bg-paper" : "pointer-events-none bg-paper text-muted opacity-50"}`}
-              >
-                <Phone size={16} />
-                Call
-              </a>
-              <a
-                href={whatsappHref || undefined}
-                target="_blank"
-                rel="noreferrer"
-                aria-disabled={!whatsappHref}
-                className={`inline-flex h-11 items-center gap-2 rounded-xl px-4 text-sm font-medium ${whatsappHref ? "cursor-pointer bg-paper" : "pointer-events-none bg-paper text-muted opacity-50"}`}
-              >
-                <MessageCircle size={16} />
-                WhatsApp
-              </a>
-              <button
-                type="button"
-                className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-xl bg-indigo px-4 text-sm font-medium text-white"
-                onClick={() => setEditing((value) => !value)}
-              >
-                <Pencil size={16} />
-                {editing ? "Close" : "Modify"}
-              </button>
-            </div>
-          </section>
-
-          {editing ? (
-            <form onSubmit={onSave} className="rounded-3xl bg-surface p-6">
-              <h2 className="font-display text-xl">Modify student</h2>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <Field name="firstName" label="First name" defaultValue={student.firstName} required />
-                <Field name="lastName" label="Last name" defaultValue={student.lastName} required />
-                <Field name="dateOfBirth" label="Date of birth" type="date" defaultValue={student.dateOfBirth?.slice(0, 10) ?? ""} />
-                <label className="text-sm font-medium">
-                  Gender
-                  <select name="gender" defaultValue={student.gender} className="mt-2 h-11 w-full rounded-xl border border-line px-3">
-                    <option value="female">Female</option>
-                    <option value="male">Male</option>
-                    <option value="other">Other</option>
-                    <option value="unspecified">Unspecified</option>
-                  </select>
-                </label>
-                <Field name="phone" label="Phone" defaultValue={student.extra.phone || student.phone} />
-                <Field name="address" label="Address" defaultValue={student.address} />
-                <label className="text-sm font-medium">
-                  Class
-                  <select name="classId" defaultValue={student.class?.id ?? ""} className="mt-2 h-11 w-full rounded-xl border border-line px-3">
-                    {student.classes.map((cls) => (
-                      <option key={cls.id} value={cls.id}>
-                        {cls.name} {cls.section} · {cls.yearName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-sm font-medium">
-                  Status
-                  <select name="status" defaultValue={student.status} className="mt-2 h-11 w-full rounded-xl border border-line px-3">
-                    <option value="active">Active</option>
-                    <option value="left">Left</option>
-                  </select>
-                </label>
-              </div>
-              {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
-              <div className="mt-5 flex gap-2">
-                <Button type="submit" loading={saving}>
-                  Save changes
+      <div className="mt-4 rounded-3xl bg-surface p-6">
+        <div className="flex flex-wrap items-start gap-5">
+          <button type="button" className="relative shrink-0" onClick={() => canMutate && photoInput.current?.click()} aria-label="Change photo">
+            <Avatar name={`${student.firstName} ${student.lastName}`} photo={student.photo} />
+            {canMutate ? (
+              <span className="absolute right-0 bottom-0 flex h-8 w-8 items-center justify-center rounded-full bg-indigo text-white">
+                <Camera size={14} />
+              </span>
+            ) : null}
+          </button>
+          <input
+            ref={photoInput}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              if (!file || !id) return;
+              const next = await api.saveStudentPhoto(id, await fileToDataUrl(file));
+              queryClient.setQueryData(queryKeys.student(id), next);
+            }}
+          />
+          <div className="min-w-0 flex-1">
+            <PageHeader
+              title={`${student.firstName} ${student.lastName}`}
+              description={`${student.admissionNo} · Roll ${student.rollNo}${student.class ? ` · ${student.class.name} • Section ${student.class.section}` : ""}`}
+              actions={<Badge tone={student.status === "active" ? "indigo" : "neutral"}>{student.status}</Badge>}
+            />
+            <div className="mt-4 flex flex-wrap gap-2 print:hidden">
+              {student.phone ? (
+                <Button variant="outline" render={<a href={`tel:${student.phone.replace(/\D/g, "")}`} />}>
+                  <Phone data-icon="inline-start" /> Call
                 </Button>
-                <Button type="button" variant="secondary" onClick={() => setEditing(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          ) : (
-            <section className="rounded-3xl bg-surface p-6">
-              <h2 className="font-display text-xl">Information</h2>
-              <dl className="mt-4 divide-y divide-line">
-                {student.details.map((row) => (
-                  <div key={row.label} className="grid grid-cols-[9rem_1fr] gap-4 py-3 text-sm">
-                    <dt className="text-muted">{row.label}</dt>
-                    <dd className="font-medium">{pretty(row.label, row.value)}</dd>
-                  </div>
-                ))}
-              </dl>
-              {student.guardians.length ? (
-                <div className="mt-2 border-t border-line pt-4">
-                  <p className="text-sm text-muted">Guardian</p>
-                  {student.guardians.map((link) => (
-                    <p key={link.guardian.id} className="mt-2 font-medium">
-                      {link.guardian.name}
-                      <span className="mt-1 block text-sm font-normal text-muted">
-                        {link.guardian.relation} · {link.guardian.phone}
-                        {link.guardian.cnic ? ` · ${link.guardian.cnic}` : ""}
-                      </span>
-                    </p>
-                  ))}
-                </div>
               ) : null}
-            </section>
-          )}
-
-          <section className="rounded-3xl bg-surface p-6">
-            <h2 className="font-display text-xl">Siblings</h2>
-            <p className="mt-1 text-sm text-muted">Other students under the same guardian.</p>
-            {student.siblings.length ? (
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {student.siblings.map((sibling) => (
-                  <Link
-                    key={sibling.id}
-                    to={`/students/${sibling.id}`}
-                    className="flex items-center gap-3 rounded-2xl bg-paper px-4 py-3"
-                  >
-                    <Avatar name={`${sibling.firstName} ${sibling.lastName}`} photo={sibling.photo} size="sm" />
-                    <span>
-                      <span className="block font-medium">
-                        {sibling.firstName} {sibling.lastName}
-                      </span>
-                      <span className="text-sm text-muted">
-                        Roll {sibling.rollNo}
-                        {sibling.class ? ` · ${sibling.class.name} ${sibling.class.section}` : ""}
-                      </span>
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-4 text-sm text-muted">No siblings on this guardian yet.</p>
-            )}
-          </section>
-        </div>
-
-        <aside className="min-w-[18rem] max-w-md grow basis-[20rem] lg:sticky lg:top-8">
-          <section className="overflow-hidden rounded-3xl bg-surface p-5">
-            <h2 className="font-display text-xl">Academic</h2>
-            <label className="mt-3 block text-sm font-medium">
-              Year
-              <select
-                value={resolvedYearId}
-                onChange={(event) => setYearId(event.target.value)}
-                className="mt-2 h-10 w-full rounded-xl border border-line bg-paper px-3 text-sm"
-              >
-                {student.years.map((row) => (
-                  <option key={row.id} value={row.id}>
-                    {row.name}
-                    {row.current ? " · current" : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="mt-4 flex rounded-xl bg-paper p-1">
-              {tabs.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setTab(item.id)}
-                  className={`h-10 min-w-0 flex-1 cursor-pointer rounded-lg px-1 text-sm ${tab === item.id ? "bg-indigo text-white" : ""}`}
-                >
-                  {item.label}
-                </button>
-              ))}
+              {student.phone ? (
+                <Button variant="outline" render={<a href={whatsappLink(student.phone)} target="_blank" rel="noreferrer" />}>
+                  <MessageCircle data-icon="inline-start" /> WhatsApp
+                </Button>
+              ) : null}
+              <Button type="button" variant="outline" icon={<IdCard data-icon="inline-start" />} onClick={() => window.print()}>
+                Print ID card
+              </Button>
+              {canMutate ? (
+                <>
+                  <Button variant="outline" render={<Link to={`/admissions/new?studentId=${student.id}`} />}>
+                    Re-admit
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setDialog("promote")}>Promote</Button>
+                  <Button type="button" variant="outline" onClick={() => setDialog("transfer")}>Transfer</Button>
+                  <Button type="button" variant="destructive" onClick={() => setDialog("deactivate")}>Deactivate</Button>
+                </>
+              ) : null}
             </div>
-
-            {tab === "exams" ? (
-              <div className="mt-4 space-y-3">
-                {yearData.exams.length ? (
-                  yearData.exams.map((exam) => (
-                    <div key={exam.id} className="flex items-center justify-between rounded-2xl bg-paper px-4 py-3">
-                      <div>
-                        <p className="font-medium">{exam.name}</p>
-                        <p className="text-sm text-muted">{exam.heldOn.slice(0, 10)}</p>
-                      </div>
-                      <p className="text-right">
-                        <span className="font-medium">
-                          {exam.obtainedMarks}/{exam.totalMarks}
-                        </span>
-                        <span className="mt-1 block text-sm text-muted">{exam.pct}%</span>
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <Empty text="No exam results for this year." />
-                )}
+          </div>
+        </div>
+        {metrics.length ? (
+          <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+            {metrics.map((metric) => (
+              <div key={metric.label} className="rounded-2xl bg-paper p-4">
+                <p className="text-sm text-muted-foreground">{metric.label}</p>
+                <p className="mt-1 font-display text-2xl">{metric.value}</p>
               </div>
-            ) : null}
-
-            {tab === "attendance" ? (
-              <div className="mt-4">
-                <div className="flex items-center gap-3 rounded-2xl bg-paper px-4 py-3">
-                  <AttendanceRing value={attendancePct} />
-                  <div>
-                    <p className="font-medium">{attendancePct}% present</p>
-                    <p className="text-sm text-muted">{yearData.attendance.length} days marked</p>
-                  </div>
-                </div>
-                <ul className="mt-3 max-h-[28rem] space-y-2 overflow-auto">
-                  {yearData.attendance.length ? (
-                    yearData.attendance.map((row) => (
-                      <li key={row.id} className="flex items-center justify-between px-1 py-2 text-sm">
-                        <span>{row.date.slice(0, 10)}</span>
-                        <span className={attendanceTone(row.status)}>{labelStatus(row.status)}</span>
-                      </li>
-                    ))
-                  ) : (
-                    <Empty text="No attendance marked for this year." />
-                  )}
-                </ul>
-              </div>
-            ) : null}
-
-            {tab === "fees" ? (
-              <div className="mt-4 space-y-3">
-                {yearData.invoices.length ? (
-                  yearData.invoices.map((invoice) => (
-                    <div key={invoice.id} className="rounded-2xl bg-paper px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium">{invoice.name}</p>
-                          <p className="text-sm text-muted">Due {invoice.dueOn.slice(0, 10)}</p>
-                        </div>
-                        <p className="text-right font-medium">{pkr(invoice.amountPkr)}</p>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between text-sm">
-                        <span className={invoice.paidPkr >= invoice.amountPkr ? "text-success" : "text-orange"}>
-                          {invoice.paidPkr >= invoice.amountPkr ? "Paid" : `Pending · ${pkr(invoice.amountPkr - invoice.paidPkr)}`}
-                        </span>
-                        {invoice.receiptId ? (
-                          <button
-                            type="button"
-                            className="cursor-pointer text-indigo"
-                            onClick={() => navigate(`/fees/receipt/${invoice.receiptId}`)}
-                          >
-                            Receipt
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <Empty text="No invoices for this year." />
-                )}
-              </div>
-            ) : null}
-          </section>
-        </aside>
+            ))}
+          </div>
+        ) : null}
       </div>
+
+      <Tabs value={tab} onValueChange={(next) => setParams({ tab: next })} className="mt-6 print:hidden">
+        <TabsList variant="line" className="h-auto w-full flex-wrap justify-start">
+          {tabItems.map((item) => (
+            <TabsTrigger key={item.id} value={item.id}>
+              {item.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
+      <div className="mt-4 rounded-3xl bg-surface p-6 print:hidden">
+        {tab === "overview" ? (
+          <dl className="divide-y divide-line">
+            {student.details.map((row) => (
+              <div key={row.label} className="grid grid-cols-[9rem_1fr] gap-4 py-3 text-sm">
+                <dt className="text-muted-foreground">{row.label}</dt>
+                <dd className="font-medium">{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : tabQuery.isPending ? (
+          <LoadingState variant="form" />
+        ) : tab === "enrollments" ? (
+          <EnrollmentList rows={tabQuery.data as never} />
+        ) : tab === "attendance" ? (
+          <AttendanceList rows={tabQuery.data as never} />
+        ) : tab === "fees" ? (
+          <FeesList rows={tabQuery.data as never} onReceipt={(receiptId) => navigate(`/fees/receipt/${receiptId}`)} />
+        ) : tab === "results" ? (
+          <ResultsPanel id={student.id} rows={tabQuery.data as never} canMutate={canMutate} onSaved={() => void tabQuery.refetch()} />
+        ) : tab === "family" ? (
+          <FamilyPanel data={tabQuery.data as never} />
+        ) : tab === "documents" ? (
+          <DocumentsPanel id={student.id} rows={tabQuery.data as never} canMutate={canMutate} onSaved={() => void tabQuery.refetch()} />
+        ) : tab === "communications" ? (
+          <div>
+            {canMutate ? (
+              <form
+                className="mb-4"
+                onSubmit={async (event: FormEvent<HTMLFormElement>) => {
+                  event.preventDefault();
+                  await api.addStudentCommunication(student.id, note);
+                  setNote({ type: "NOTE", body: "" });
+                  await tabQuery.refetch();
+                }}
+              >
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="note-type">Type</FieldLabel>
+                    <FormSelect
+                      id="note-type"
+                      value={note.type}
+                      onValueChange={(value) => setNote((current) => ({ ...current, type: value || "NOTE" }))}
+                      options={[
+                        { value: "NOTE", label: "Note" },
+                        { value: "MEETING", label: "Meeting" },
+                      ]}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="note-body">Details</FieldLabel>
+                    <Textarea id="note-body" value={note.body} onChange={(event) => setNote((current) => ({ ...current, body: event.target.value }))} />
+                  </Field>
+                  <Button type="submit">Log {note.type === "MEETING" ? "meeting" : "note"}</Button>
+                </FieldGroup>
+              </form>
+            ) : null}
+            <NotesList rows={tabQuery.data as never} />
+          </div>
+        ) : (
+          <ActivityList rows={tabQuery.data as never} />
+        )}
+      </div>
+
+      <section className="id-card mt-6 hidden print:block rounded-3xl border border-line p-6">
+        <p className="text-sm text-muted-foreground">Student ID</p>
+        <h2 className="font-display text-3xl">{student.firstName} {student.lastName}</h2>
+        <p>{student.admissionNo}</p>
+        <p>{student.class ? `${student.class.name} • Section ${student.class.section}` : ""}</p>
+      </section>
+
+      <Dialog open={dialog === "promote" || dialog === "transfer"} title={dialog === "promote" ? "Promote student" : "Transfer student"} description="The current enrollment is closed and a new one is created." confirmLabel="Confirm" loading={pending} onClose={() => setDialog(null)} onConfirm={() => void move(dialog === "promote" ? "promote" : "transfer")}>
+        <Field>
+          <FieldLabel htmlFor="new-class">New class</FieldLabel>
+          <FormSelect
+            id="new-class"
+            value={classId || undefined}
+            onValueChange={(value) => setClassId(value ?? "")}
+            placeholder="Select class"
+            options={student.classes.map((cls) => ({
+              value: cls.id,
+              label: `${cls.name} ${cls.section} · ${cls.yearName}`,
+            }))}
+          />
+        </Field>
+      </Dialog>
+      <Dialog open={dialog === "deactivate"} title="Deactivate this student?" description="The current enrollment is closed. History stays in place." confirmLabel="Deactivate" danger loading={pending} onClose={() => setDialog(null)} onConfirm={() => void move("deactivate")} />
       <Toast message={toast} />
     </div>
   );
 }
 
-function Avatar({ name, photo, size = "lg" }: { name: string; photo?: string; size?: "lg" | "sm" }) {
-  const initials = name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-  const box = size === "lg" ? "h-24 w-24 text-2xl" : "h-11 w-11 text-sm";
-  if (photo) {
-    return <img src={photo} alt="" className={`${box} rounded-full object-cover`} />;
-  }
+function EnrollmentList({ rows }: { rows: { id: string; rollNo: string; status: string; class: { name: string; section: string; yearName: string; campusName: string } }[] }) {
+  if (!rows?.length) return <EmptyState title="No enrollments" description="This student does not have an academic placement yet." />;
   return (
-    <span className={`flex ${box} items-center justify-center rounded-full bg-indigo text-white`}>
-      {initials || "S"}
-    </span>
+    <ul className="space-y-3">
+      {rows.map((row) => (
+        <li key={row.id} className="rounded-2xl bg-paper px-4 py-3">
+          <p className="font-medium">{row.class.name} • Section {row.class.section}</p>
+          <p className="text-sm text-muted-foreground">{row.class.yearName} · {row.class.campusName || "Campus"} · Roll {row.rollNo} · {row.status}</p>
+        </li>
+      ))}
+    </ul>
   );
 }
 
-function Field({
-  name,
-  label,
-  defaultValue,
-  type = "text",
-  required,
+function AttendanceList({ rows }: { rows: { id: string; date: string; status: string; className: string }[] }) {
+  if (!rows?.length) return <EmptyState title="No attendance marked" description="Attendance appears here after a class is marked." />;
+  const pct = Math.round((rows.filter((row) => row.status === "PRESENT" || row.status === "LATE").length / rows.length) * 100);
+  return (
+    <div>
+      <div className="mb-4 flex items-center gap-3">
+        <AttendanceRing value={pct} />
+        <p className="text-sm text-muted-foreground">{pct}% present across {rows.length} days</p>
+      </div>
+      <ul className="max-h-[28rem] space-y-2 overflow-auto text-sm">
+        {rows.map((row) => (
+          <li key={row.id} className="flex justify-between">
+            <span>{String(row.date).slice(0, 10)}</span>
+            <span>{row.status.toLowerCase()}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function FeesList({ rows, onReceipt }: { rows: { id: string; name: string; amountPkr: number; paidPkr: number; dueOn: string; receiptId: string | null }[]; onReceipt: (id: string) => void }) {
+  if (!rows?.length) return <EmptyState title="No invoices" description="Fee invoices appear after billing." />;
+  return (
+    <ul className="space-y-3">
+      {rows.map((invoice) => (
+        <li key={invoice.id} className="flex items-center justify-between rounded-2xl bg-paper px-4 py-3">
+          <div>
+            <p className="font-medium">{invoice.name}</p>
+            <p className="text-sm text-muted-foreground">Due {String(invoice.dueOn).slice(0, 10)}</p>
+          </div>
+          <div className="text-right">
+            <p>{pkr(invoice.amountPkr)}</p>
+            {invoice.receiptId ? (
+              <button type="button" className="text-sm text-indigo" onClick={() => onReceipt(invoice.receiptId!)}>Receipt</button>
+            ) : (
+              <p className="text-sm text-orange">Due {pkr(invoice.amountPkr - invoice.paidPkr)}</p>
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ResultsPanel({
+  id,
+  rows,
+  canMutate,
+  onSaved,
 }: {
-  name: string;
-  label: string;
-  defaultValue: string;
-  type?: string;
-  required?: boolean;
+  id: string;
+  rows: { id: string; name: string; subject: string; obtainedMarks: number; totalMarks: number; pct: number; heldOn: string }[];
+  canMutate: boolean;
+  onSaved: () => void;
 }) {
+  const { data: exams } = useQuery({ queryKey: queryKeys.exams, queryFn: api.exams, enabled: canMutate });
+  const [examId, setExamId] = useState("");
+  const [subject, setSubject] = useState("English");
+  const [obtained, setObtained] = useState("0");
+  const [total, setTotal] = useState("100");
   return (
-    <label className="text-sm font-medium">
-      {label}
-      <input
-        name={name}
-        type={type}
-        required={required}
-        defaultValue={defaultValue}
-        className="mt-2 h-11 w-full rounded-xl border border-line px-3"
-      />
-    </label>
+    <div>
+      {canMutate ? (
+        <form
+          className="mb-4"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (!examId) return;
+            await api.writeExamResult(examId, { studentId: id, subject, obtainedMarks: Number(obtained), totalMarks: Number(total) });
+            onSaved();
+          }}
+        >
+        <FieldGroup className="grid md:grid-cols-4">
+          <Field>
+            <FieldLabel htmlFor="exam">Exam</FieldLabel>
+            <FormSelect
+              id="exam"
+              value={examId || undefined}
+              onValueChange={(value) => setExamId(value ?? "")}
+              placeholder="Select exam"
+              options={(exams ?? []).map((exam) => ({ value: exam.id, label: exam.name }))}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="subject">Subject</FieldLabel>
+            <Input id="subject" value={subject} onChange={(event) => setSubject(event.target.value)} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="obtained">Obtained</FieldLabel>
+            <Input id="obtained" type="number" value={obtained} onChange={(event) => setObtained(event.target.value)} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="total">Total</FieldLabel>
+            <Input id="total" type="number" value={total} onChange={(event) => setTotal(event.target.value)} />
+          </Field>
+          <Button type="submit">Save result</Button>
+        </FieldGroup>
+        </form>
+      ) : null}
+      {!rows?.length ? <EmptyState title="No exam results" description="Results appear after exams are entered." /> : (
+        <ul className="space-y-3">
+          {rows.map((row) => (
+            <li key={row.id} className="flex justify-between rounded-2xl bg-paper px-4 py-3">
+              <span>{row.name}{row.subject ? ` · ${row.subject}` : ""}</span>
+              <span>{row.obtainedMarks}/{row.totalMarks} · {row.pct}%</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
-function Empty({ text }: { text: string }) {
-  return <p className="px-1 py-8 text-center text-sm text-muted">{text}</p>;
+function FamilyPanel({ data }: { data: { guardians: { id: string; name: string; phone: string; relation: string }[]; siblings: { id: string; firstName: string; lastName: string; rollNo: string; class: { name: string; section: string } | null }[] } }) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="font-display text-xl">Guardians</h2>
+        {data?.guardians?.map((guardian) => (
+          <p key={guardian.id} className="mt-2">
+            {guardian.name}
+            <span className="block text-sm text-muted-foreground">{guardian.relation} · {guardian.phone}</span>
+          </p>
+        ))}
+      </div>
+      <div>
+        <h2 className="font-display text-xl">Siblings</h2>
+        {data?.siblings?.length ? data.siblings.map((sibling) => (
+          <Link key={sibling.id} to={`/students/${sibling.id}`} className="mt-2 block text-indigo">
+            {sibling.firstName} {sibling.lastName} · Roll {sibling.rollNo}
+          </Link>
+        )) : <p className="mt-2 text-sm text-muted-foreground">No siblings on this guardian yet.</p>}
+      </div>
+    </div>
+  );
 }
 
-function pretty(label: string, value: string) {
-  if (label === "Gender") return value.charAt(0).toUpperCase() + value.slice(1);
-  return value;
+function DocumentsPanel({ id, rows, canMutate, onSaved }: { id: string; rows: { id: string; label: string; url: string }[]; canMutate: boolean; onSaved: () => void }) {
+  return (
+    <div>
+      {canMutate ? (
+        <Field className="mb-4 max-w-sm">
+          <FieldLabel htmlFor="student-document">Upload document</FieldLabel>
+          <Input
+            id="student-document"
+            type="file"
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              await api.uploadStudentDocument(id, { kind: file.name, label: file.name, dataUrl: await fileToDataUrl(file) });
+              onSaved();
+            }}
+          />
+        </Field>
+      ) : null}
+      {!rows?.length ? <EmptyState title="No documents" description="Upload birth certificates, CNIC copies, and photos here." /> : (
+        <ul className="space-y-2">
+          {rows.map((row) => (
+            <li key={row.id} className="flex justify-between rounded-2xl bg-paper px-4 py-3">
+              <span>{row.label}</span>
+              {row.url ? <a href={row.url} className="text-sm text-primary" target="_blank" rel="noreferrer">Open</a> : <span className="text-sm text-muted-foreground">Pending</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
-function phoneHref(phone: string) {
-  const digits = phone.replace(/\D/g, "");
-  return digits ? `tel:${digits}` : "";
+function NotesList({ rows }: { rows: { id: string; type: string; subject: string; body: string; createdAt: string }[] }) {
+  if (!rows?.length) return <EmptyState title="No notes yet" description="Log a meeting or internal note. WhatsApp stays on the parent’s phone." />;
+  return (
+    <ul className="space-y-3">
+      {rows.map((row) => (
+        <li key={row.id} className="rounded-2xl bg-paper px-4 py-3">
+          <p className="text-sm text-muted-foreground">{row.type} · {String(row.createdAt).slice(0, 10)}</p>
+          <p className="font-medium">{row.subject || row.body}</p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ActivityList({ rows }: { rows: { id: string; action: string; summary: string; createdAt: string; actor?: { name: string } | null }[] }) {
+  if (!rows?.length) return <EmptyState title="No activity yet" description="Admissions, promotions, and profile edits appear here." />;
+  return (
+    <ul className="space-y-3">
+      {rows.map((row) => (
+        <li key={row.id} className="rounded-2xl bg-paper px-4 py-3">
+          <p className="font-medium">{row.action.replaceAll("_", " ")}</p>
+          <p className="text-sm text-muted-foreground">{row.summary} · {row.actor?.name ?? "System"} · {String(row.createdAt).slice(0, 16).replace("T", " ")}</p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Avatar({ name, photo }: { name: string; photo?: string }) {
+  if (photo) return <img src={photo} alt="" className="h-24 w-24 rounded-full object-cover" />;
+  const initials = name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
+  return <span className="flex h-24 w-24 items-center justify-center rounded-full bg-indigo text-2xl text-white">{initials || "S"}</span>;
 }
 
 function whatsappLink(phone: string) {
@@ -478,26 +488,4 @@ function whatsappLink(phone: string) {
   if (!digits) return "";
   const intl = digits.startsWith("0") ? `92${digits.slice(1)}` : digits;
   return `https://wa.me/${intl}`;
-}
-
-function attendancePercent(rows: { status: string }[]) {
-  if (!rows.length) return 0;
-  const present = rows.filter((row) => row.status === "PRESENT" || row.status === "LATE").length;
-  return Math.round((present / rows.length) * 100);
-}
-
-function labelStatus(status: string) {
-  if (status === "PRESENT") return "Present";
-  if (status === "ABSENT") return "Absent";
-  if (status === "LATE") return "Late";
-  if (status === "LEAVE") return "Leave";
-  if (status === "EXCUSED") return "Excused";
-  return status;
-}
-
-function attendanceTone(status: string) {
-  if (status === "PRESENT") return "text-success";
-  if (status === "ABSENT") return "text-danger";
-  if (status === "LATE") return "text-orange";
-  return "text-muted";
 }

@@ -1,3 +1,6 @@
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { fieldFromLabel } from "../lib/setup-helpers";
 import type { AdmissionField } from "../lib/api";
 
@@ -59,37 +62,35 @@ function FieldGroup({
   return (
     <section>
       <h3 className="font-display text-lg">{title}</h3>
-      <p className="mt-1 text-sm text-muted">{hint}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{hint}</p>
       <ul className="mt-3 space-y-2">
         {fields.map((field) => (
           <li key={field.key} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 rounded-2xl bg-paper px-3 py-2">
-            <input
+            <Input
               value={field.label}
               onChange={(event) => onChange(field.key, { label: event.target.value })}
-              className="h-10 rounded-xl border border-line px-3"
             />
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={Boolean(field.required)}
                 disabled={field.locked}
-                onChange={(event) => onChange(field.key, { required: event.target.checked })}
+                onCheckedChange={(checked) => onChange(field.key, { required: Boolean(checked) })}
               />
               Required
             </label>
             {field.locked ? (
-              <span className="text-xs text-muted">Required field</span>
+              <span className="text-xs text-muted-foreground">Required field</span>
             ) : (
-              <button type="button" className="text-sm text-danger" onClick={() => onRemove(field.key)}>
+              <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => onRemove(field.key)}>
                 Delete
-              </button>
+              </Button>
             )}
           </li>
         ))}
       </ul>
-      <button type="button" className="mt-3 text-sm text-indigo" onClick={onAdd}>
+      <Button type="button" variant="link" className="mt-3 px-0" onClick={onAdd}>
         {addLabel}
-      </button>
+      </Button>
     </section>
   );
 }

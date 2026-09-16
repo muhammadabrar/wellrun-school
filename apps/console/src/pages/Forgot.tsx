@@ -1,6 +1,10 @@
 import { FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
-import { BrandLogo, Button } from "@wellrun/ui";
+import { BrandLogo } from "@wellrun/ui";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { api } from "../lib/api";
 
 export function ForgotPage() {
@@ -21,22 +25,30 @@ export function ForgotPage() {
 
   return (
     <main className="flex min-h-dvh items-center justify-center px-6">
-      <form onSubmit={onSubmit} className="w-full max-w-md rounded-[24px] bg-surface p-10">
-        <BrandLogo size="md" />
-        <h1 className="mt-3 font-display text-3xl">Reset password</h1>
-        <p className="mt-2 text-sm text-muted">We will email a link if the account exists.</p>
-        <label className="mt-8 block text-sm font-medium">
-          Email
-          <input name="email" type="email" required className="mt-2 h-12 w-full rounded-xl border border-line px-3" />
-        </label>
-        {message ? <p className="mt-3 text-sm text-success">{message}</p> : null}
-        <Button type="submit" loading={pending} size="lg" className="mt-6 w-full">
-          Send link
-        </Button>
-        <Link to="/login" className="mt-4 inline-block text-sm text-indigo">
-          Back to sign in
-        </Link>
-      </form>
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <BrandLogo size="md" />
+          <CardTitle className="font-display text-3xl">Reset password</CardTitle>
+          <CardDescription>We will email a link if the account exists.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onSubmit}>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="email">Email</FieldLabel>
+                <Input id="email" name="email" type="email" required />
+              </Field>
+              {message ? <p className="text-sm text-success">{message}</p> : null}
+              <Button type="submit" size="lg" className="w-full" loading={pending}>
+                Send link
+              </Button>
+            </FieldGroup>
+          </form>
+          <Link to="/login" className="mt-4 inline-block text-sm text-primary">
+            Back to sign in
+          </Link>
+        </CardContent>
+      </Card>
     </main>
   );
 }
