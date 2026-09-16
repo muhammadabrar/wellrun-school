@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/main.ts",
-    "build": "tsc -p ../../packages/shared/tsconfig.json && tsc -p tsconfig.json",
-    "start": "node dist/main.js",
+    "build": "rm -rf dist tsconfig.tsbuildinfo && tsc -p ../../packages/shared/tsconfig.json && tsc -p tsconfig.json --incremental false",
+    "start": "node start.cjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
