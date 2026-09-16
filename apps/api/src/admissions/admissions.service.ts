@@ -157,8 +157,8 @@ export class AdmissionsService {
           section: data.section ?? "A",
           targetClassId: data.targetClassId,
           guardianId: data.guardianId,
-          family: data.family ?? {},
-          extra: data.extra ?? {},
+          family: (data.family ?? {}) as Prisma.InputJsonValue,
+          extra: (data.extra ?? {}) as Prisma.InputJsonValue,
         },
       });
     });
@@ -273,8 +273,8 @@ export class AdmissionsService {
     }
     if (data.dateOfBirth !== undefined) update.dateOfBirth = data.dateOfBirth ? new Date(data.dateOfBirth) : null;
     if (data.interviewAt !== undefined) update.interviewAt = data.interviewAt ? new Date(data.interviewAt) : null;
-    if (data.extra) update.extra = data.extra;
-    if (data.family) update.family = data.family;
+    if (data.extra) update.extra = data.extra as Prisma.InputJsonValue;
+    if (data.family) update.family = data.family as Prisma.InputJsonValue;
     if (data.assessmentMode) update.assessmentMode = data.assessmentMode as AssessmentMode;
     if (data.yearId !== undefined) update.year = data.yearId ? { connect: { id: data.yearId } } : { disconnect: true };
     if (data.campusId !== undefined) {
@@ -316,7 +316,7 @@ export class AdmissionsService {
 
   async submit(schoolId: string, actorId: string, id: string) {
     await assertWritableSchool(this.prisma, schoolId);
-    const application = await this.requireApplication(schoolId, id, true);
+    const application = await this.requireApplication(schoolId, id);
     const missing = this.submitMissing(application);
     if (missing.length) throw new BadRequestException(`Complete required fields: ${missing.join(", ")}`);
     let status: AdmissionStatus = "SUBMITTED";
@@ -348,7 +348,7 @@ export class AdmissionsService {
   async accept(schoolId: string, actorId: string, id: string, body: unknown) {
     await assertWritableSchool(this.prisma, schoolId);
     const data = admissionDecisionSchema.parse(body ?? {});
-    const application = await this.requireApplication(schoolId, id, true);
+    const application = await this.requireApplication(schoolId, id);
     await this.issueAdmissionInvoice(schoolId, application.id);
     const documents = await this.prisma.schoolDocument.findMany({
       where: { schoolId, ownerType: "application", ownerId: id },
@@ -395,7 +395,7 @@ export class AdmissionsService {
   async confirm(schoolId: string, actorId: string, id: string, body: unknown) {
     await assertWritableSchool(this.prisma, schoolId);
     const data = admissionConfirmSchema.parse(body ?? {});
-    const application = await this.requireApplication(schoolId, id, true);
+    const application = await this.requireApplication(schoolId, id);
     if (application.status === "ADMISSION_CONFIRMED") throw new BadRequestException("Already confirmed");
     if (["REJECTED", "WITHDRAWN", "DRAFT"].includes(application.status)) {
       throw new BadRequestException("This application cannot be confirmed yet");
@@ -650,7 +650,7 @@ export class AdmissionsService {
   }
 
   async refreshStatus(schoolId: string, id: string) {
-    const application = await this.requireApplication(schoolId, id, true);
+    const application = await this.requireApplication(schoolId, id);
     if (!["FEE_PENDING", "DOCUMENTS_PENDING", "ACCEPTED"].includes(application.status)) {
       return this.byId(schoolId, id);
     }
@@ -686,12 +686,10 @@ export class AdmissionsService {
     return this.byId(schoolId, id);
   }
 
-  private async requireApplication(schoolId: string, id: string, withRelations = false) {
+  private async requireApplication(schoolId: string, id: string) {
     const application = await this.prisma.admissionApplication.findFirst({
       where: { id, schoolId },
-      include: withRelations
-        ? { scores: true, invoices: { include: { payments: true } }, guardian: true }
-        : undefined,
+      include: { scores: true, invoices: { include: { payments: true } }, guardian: true },
     });
     if (!application) throw new NotFoundException("Application not found");
     return application;

@@ -390,7 +390,7 @@ export class SetupService {
         ? await this.prisma.campus.findFirst({ where: { id: data.campusId, schoolId } })
         : await this.prisma.campus.findFirst({ where: { schoolId, isMain: true } })) ??
       (await this.prisma.campus.findFirst({ where: { schoolId } }));
-    const created = [];
+    const created: Array<{ id: string; name: string; section: string }> = [];
     for (const grade of data.grades.filter((g) => g.selected)) {
       const sections = grade.sections.length ? grade.sections : ["A"];
       for (const section of sections) {
@@ -515,7 +515,7 @@ export class SetupService {
     await this.writable(schoolId);
     const data = importStudentsSchema.parse(body);
     const classes = await this.prisma.class.findMany({ where: { schoolId } });
-    const created = [];
+    const created: { id: string }[] = [];
     for (const row of data.rows) {
       const get = (key: string) => {
         const source = data.mapping[key];

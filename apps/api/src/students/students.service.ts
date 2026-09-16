@@ -286,7 +286,7 @@ export class StudentsService {
           status: "active",
           admissionDate: now,
           firstAdmissionDate,
-          extra,
+          extra: extra as Prisma.InputJsonValue,
         },
       });
       await tx.enrollment.create({
@@ -429,7 +429,7 @@ export class StudentsService {
         gender: data.gender,
         status: data.status,
         dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
-        extra,
+        extra: extra as Prisma.InputJsonValue,
       },
     });
     if (data.classId) {
@@ -467,7 +467,7 @@ export class StudentsService {
           relation: data.relation || existing.relation,
           cnic: cnic || existing.cnic,
           email: data.email || existing.email,
-          extra: data.extra ?? existing.extra ?? {},
+          extra: (data.extra ?? existing.extra ?? {}) as Prisma.InputJsonValue,
         },
       });
       return existing.id;
@@ -480,7 +480,7 @@ export class StudentsService {
         cnic,
         email: data.email || null,
         relation: data.relation,
-        extra: data.extra ?? {},
+        extra: (data.extra ?? {}) as Prisma.InputJsonValue,
       },
     });
     await audit(this.prisma, {
