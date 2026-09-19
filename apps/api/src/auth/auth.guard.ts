@@ -8,6 +8,7 @@ import {
 import { JwtService } from "@nestjs/jwt";
 import { readCookie } from "../common/cookies";
 import { PrismaService } from "../prisma/prisma.service";
+import { atMs, getRequestTrace } from "../trace/request-context";
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -18,6 +19,33 @@ export class AuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest();
+    const started = performance.now();
+    const trace = getRequestTrace();
+    const queryStart = trace?.queries.length ?? 0;
+    try {
+      return await this.authenticate(request);
+    } finally {
+      const authMs = Math.max(0, Math.round(performance.now() - started));
+      if (trace) {
+        trace.authMs = authMs;
+        trace.steps.push({ name: "auth", atMs: atMs(trace), durationMs: authMs });
+        for (let i = queryStart; i < trace.queries.length; i += 1) {
+          trace.queries[i].step = "auth";
+        }
+      }
+    }
+  }
+
+  private async authenticate(request: {
+    headers: { authorization?: string; cookie?: string };
+    user?: {
+      id: string;
+      email: string;
+      name: string;
+      role: string;
+      schoolId: string | null;
+    };
+  }) {
     const header = request.headers.authorization as string | undefined;
     const bearer = header?.startsWith("Bearer ") ? header.slice(7) : null;
     const cookie = readCookie(request.headers.cookie, "wellrun_token");

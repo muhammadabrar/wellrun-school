@@ -16,6 +16,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { audit } from "../common/audit";
 import { assertWritableSchool } from "../common/school";
+import type { SchoolScope } from "../common/school-scope";
 import { nextSchoolNumber } from "../common/sequence";
 import { saveDataUrl } from "../common/uploads";
 import { PrismaService } from "../prisma/prisma.service";
@@ -24,18 +25,13 @@ import { PrismaService } from "../prisma/prisma.service";
 export class StudentsService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async list(schoolId: string, query: Record<string, string | undefined>, classIds: string[] | null = null) {
+  async list(
+    schoolId: string,
+    query: Record<string, string | undefined>,
+    classIds: string[] | null = null,
+    scope: SchoolScope = {},
+  ) {
     const filters = studentListQuerySchema.parse(query);
-    const [year, campuses, classes] = await Promise.all([
-      this.prisma.academicYear.findFirst({ where: { schoolId, current: true } }),
-      this.prisma.campus.findMany({ where: { schoolId }, orderBy: { createdAt: "asc" } }),
-      this.prisma.class.findMany({ where: { schoolId }, include: { campus: true }, orderBy: [{ name: "asc" }, { section: "asc" }] }),
-    ]);
-    const campus = campuses.find((row) => row.isMain) ?? campuses[0] ?? null;
-    const campusClasses = classes
-      .filter((row) => !campus || row.campusId === campus.id || !row.campusId)
-      .sort((a, b) => classSortIndex(a.name) - classSortIndex(b.name) || a.section.localeCompare(b.section));
-    const defaultClassId = campusClasses[0]?.id ?? "";
     const classId = filters.classId === "all" || !filters.classId ? undefined : filters.classId;
 
     if (classIds && classIds.length === 0) {
@@ -44,15 +40,13 @@ export class StudentsService {
         total: 0,
         page: filters.page,
         pageSize: filters.pageSize,
-        defaultClassId,
-        campus: campus ? { id: campus.id, name: campus.name } : null,
-        campuses: campuses.map((row) => ({ id: row.id, name: row.name })),
-        classes: campusClasses.map((row) => ({ id: row.id, name: row.name, section: row.section, campusId: row.campusId })),
         canMutate: false,
       };
     }
 
     const where: Prisma.StudentWhereInput = { schoolId };
+    const campusId = filters.campusId || scope.campusId;
+    if (campusId) where.campusId = campusId;
     const studentQuery = filters.q?.trim();
     if (studentQuery) {
       where.OR = [
@@ -83,7 +77,6 @@ export class StudentsService {
       where.dateOfBirth = { gte: day, lt: next };
     }
     if (filters.status && filters.status !== "all") where.status = filters.status;
-    if (filters.campusId) where.campusId = filters.campusId;
     const enrollmentFilter: Prisma.EnrollmentWhereInput = { active: true };
     if (classId) enrollmentFilter.classId = classId;
     if (classIds) enrollmentFilter.classId = classId ? classId : { in: classIds };
@@ -96,9 +89,9 @@ export class StudentsService {
         enrollments: { where: { active: true }, include: { class: true } },
         guardians: { include: { guardian: true } },
         invoices: { include: { payments: true } },
-        attendance: year
-          ? { where: { date: { gte: year.startsOn, lte: year.endsOn } } }
-          : true,
+        attendance: {
+          where: { date: { gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) } },
+        },
       },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     });
@@ -123,10 +116,6 @@ export class StudentsService {
       total,
       page: filters.page,
       pageSize: filters.pageSize,
-      defaultClassId,
-      campus: campus ? { id: campus.id, name: campus.name } : null,
-      campuses: campuses.map((row) => ({ id: row.id, name: row.name })),
-      classes: campusClasses.map((row) => ({ id: row.id, name: row.name, section: row.section, campusId: row.campusId })),
       canMutate: classIds === null,
     };
   }
@@ -167,14 +156,6 @@ export class StudentsService {
     if (classIds && !enrolledClassIds.some((classId) => classIds.includes(classId))) {
       throw new ForbiddenException("This student is not in your assigned class");
     }
-    const [years, classes] = await Promise.all([
-      this.prisma.academicYear.findMany({ where: { schoolId }, orderBy: { startsOn: "desc" } }),
-      this.prisma.class.findMany({
-        where: { schoolId },
-        include: { year: true, campus: true },
-        orderBy: [{ name: "asc" }, { section: "asc" }],
-      }),
-    ]);
     const extra = this.extraRecord(student.extra);
     const current = student.enrollments.find((row) => row.active) ?? student.enrollments[0] ?? null;
     const presentLike = student.attendance.filter((row) => row.status === "PRESENT" || row.status === "LATE").length;
@@ -232,23 +213,6 @@ export class StudentsService {
         latestExamPct: latest && latest.totalMarks ? Math.round((latest.obtainedMarks / latest.totalMarks) * 100) : null,
         enrollmentYears,
       },
-      years: years.map((year) => ({
-        id: year.id,
-        name: year.name,
-        current: year.current,
-        startsOn: year.startsOn,
-        endsOn: year.endsOn,
-      })),
-      classes: classes
-        .sort((a, b) => classSortIndex(a.name) - classSortIndex(b.name) || a.section.localeCompare(b.section))
-        .map((cls) => ({
-          id: cls.id,
-          name: cls.name,
-          section: cls.section,
-          yearId: cls.yearId,
-          yearName: cls.year.name,
-          campusName: cls.campus?.name ?? "",
-        })),
       canMutate: classIds === null,
     };
   }
@@ -256,6 +220,25 @@ export class StudentsService {
   async admit(schoolId: string, actorId: string, body: unknown) {
     await assertWritableSchool(this.prisma, schoolId);
     const data = admitStudentSchema.parse(body);
+    if (data.studentId) {
+      const cls = await this.resolveClass(schoolId, data.classId, data.className, data.section);
+      await this.moveEnrollment(schoolId, data.studentId, cls.id, "returning");
+      if (data.guardianId) {
+        await this.prisma.studentGuardian.upsert({
+          where: { studentId_guardianId: { studentId: data.studentId, guardianId: data.guardianId } },
+          update: {},
+          create: { studentId: data.studentId, guardianId: data.guardianId },
+        });
+      }
+      await audit(this.prisma, {
+        schoolId,
+        actorId,
+        action: "student_readmitted",
+        entity: "student",
+        entityId: data.studentId,
+      });
+      return this.byId(schoolId, data.studentId);
+    }
     const cls = await this.resolveClass(schoolId, data.classId, data.className, data.section);
     const now = new Date();
     const firstAdmissionDate = now;
@@ -277,12 +260,12 @@ export class StudentsService {
         data: {
           schoolId,
           campusId: cls.campusId,
-          firstName: data.firstName,
-          lastName: data.lastName,
+          firstName: data.firstName!,
+          lastName: data.lastName!,
           admissionNo,
           rollNo,
           gender: data.gender || "unspecified",
-          dateOfBirth: new Date(data.dateOfBirth),
+          dateOfBirth: new Date(data.dateOfBirth!),
           status: "active",
           admissionDate: now,
           firstAdmissionDate,

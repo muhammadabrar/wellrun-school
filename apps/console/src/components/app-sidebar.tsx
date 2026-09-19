@@ -30,7 +30,6 @@ const peopleItems: NavItem[] = [
       { title: "Admissions", url: "/admissions" },
       { title: "Quick admission", url: "/admission", end: true },
       { title: "Students", url: "/students" },
-      { title: "Admission settings", url: "/admission/settings" },
     ],
   },
 ];

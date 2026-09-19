@@ -10,4 +10,5 @@ generated
 .DS_Store
 apps/api/generated
 apps/api/uploads
+apps/api/logs
 coverage

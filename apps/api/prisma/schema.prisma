@@ -87,6 +87,7 @@ model User {
   memberships CampusMembership[]
   documents  SchoolDocument[] @relation("DocumentUploader")
   notes      CommunicationLog[] @relation("CommunicationAuthor")
+  applications AdmissionApplication[] @relation("ApplicationCreator")
 
   @@index([schoolId])
 }
@@ -574,6 +575,10 @@ model AdmissionApplication {
   studentId          String?
   student            Student?         @relation(fields: [studentId], references: [id], onDelete: SetNull)
   family             Json             @default("{}")
+  feeQuotes          Json             @default("[]")
+  wizardStep         Int              @default(1)
+  createdById        String?
+  createdBy          User?            @relation("ApplicationCreator", fields: [createdById], references: [id], onDelete: SetNull)
   assessmentMode     AssessmentMode   @default(NONE)
   interviewAt        DateTime?
   interviewer        String           @default("")
@@ -591,6 +596,7 @@ model AdmissionApplication {
   @@unique([schoolId, applicationNo])
   @@index([schoolId, status])
   @@index([schoolId, applicationNo])
+  @@index([createdById])
 }
 
 model AdmissionTestScore {

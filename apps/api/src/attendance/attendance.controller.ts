@@ -3,6 +3,7 @@ import { saveAttendanceSchema } from "@wellrun/shared";
 import { AuthGuard } from "../auth/auth.guard";
 import type { CurrentUser } from "../common/current-user";
 import { requireSchoolId } from "../common/roles";
+import type { SchoolScope } from "../common/school-scope";
 import { AttendanceService } from "./attendance.service";
 
 @Controller("console/attendance")
@@ -10,16 +11,10 @@ import { AttendanceService } from "./attendance.service";
 export class AttendanceController {
   constructor(@Inject(AttendanceService) private readonly attendance: AttendanceService) {}
 
-  @Get("classes")
-  classes(@Req() req: { user: CurrentUser }) {
-    requireSchoolId(req.user);
-    return this.attendance.classes(req.user);
-  }
-
   @Get("absent")
-  absent(@Req() req: { user: CurrentUser }, @Query("date") date?: string) {
+  absent(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }, @Query("date") date?: string) {
     requireSchoolId(req.user);
-    return this.attendance.absent(req.user, date);
+    return this.attendance.absent(req.user, date, req.schoolScope);
   }
 
   @Get()
@@ -28,7 +23,7 @@ export class AttendanceController {
     @Query("classId") classId: string,
     @Query("date") date: string,
   ) {
-    return this.attendance.records(requireSchoolId(req.user), classId, date);
+    return this.attendance.day(requireSchoolId(req.user), classId, date);
   }
 
   @Post()

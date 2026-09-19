@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { queryClient } from "./lib/query";
+import "./lib/school-context";
 import "./styles/index.css";
 
 createRoot(document.getElementById("root")!).render(

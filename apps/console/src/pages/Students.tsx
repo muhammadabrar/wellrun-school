@@ -14,6 +14,7 @@ import { currentUser } from "../lib/api";
 import { pkr } from "../lib/format";
 import { queryKeys } from "../lib/query";
 import { api } from "../lib/api";
+import { useCampus } from "@/hooks/use-campus";
 
 export function StudentsPage() {
   const user = currentUser();
@@ -25,13 +26,14 @@ export function StudentsPage() {
   const [bulkAction, setBulkAction] = useState<"assign_class" | "promote" | "deactivate" | null>(null);
   const [bulkClassId, setBulkClassId] = useState("");
   const [pending, setPending] = useState(false);
+  const { campusId, classes, active } = useCampus();
   const filters = {
     q: params.get("q") ?? "",
     guardian: params.get("guardian") ?? "",
     address: params.get("address") ?? "",
     dateOfBirth: params.get("dateOfBirth") ?? "",
     classId: params.get("classId") ?? "all",
-    campusId: params.get("campusId") ?? localStorage.getItem("wellrun-campus-id") ?? "",
+    campusId,
     status: params.get("status") ?? "",
     topScorer: params.get("topScorer") === "true" ? "true" : undefined,
     perfectAttendance: params.get("perfectAttendance") === "true" ? "true" : undefined,
@@ -42,6 +44,7 @@ export function StudentsPage() {
     queryKey: queryKeys.students(filters),
     queryFn: () => api.students(filters),
     placeholderData: keepPreviousData,
+    enabled: Boolean(campusId),
   });
 
   function setFilter(key: string, value: string) {
@@ -79,7 +82,7 @@ export function StudentsPage() {
     <div>
       <PageHeader
         title="Students"
-        description={`${data?.campus ? `${data.campus.name} · ` : ""}${data?.total ?? 0} ${data?.total === 1 ? "student" : "students"}`}
+        description={`${active ? `${active.name} · ` : ""}${data?.total ?? 0} ${data?.total === 1 ? "student" : "students"}`}
         actions={
           canMutate ? (
             <Button render={<Link to="/admissions/new" />}>
@@ -110,7 +113,7 @@ export function StudentsPage() {
               onValueChange={(value) => setFilter("classId", value === "all" || !value ? "" : value)}
               options={[
                 { value: "all", label: "All classes" },
-                ...(data?.classes.map((cls) => ({ value: cls.id, label: `${cls.name} ${cls.section}` })) ?? []),
+                ...(classes.map((cls) => ({ value: cls.id, label: `${cls.name} ${cls.section}` })) ?? []),
               ]}
             />
           </Field>
@@ -299,7 +302,7 @@ export function StudentsPage() {
               value={bulkClassId || undefined}
               onValueChange={(value) => setBulkClassId(value ?? "")}
               placeholder="Select class"
-              options={(data?.classes ?? []).map((cls) => ({ value: cls.id, label: `${cls.name} ${cls.section}` }))}
+              options={classes.map((cls) => ({ value: cls.id, label: `${cls.name} ${cls.section}` }))}
             />
           </Field>
         ) : null}

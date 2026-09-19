@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { FetchingIndicator, LoadingState } from "@wellrun/ui";
+import { EmptyState, FetchingIndicator, LoadingState } from "@wellrun/ui";
 import { Button } from "@/components/ui/button";
 import { FormEvent, useState } from "react";
 import { api, currentUser } from "../lib/api";
 import { queryKeys } from "../lib/query";
+import { useCampus } from "@/hooks/use-campus";
 
 const days = [
   { id: 1, label: "Mon" },
@@ -16,25 +17,37 @@ const days = [
 
 export function TimetablePage() {
   const queryClient = useQueryClient();
+  const { classes } = useCampus();
   const [classId, setClassId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const admin = currentUser()?.role === "SCHOOL_ADMIN";
+  const resolvedClassId = classId || classes[0]?.id || "";
   const { data: grid, isPending, isFetching } = useQuery({
-    queryKey: queryKeys.timetable(classId),
-    queryFn: () => api.timetable(classId || undefined),
+    queryKey: queryKeys.timetable(resolvedClassId),
+    queryFn: () => api.timetable(resolvedClassId),
+    enabled: Boolean(resolvedClassId),
   });
   const { data: staff = [] } = useQuery({
     queryKey: queryKeys.staff,
     queryFn: api.staff,
     enabled: admin,
   });
-  const resolvedClassId = classId || grid?.classId || "";
 
   async function reload() {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.timetable(classId) });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.timetable(resolvedClassId) });
   }
 
+  if (!resolvedClassId) {
+    return (
+      <div>
+        <h1 className="font-display text-4xl">Timetable</h1>
+        <div className="mt-6">
+          <EmptyState title="No classes yet" description="Add a class first, then build its timetable." />
+        </div>
+      </div>
+    );
+  }
   if (!grid) return <LoadingState variant="table" />;
   const timetable = grid;
 
@@ -87,7 +100,7 @@ export function TimetablePage() {
         onChange={(e) => setClassId(e.target.value)}
         className="mt-6 h-11 rounded-xl border border-line bg-surface px-3"
       >
-        {grid.classes.map((cls) => (
+        {classes.map((cls) => (
           <option key={cls.id} value={cls.id}>
             {cls.name} {cls.section}
           </option>

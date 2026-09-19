@@ -1,4 +1,6 @@
 import { ApiError } from "./query";
+import { defaultCampusId, readCampusId, writeCampusId } from "./campus";
+import { readYearId, type SchoolContext, writeSchoolContext } from "./school-context";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
@@ -14,14 +16,21 @@ export function token() {
   return localStorage.getItem("wellrun-token");
 }
 
-export function setSession(next: { token: string; user: SessionUser } | null) {
+export function setSession(next: { token: string; user: SessionUser; schoolContext?: SchoolContext } | null) {
   if (!next) {
     localStorage.removeItem("wellrun-token");
     localStorage.removeItem("wellrun-user");
+    writeSchoolContext(null);
+    writeCampusId("");
     return;
   }
   localStorage.setItem("wellrun-token", next.token);
   localStorage.setItem("wellrun-user", JSON.stringify(next.user));
+  if (next.schoolContext) {
+    writeSchoolContext(next.schoolContext);
+    const campusId = defaultCampusId(next.schoolContext.campuses);
+    if (campusId) writeCampusId(campusId);
+  }
 }
 
 export function currentUser() {
@@ -36,28 +45,89 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   const auth = token();
   if (auth) headers.Authorization = `Bearer ${auth}`;
+  const campusId = readCampusId();
+  if (campusId) headers["X-Campus-Id"] = campusId;
+  const yearId = readYearId();
+  if (yearId) headers["X-Year-Id"] = yearId;
+  const method = (init?.method ?? "GET").toUpperCase();
+  const t0 = performance.now();
   const res = await fetch(`${API}${path}`, { ...init, headers, credentials: "include" });
+  const ttfbMs = Math.round(performance.now() - t0);
+  const requestId = res.headers.get("x-request-id");
+  const serverMsRaw = res.headers.get("x-server-duration-ms");
+  const serverMs = serverMsRaw != null ? Number(serverMsRaw) : Number.NaN;
+  let body: unknown = undefined;
+  if (res.status !== 204) {
+    body = await res.json().catch(() => ({}));
+  }
+  const totalMs = Math.round(performance.now() - t0);
+  const downloadMs = Math.max(0, totalMs - ttfbMs);
+  const networkMs = Number.isFinite(serverMs) ? Math.max(0, ttfbMs - serverMs) : undefined;
+  reportClientTrace({
+    id: requestId,
+    method,
+    path,
+    ttfbMs,
+    serverMs: Number.isFinite(serverMs) ? serverMs : undefined,
+    networkMs,
+    downloadMs,
+    totalMs,
+  });
   if (res.status === 401) {
     setSession(null);
     throw new ApiError("unauthorized", 401);
   }
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    const message = Array.isArray(body.message) ? body.message[0] : body.message;
+    const message = Array.isArray((body as { message?: unknown })?.message)
+      ? ((body as { message: unknown[] }).message[0] as string)
+      : ((body as { message?: string })?.message as string | undefined);
     throw new ApiError(message ?? `Request failed: ${path}`, res.status);
   }
-  if (res.status === 204) return undefined as T;
-  return res.json();
+  return body as T;
+}
+
+function reportClientTrace(payload: {
+  id: string | null;
+  method: string;
+  path: string;
+  ttfbMs: number;
+  serverMs?: number;
+  networkMs?: number;
+  downloadMs: number;
+  totalMs: number;
+}) {
+  console.debug("[wellrun]", payload.method, payload.path, {
+    requestId: payload.id,
+    ttfbMs: payload.ttfbMs,
+    serverMs: payload.serverMs,
+    networkMs: payload.networkMs,
+    downloadMs: payload.downloadMs,
+    totalMs: payload.totalMs,
+  });
+  if (!payload.id) return;
+  void fetch(`${API}/debug/trace`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: payload.id,
+      ttfbMs: payload.ttfbMs,
+      networkMs: payload.networkMs,
+      downloadMs: payload.downloadMs,
+      totalMs: payload.totalMs,
+    }),
+    credentials: "include",
+    keepalive: true,
+  }).catch(() => undefined);
 }
 
 export const api = {
   login: (email: string, password: string) =>
-    request<{ token: string; user: SessionUser }>("/auth/login", {
+    request<{ token: string; user: SessionUser; schoolContext: SchoolContext }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
   registerSchool: (payload: { name: string; email: string; password: string; confirm: string; schoolName: string }) =>
-    request<{ token: string; user: SessionUser }>("/auth/register-school", {
+    request<{ token: string; user: SessionUser; schoolContext: SchoolContext }>("/auth/register-school", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -70,10 +140,11 @@ export const api = {
       body: JSON.stringify({ token, password, confirm }),
     }),
   acceptInvite: (payload: { token: string; password?: string; name?: string }) =>
-    request<{ token: string; user: SessionUser }>("/auth/invite/accept", {
+    request<{ token: string; user: SessionUser; schoolContext: SchoolContext }>("/auth/invite/accept", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  schoolSession: () => request<SchoolContext>("/console/session"),
   dashboard: () =>
     request<{
       schoolName: string;
@@ -149,7 +220,7 @@ export const api = {
   patchAdmission: (id: string, payload: Record<string, unknown>) =>
     request<AdmissionDetail>(`/console/admissions/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   admissionAction: (id: string, action: string, payload: Record<string, unknown> = {}) =>
-    request<AdmissionDetail>(`/console/admissions/${id}/${action}`, {
+    request<AdmissionDetail | { deleted: true; id: string }>(`/console/admissions/${id}/${action}`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -167,11 +238,11 @@ export const api = {
     }
     return request<{ matches: DuplicateMatch[] }>(`/console/admissions/duplicates?${params}`);
   },
-  classes: () => request<SchoolClass[]>("/console/attendance/classes"),
   attendance: (classId: string, date: string) =>
-    request<{ studentId: string; status: string }[]>(
-      `/console/attendance?classId=${classId}&date=${date}`,
-    ),
+    request<{
+      records: { studentId: string; status: string }[];
+      students: { id: string; firstName: string; lastName: string; admissionNo: string }[];
+    }>(`/console/attendance?classId=${classId}&date=${date}`),
   saveAttendance: (payload: {
     classId: string;
     date: string;
@@ -310,10 +381,6 @@ export type StudentList = {
   total: number;
   page: number;
   pageSize: number;
-  defaultClassId: string;
-  campus: { id: string; name: string } | null;
-  campuses?: { id: string; name: string }[];
-  classes: { id: string; name: string; section: string; campusId?: string | null }[];
   canMutate?: boolean;
 };
 
@@ -368,8 +435,8 @@ export type StudentProfile = {
     latestExamPct: number | null;
     enrollmentYears: number;
   };
-  years: { id: string; name: string; current: boolean; startsOn: string; endsOn: string }[];
-  classes: { id: string; name: string; section: string; yearId: string; yearName: string; campusName?: string }[];
+  years?: { id: string; name: string; current: boolean; startsOn: string; endsOn: string }[];
+  classes?: { id: string; name: string; section: string; yearId: string; yearName: string; campusName?: string }[];
   canMutate?: boolean;
 };
 
@@ -413,6 +480,13 @@ export type AdmissionStatus =
   | "ADMISSION_CONFIRMED"
   | "WITHDRAWN";
 
+export type AdmissionFeeQuote = {
+  feeItemId: string;
+  name: string;
+  catalogAmountPkr: number;
+  amountPkr: number;
+};
+
 export type AdmissionRow = {
   id: string;
   applicationNo: string;
@@ -425,9 +499,8 @@ export type AdmissionRow = {
   guardianName: string;
   guardianPhone: string;
   createdAt: string;
-  assessmentPct: number | null;
-  docs: { uploaded: number; total: number };
-  feeDue: number;
+  wizardStep: number;
+  addedBy: string;
   nextAction: string;
 };
 
@@ -436,9 +509,7 @@ export type AdmissionList = {
   total: number;
   page: number;
   pageSize: number;
-  years: { id: string; name: string; current: boolean }[];
-  campuses: { id: string; name: string }[];
-  classes: { id: string; name: string; section: string; yearId: string; campusId: string | null }[];
+  summary: AdmissionSummary;
 };
 
 export type AdmissionSummary = {
@@ -488,6 +559,9 @@ export type AdmissionDetail = {
   guardianId: string | null;
   studentId: string | null;
   family: Record<string, string>;
+  feeQuotes: AdmissionFeeQuote[];
+  wizardStep: number;
+  createdBy: { id: string; name: string } | null;
   assessmentMode: "NONE" | "TEST" | "INTERVIEW" | "BOTH";
   interviewAt?: string | null;
   interviewer: string;
@@ -507,9 +581,9 @@ export type AdmissionDetail = {
   blockers: string[];
   nextAction: string;
   feeItems: { id: string; name: string; amountPkr: number }[];
-  classes: { id: string; name: string; section: string; yearId: string; campusId: string | null; yearName: string; campusName: string }[];
-  campuses: { id: string; name: string }[];
-  years: { id: string; name: string; current: boolean }[];
+  classes?: { id: string; name: string; section: string; yearId: string; campusId: string | null; yearName?: string; campusName?: string }[];
+  campuses?: { id: string; name: string }[];
+  years?: { id: string; name: string; current: boolean }[];
 };
 
 export type DuplicateMatch = {
@@ -602,7 +676,6 @@ export type Setup = {
 };
 
 export type Timetable = {
-  classes: { id: string; name: string; section: string }[];
   classId: string | null;
   periods: { id: string; label: string; startTime: string; endTime: string; isBreak: boolean; sortOrder: number }[];
   lessons: {

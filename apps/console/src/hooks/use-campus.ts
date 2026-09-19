@@ -1,54 +1,73 @@
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { api, currentUser } from "@/lib/api";
-import { ALL_CAMPUSES, readCampusId, writeCampusId } from "@/lib/campus";
-import { queryKeys } from "@/lib/query";
+import { currentUser } from "@/lib/api";
+import { defaultCampusId, readCampusId, writeCampusId } from "@/lib/campus";
+import { classesForCampus, readSchoolContext } from "@/lib/school-context";
+import { queryClient, queryKeys } from "@/lib/query";
+
+const listKeys = [
+  queryKeys.studentsRoot,
+  queryKeys.dashboard,
+  ["admissions"],
+  ["attendance"],
+  ["absent"],
+  queryKeys.invoices,
+  ["timetable"],
+] as const;
 
 export function useCampus() {
   const user = currentUser();
   const enabled = user?.role === "SCHOOL_ADMIN" || user?.role === "TEACHER";
   const navigate = useNavigate();
   const location = useLocation();
-  const { data } = useQuery({
-    queryKey: queryKeys.campuses,
-    queryFn: api.campuses,
-    enabled,
-    staleTime: 5 * 60_000,
-  });
-  const [campusId, setCampusIdState] = useState(readCampusId);
+  const [tick, setTick] = useState(0);
+  const context = readSchoolContext();
+  const campuses = context?.campuses ?? [];
+  const [campusId, setCampusIdState] = useState(() => defaultCampusId(campuses));
 
   useEffect(() => {
-    const sync = () => setCampusIdState(readCampusId());
-    window.addEventListener("wellrun-campus", sync);
-    return () => window.removeEventListener("wellrun-campus", sync);
+    const syncCampus = () => setCampusIdState(readCampusId() || defaultCampusId(readSchoolContext()?.campuses ?? []));
+    const syncContext = () => setTick((value) => value + 1);
+    window.addEventListener("wellrun-campus", syncCampus);
+    window.addEventListener("wellrun-context", syncContext);
+    window.addEventListener("storage", syncCampus);
+    return () => {
+      window.removeEventListener("wellrun-campus", syncCampus);
+      window.removeEventListener("wellrun-context", syncContext);
+      window.removeEventListener("storage", syncCampus);
+    };
   }, []);
 
   useEffect(() => {
-    if (!enabled || campusId || !data?.campuses.length) return;
-    const main = data.campuses.find((campus) => campus.isMain) ?? data.campuses[0];
-    if (main) writeCampusId(main.id);
-  }, [campusId, data, enabled]);
+    if (!enabled || !campuses.length) return;
+    const next = defaultCampusId(campuses);
+    if (next && next !== campusId) writeCampusId(next);
+  }, [campusId, campuses, enabled]);
 
   function setCampusId(id: string) {
+    if (!id) return;
     writeCampusId(id);
+    for (const key of listKeys) {
+      void queryClient.invalidateQueries({ queryKey: key });
+    }
     if (location.pathname === "/students" || location.pathname === "/admissions") {
       const next = new URLSearchParams(location.search);
-      if (id) next.set("campusId", id);
-      else next.delete("campusId");
+      next.set("campusId", id);
       next.delete("page");
       navigate({ pathname: location.pathname, search: next.toString() }, { replace: true });
     }
   }
 
-  const campuses = data?.campuses ?? [];
   const active = campuses.find((campus) => campus.id === campusId) ?? null;
+  const classes = useMemo(() => classesForCampus(campusId), [campusId, tick]);
 
   return {
     campuses,
     campusId,
     active,
     setCampusId,
-    allSelected: campusId === ALL_CAMPUSES,
+    classes,
+    years: context?.years ?? [],
+    currentYear: context?.currentYear ?? null,
   };
 }

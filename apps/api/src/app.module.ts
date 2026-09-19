@@ -1,4 +1,5 @@
-import { Module } from "@nestjs/common";
+import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
+import { APP_INTERCEPTOR } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
 import { join } from "path";
 import { AdminModule } from "./admin/admin.module";
@@ -12,10 +13,15 @@ import { FeesModule } from "./fees/fees.module";
 import { HealthController } from "./health.controller";
 import { PrismaModule } from "./prisma/prisma.module";
 import { SchoolsModule } from "./schools/schools.module";
+import { SessionModule } from "./session/session.module";
 import { SetupModule } from "./setup/setup.module";
 import { StaffModule } from "./staff/staff.module";
 import { StudentsModule } from "./students/students.module";
 import { TimetableModule } from "./timetable/timetable.module";
+import { ScopeMiddleware } from "./common/scope.middleware";
+import { TraceController } from "./trace/trace.controller";
+import { TraceInterceptor } from "./trace/trace.interceptor";
+import { TraceMiddleware } from "./trace/trace.middleware";
 
 @Module({
   imports: [
@@ -24,6 +30,7 @@ import { TimetableModule } from "./timetable/timetable.module";
       envFilePath: [join(__dirname, "../.env"), join(__dirname, "../../../.env")],
     }),
     PrismaModule,
+    SessionModule,
     AuthModule,
     SchoolsModule,
     StudentsModule,
@@ -38,6 +45,11 @@ import { TimetableModule } from "./timetable/timetable.module";
     TimetableModule,
     AiModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, TraceController],
+  providers: [{ provide: APP_INTERCEPTOR, useClass: TraceInterceptor }],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(TraceMiddleware, ScopeMiddleware).forRoutes("*");
+  }
+}

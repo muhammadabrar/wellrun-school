@@ -7,6 +7,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/query";
+import { refreshSchoolContext } from "../lib/school-context";
 
 export function CampusesPage() {
   const queryClient = useQueryClient();
@@ -16,7 +17,7 @@ export function CampusesPage() {
   const [busy, setBusy] = useState<string | null>(null);
 
   async function reload() {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.campuses });
+    await Promise.all([queryClient.invalidateQueries({ queryKey: queryKeys.campuses }), refreshSchoolContext()]);
   }
 
   async function onAdd(event: FormEvent<HTMLFormElement>) {

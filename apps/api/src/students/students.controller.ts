@@ -3,6 +3,7 @@ import { AuthGuard } from "../auth/auth.guard";
 import { teacherClassIds } from "../common/access";
 import type { CurrentUser } from "../common/current-user";
 import { requireSchoolAdmin, requireSchoolId } from "../common/roles";
+import type { SchoolScope } from "../common/school-scope";
 import { PrismaService } from "../prisma/prisma.service";
 import { StudentsService } from "./students.service";
 
@@ -15,9 +16,12 @@ export class StudentsController {
   ) {}
 
   @Get()
-  async list(@Req() req: { user: CurrentUser }, @Query() query: Record<string, string | undefined>) {
+  async list(
+    @Req() req: { user: CurrentUser; schoolScope?: SchoolScope },
+    @Query() query: Record<string, string | undefined>,
+  ) {
     const { schoolId, classIds } = await teacherClassIds(this.prisma, req.user);
-    return this.students.list(schoolId, query, classIds);
+    return this.students.list(schoolId, query, classIds, req.schoolScope);
   }
 
   @Get("guardians")

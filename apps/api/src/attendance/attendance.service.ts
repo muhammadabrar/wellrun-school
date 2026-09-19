@@ -4,26 +4,28 @@ import { audit } from "../common/audit";
 import { dateOnly, karachiToday } from "../common/date";
 import { assertWritableSchool, teacherClassIds } from "../common/school";
 import type { CurrentUser } from "../common/current-user";
+import type { SchoolScope } from "../common/school-scope";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
 export class AttendanceService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async classes(user: CurrentUser) {
-    const schoolId = user.schoolId!;
-    const allowed = await teacherClassIds(this.prisma, user);
-    return this.prisma.class.findMany({
-      where: { schoolId, id: allowed ? { in: allowed } : undefined },
-      include: { enrollments: { where: { active: true }, include: { student: true } } },
-      orderBy: [{ name: "asc" }, { section: "asc" }],
-    });
-  }
-
-  records(schoolId: string, classId: string, date: string) {
-    return this.prisma.attendanceRecord.findMany({
-      where: { schoolId, classId, date: dateOnly(date) },
-    });
+  async day(schoolId: string, classId: string, date: string) {
+    const [records, enrollments] = await Promise.all([
+      this.prisma.attendanceRecord.findMany({
+        where: { schoolId, classId, date: dateOnly(date) },
+      }),
+      this.prisma.enrollment.findMany({
+        where: { schoolId, classId, active: true },
+        include: { student: { select: { id: true, firstName: true, lastName: true, admissionNo: true } } },
+        orderBy: [{ student: { lastName: "asc" } }, { student: { firstName: "asc" } }],
+      }),
+    ]);
+    return {
+      records,
+      students: enrollments.map((row) => row.student),
+    };
   }
 
   async save(user: CurrentUser, input: SaveAttendanceInput) {
@@ -57,10 +59,10 @@ export class AttendanceService {
       entityId: input.classId,
       summary: `${input.date} ${input.records.length} marks`,
     });
-    return this.records(schoolId, input.classId, input.date);
+    return this.day(schoolId, input.classId, input.date);
   }
 
-  async absent(user: CurrentUser, date = karachiToday()) {
+  async absent(user: CurrentUser, date = karachiToday(), scope: SchoolScope = {}) {
     const schoolId = user.schoolId!;
     const allowed = await teacherClassIds(this.prisma, user);
     return this.prisma.attendanceRecord.findMany({
@@ -69,6 +71,7 @@ export class AttendanceService {
         date: dateOnly(date),
         status: { in: ["ABSENT", "LEAVE"] },
         classId: allowed ? { in: allowed } : undefined,
+        class: scope.campusId ? { campusId: scope.campusId } : undefined,
       },
       include: {
         student: true,

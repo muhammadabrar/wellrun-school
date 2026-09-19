@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query, Req, 
 import { AuthGuard } from "../auth/auth.guard";
 import type { CurrentUser } from "../common/current-user";
 import { requireSchoolAdmin } from "../common/roles";
+import type { SchoolScope } from "../common/school-scope";
 import { AdmissionsService } from "./admissions.service";
 
 @Controller("console/admissions")
@@ -10,8 +11,11 @@ export class AdmissionsController {
   constructor(@Inject(AdmissionsService) private readonly admissions: AdmissionsService) {}
 
   @Get()
-  list(@Req() req: { user: CurrentUser }, @Query() query: Record<string, string | undefined>) {
-    return this.admissions.list(requireSchoolAdmin(req.user), query);
+  list(
+    @Req() req: { user: CurrentUser; schoolScope?: SchoolScope },
+    @Query() query: Record<string, string | undefined>,
+  ) {
+    return this.admissions.list(requireSchoolAdmin(req.user), query, req.schoolScope);
   }
 
   @Get("summary")
@@ -25,8 +29,8 @@ export class AdmissionsController {
   }
 
   @Post()
-  create(@Req() req: { user: CurrentUser }, @Body() body: unknown) {
-    return this.admissions.create(requireSchoolAdmin(req.user), req.user.id, body);
+  create(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }, @Body() body: unknown) {
+    return this.admissions.create(requireSchoolAdmin(req.user), req.user.id, body, req.schoolScope);
   }
 
   @Get(":id")

@@ -33,22 +33,19 @@ export class TimetableService {
 
   async grid(schoolId: string, classId: string | undefined, user: { role: string; email: string; schoolId: string | null }) {
     const allowed = await teacherClassIds(this.prisma, user);
-    const whereClass = allowed ? { id: { in: allowed } } : classId ? { id: classId } : {};
-    const classes = await this.prisma.class.findMany({
-      where: { schoolId, ...whereClass },
-      orderBy: [{ name: "asc" }, { section: "asc" }],
-    });
-    const focus = classId && classes.some((c) => c.id === classId) ? classId : classes[0]?.id;
+    const focus = classId && (!allowed || allowed.includes(classId)) ? classId : allowed?.[0];
+    if (!focus) {
+      const periods = await this.periods(schoolId);
+      return { classId: null, periods, lessons: [] };
+    }
     const [periods, lessons] = await Promise.all([
       this.periods(schoolId),
-      focus
-        ? this.prisma.timetableLesson.findMany({
-            where: { schoolId, classId: focus },
-            include: { staff: true, period: true },
-          })
-        : [],
+      this.prisma.timetableLesson.findMany({
+        where: { schoolId, classId: focus },
+        include: { staff: true, period: true },
+      }),
     ]);
-    return { classes, classId: focus ?? null, periods, lessons };
+    return { classId: focus, periods, lessons };
   }
 
   private async conflicts(schoolId: string, input: { staffId?: string; weekday: number; periodId: string; classId: string; ignoreId?: string }) {

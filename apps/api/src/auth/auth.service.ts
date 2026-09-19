@@ -4,12 +4,14 @@ import * as bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { audit } from "../common/audit";
 import { PrismaService } from "../prisma/prisma.service";
+import { SessionService } from "../session/session.service";
 
 @Injectable()
 export class AuthService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(JwtService) private readonly jwt: JwtService,
+    @Inject(SessionService) private readonly session: SessionService,
   ) {}
 
   private async tokenFor(user: { id: string; email: string; name: string; role: string; schoolId: string | null }) {
@@ -20,7 +22,11 @@ export class AuthService {
       role: user.role,
       schoolId: user.schoolId,
     };
-    return { token: await this.jwt.signAsync(payload), user: payload };
+    return {
+      token: await this.jwt.signAsync(payload),
+      user: payload,
+      schoolContext: await this.session.forSchool(user.schoolId),
+    };
   }
 
   async signup(name: string, email: string, password: string) {

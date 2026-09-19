@@ -74,11 +74,12 @@ export const studentSchema = z.object({
 
 export const admitStudentSchema = z
   .object({
+    studentId: z.string().optional(),
     guardianId: z.string().optional(),
     guardian: guardianSchema.optional(),
-    firstName: z.string().min(1),
-    lastName: z.string().min(1),
-    dateOfBirth: z.string().min(1),
+    firstName: z.string().optional(),
+    lastName: z.string().optional(),
+    dateOfBirth: z.string().optional(),
     className: z.string().min(1),
     section: z.string().min(1),
     classId: z.string().optional(),
@@ -88,8 +89,14 @@ export const admitStudentSchema = z
     extra: z.record(z.string(), z.unknown()).optional(),
     guardianExtra: z.record(z.string(), z.unknown()).optional(),
   })
-  .refine((value) => Boolean(value.guardianId || value.guardian), {
-    message: "Add a guardian or choose one that already exists.",
+  .superRefine((value, ctx) => {
+    if (value.studentId) return;
+    if (!value.firstName) ctx.addIssue({ code: "custom", message: "First name is required", path: ["firstName"] });
+    if (!value.lastName) ctx.addIssue({ code: "custom", message: "Last name is required", path: ["lastName"] });
+    if (!value.dateOfBirth) ctx.addIssue({ code: "custom", message: "Date of birth is required", path: ["dateOfBirth"] });
+    if (!value.guardianId && !value.guardian) {
+      ctx.addIssue({ code: "custom", message: "Add a guardian or choose one that already exists.", path: ["guardian"] });
+    }
   });
 
 export const studentListQuerySchema = z.object({
@@ -360,6 +367,13 @@ export const admissionScoreSchema = z.object({
   obtainedMarks: z.coerce.number().int().min(0),
 });
 
+export const admissionFeeQuoteSchema = z.object({
+  feeItemId: z.string().min(1),
+  name: z.string().min(1),
+  catalogAmountPkr: z.coerce.number().int().min(0),
+  amountPkr: z.coerce.number().int().min(0),
+});
+
 export const admissionDraftSchema = z.object({
   studentId: z.string().optional(),
   studentType: z.enum(studentTypes).optional(),
@@ -387,6 +401,8 @@ export const admissionDraftSchema = z.object({
   transferNotes: z.string().optional(),
   guardianId: z.string().optional(),
   family: z.record(z.string(), z.unknown()).optional(),
+  feeQuotes: z.array(admissionFeeQuoteSchema).optional(),
+  wizardStep: z.coerce.number().int().min(1).max(6).optional(),
   assessmentMode: z.enum(assessmentModes).optional(),
   interviewAt: z.string().optional(),
   interviewer: z.string().optional(),

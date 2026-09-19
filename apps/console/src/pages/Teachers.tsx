@@ -8,11 +8,12 @@ import { Mail, UserPlus } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/query";
+import { useCampus } from "@/hooks/use-campus";
 
 export function TeachersPage() {
   const queryClient = useQueryClient();
   const { data: staff, isPending: staffPending } = useQuery({ queryKey: queryKeys.staff, queryFn: api.staff });
-  const { data: classes = [] } = useQuery({ queryKey: queryKeys.classes, queryFn: api.classes });
+  const { classes } = useCampus();
   const { data: invites = [] } = useQuery({ queryKey: queryKeys.invites, queryFn: api.invites });
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

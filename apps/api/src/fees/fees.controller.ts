@@ -3,6 +3,7 @@ import { createPaymentSchema } from "@wellrun/shared";
 import { AuthGuard } from "../auth/auth.guard";
 import type { CurrentUser } from "../common/current-user";
 import { requireSchoolAdmin } from "../common/roles";
+import type { SchoolScope } from "../common/school-scope";
 import { FeesService } from "./fees.service";
 
 @Controller("console")
@@ -11,8 +12,8 @@ export class FeesController {
   constructor(@Inject(FeesService) private readonly fees: FeesService) {}
 
   @Get("invoices")
-  invoices(@Req() req: { user: CurrentUser }) {
-    return this.fees.invoices(requireSchoolAdmin(req.user));
+  invoices(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }) {
+    return this.fees.invoices(requireSchoolAdmin(req.user), req.schoolScope);
   }
 
   @Post("payments")

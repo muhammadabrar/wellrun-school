@@ -22,6 +22,7 @@ export const queryClient = new QueryClient({
 
 export const queryKeys = {
   setupStatus: ["setup", "status"] as const,
+  schoolSession: ["school", "session"] as const,
   setup: ["setup"] as const,
   admissionForm: ["admission", "form"] as const,
   admission: ["admission"] as const,

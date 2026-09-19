@@ -8,6 +8,7 @@ import { FormEvent, useState } from "react";
 import { api } from "../lib/api";
 import { queryKeys } from "../lib/query";
 import { nextSection } from "../lib/setup-helpers";
+import { refreshSchoolContext } from "../lib/school-context";
 
 export function AcademicsPage() {
   const queryClient = useQueryClient();
@@ -17,7 +18,7 @@ export function AcademicsPage() {
   const [busy, setBusy] = useState<string | null>(null);
 
   async function reload() {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.academics });
+    await Promise.all([queryClient.invalidateQueries({ queryKey: queryKeys.academics }), refreshSchoolContext()]);
   }
 
   if (isPending || !data) return <LoadingState variant="form" />;

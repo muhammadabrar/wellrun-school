@@ -15,6 +15,7 @@ import { api, currentUser } from "../lib/api";
 import { pkr } from "../lib/format";
 import { queryKeys } from "../lib/query";
 import { fileToDataUrl } from "../lib/setup-helpers";
+import { useCampus } from "@/hooks/use-campus";
 
 const tabItems = [
   { id: "overview", label: "Overview" },
@@ -36,6 +37,7 @@ export function StudentPage() {
   const photoInput = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const canMutate = currentUser()?.role === "SCHOOL_ADMIN";
+  const { classes, years } = useCampus();
   const { data: student, error: queryError, refetch } = useQuery({
     queryKey: queryKeys.student(id ?? ""),
     queryFn: () => api.student(id!),
@@ -252,9 +254,9 @@ export function StudentPage() {
             value={classId || undefined}
             onValueChange={(value) => setClassId(value ?? "")}
             placeholder="Select class"
-            options={student.classes.map((cls) => ({
+            options={classes.map((cls) => ({
               value: cls.id,
-              label: `${cls.name} ${cls.section} · ${cls.yearName}`,
+              label: `${cls.name} ${cls.section}${years.find((year) => year.id === cls.yearId) ? ` · ${years.find((year) => year.id === cls.yearId)?.name}` : ""}`,
             }))}
           />
         </Field>

@@ -10,12 +10,15 @@ export type WizardStepItem = {
 export function WizardStepper({
   steps,
   current,
+  maxStep,
   onSelect,
 }: {
   steps: WizardStepItem[];
   current: number;
+  maxStep?: number;
   onSelect: (id: number) => void;
 }) {
+  const reachable = maxStep ?? steps.length;
   const percent = Math.round((current / steps.length) * 100);
   const currentLabel = steps.find((step) => step.id === current)?.label ?? "";
 
@@ -30,12 +33,14 @@ export function WizardStepper({
         {steps.map((step, index) => {
           const complete = step.id < current;
           const active = step.id === current;
+          const locked = step.id > reachable;
           return (
             <li key={step.id} className="flex flex-1 items-start">
               <button
                 type="button"
                 onClick={() => onSelect(step.id)}
-                className="flex flex-col items-center gap-2 text-center"
+                disabled={locked}
+                className="flex flex-col items-center gap-2 text-center disabled:cursor-not-allowed disabled:opacity-50"
                 aria-current={active ? "step" : undefined}
               >
                 <span

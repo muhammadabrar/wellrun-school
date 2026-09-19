@@ -6,6 +6,7 @@ import { FormSelect } from "@/components/form/form-select";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Toast } from "../components/motion";
+import { useCampus } from "@/hooks/use-campus";
 import { api } from "../lib/api";
 import { todayIso } from "../lib/format";
 import { queryKeys } from "../lib/query";
@@ -20,6 +21,7 @@ const marks: { id: Status; label: string; on: string }[] = [
 ];
 
 export function AttendancePage() {
+  const { classes } = useCampus();
   const [classId, setClassId] = useState("");
   const [date, setDate] = useState(todayIso());
   const [draft, setDraft] = useState<Record<string, Status> | null>(null);
@@ -27,27 +29,23 @@ export function AttendancePage() {
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: classes = [], isPending: classesPending } = useQuery({ queryKey: queryKeys.classes, queryFn: api.classes });
   const resolvedClassId = classId || classes[0]?.id || "";
-  const selected = classes.find((c) => c.id === resolvedClassId);
-  const { data: rows, isPending: rowsPending, isFetching } = useQuery({
+  const { data, isPending: rowsPending, isFetching } = useQuery({
     queryKey: queryKeys.attendance(resolvedClassId, date),
     queryFn: () => api.attendance(resolvedClassId, date),
     enabled: Boolean(resolvedClassId),
     placeholderData: keepPreviousData,
   });
 
+  const students = data?.students ?? [];
   const baseline = useMemo(() => {
     const next: Record<string, Status> = {};
-    for (const row of rows ?? []) next[row.studentId] = row.status as Status;
-    for (const enrollment of selected?.enrollments ?? []) {
-      next[enrollment.student.id] ??= "PRESENT";
-    }
+    for (const row of data?.records ?? []) next[row.studentId] = row.status as Status;
+    for (const student of students) next[student.id] ??= "PRESENT";
     return next;
-  }, [rows, selected]);
+  }, [data, students]);
 
   const values = draft ?? baseline;
-  const students = useMemo(() => selected?.enrollments.map((e) => e.student) ?? [], [selected]);
 
   async function save() {
     setSaving(true);
@@ -100,16 +98,16 @@ export function AttendancePage() {
           Save attendance
         </Button>
       </div>
-      <FetchingIndicator show={isFetching && Boolean(rows)} label="Updating register" />
+      <FetchingIndicator show={isFetching && Boolean(data)} label="Updating register" />
       {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
-      {!classesPending && !classes.length ? (
+      {!classes.length ? (
         <EmptyState
           title="No classes assigned"
           description="Add a class first, then mark attendance for that section."
         />
       ) : null}
 
-      {classesPending || (rowsPending && !rows) ? (
+      {rowsPending && !data ? (
         <div className="mt-6 overflow-hidden rounded-3xl bg-surface" aria-busy="true">
           {Array.from({ length: 5 }, (_, i) => (
             <div key={i} className="flex items-center justify-between border-t border-line px-5 py-4 first:border-t-0">

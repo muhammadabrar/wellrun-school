@@ -1,6 +1,5 @@
-import { Building2Icon, ChevronsUpDownIcon, GlobeIcon, PlusIcon } from "lucide-react";
+import { Building2Icon, ChevronsUpDownIcon, PlusIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { ALL_CAMPUSES } from "@/lib/campus";
 import { useCampus } from "@/hooks/use-campus";
 import {
   DropdownMenu,
@@ -16,14 +15,10 @@ import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/c
 export function CampusSwitcher() {
   const { isMobile } = useSidebar();
   const navigate = useNavigate();
-  const { campuses, campusId, active, setCampusId, allSelected } = useCampus();
+  const { campuses, campusId, active, setCampusId } = useCampus();
 
-  const label = allSelected ? "All campuses" : (active?.name ?? "Select campus");
-  const detail = allSelected
-    ? `${campuses.length} ${campuses.length === 1 ? "campus" : "campuses"}`
-    : active?.isMain
-      ? "Main campus"
-      : active?.code || "Branch";
+  const label = active?.name ?? "Select campus";
+  const detail = active?.isMain ? "Main campus" : active?.code || "Branch";
 
   return (
     <SidebarMenu>
@@ -35,7 +30,7 @@ export function CampusSwitcher() {
             }
           >
             <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-              {allSelected ? <GlobeIcon /> : <Building2Icon />}
+              <Building2Icon />
             </div>
             <div className="grid flex-1 text-left text-sm leading-tight">
               <span className="truncate font-medium">{label}</span>
@@ -46,12 +41,6 @@ export function CampusSwitcher() {
           <DropdownMenuContent className="w-56" align="start" side={isMobile ? "bottom" : "right"} sideOffset={4}>
             <DropdownMenuGroup>
               <DropdownMenuLabel>Campuses</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setCampusId(ALL_CAMPUSES)}>
-                <div className="flex size-6 items-center justify-center rounded-md border">
-                  <GlobeIcon />
-                </div>
-                All campuses
-              </DropdownMenuItem>
               {campuses.map((campus) => (
                 <DropdownMenuItem key={campus.id} onClick={() => setCampusId(campus.id)}>
                   <div className="flex size-6 items-center justify-center rounded-md border">

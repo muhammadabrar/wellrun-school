@@ -10,14 +10,15 @@ import {
 } from "@wellrun/shared";
 import { audit } from "../common/audit";
 import { assertWritableSchool } from "../common/school";
+import type { SchoolScope } from "../common/school-scope";
 import { nextSchoolNumber } from "../common/sequence";
 import { saveDataUrl } from "../common/uploads";
 import { PrismaService } from "../prisma/prisma.service";
 
 const DEFAULT_DOCS = [
-  { kind: "birth_certificate", label: "Birth certificate", required: true },
-  { kind: "cnic", label: "Parent CNIC copy", required: true },
-  { kind: "photos", label: "Photographs", required: true },
+  { kind: "birth_certificate", label: "Birth certificate", required: false },
+  { kind: "cnic", label: "Parent CNIC copy", required: false },
+  { kind: "photos", label: "Photographs", required: false },
   { kind: "report_card", label: "Last report card", required: false },
   { kind: "transfer", label: "Transfer certificate", required: false },
 ];
@@ -53,15 +54,19 @@ export class AdmissionsService {
     };
   }
 
-  async list(schoolId: string, query: Record<string, string | undefined>) {
+  async list(schoolId: string, query: Record<string, string | undefined>, scope: SchoolScope = {}) {
     const filters = admissionListQuerySchema.parse(query);
     const where: Prisma.AdmissionApplicationWhereInput = { schoolId };
-    if (filters.status && filters.status !== "all") {
+    if (filters.status && filters.status !== "all" && filters.status !== "open") {
       where.status = filters.status as AdmissionStatus;
+    } else {
+      where.status = { notIn: ["ADMISSION_CONFIRMED", "REJECTED", "WITHDRAWN"] };
     }
-    if (filters.campusId) where.campusId = filters.campusId;
+    const campusId = filters.campusId || scope.campusId;
+    const yearId = filters.yearId || scope.yearId;
+    if (campusId) where.campusId = campusId;
     if (filters.className) where.className = filters.className;
-    if (filters.yearId) where.yearId = filters.yearId;
+    if (yearId) where.yearId = yearId;
     const q = filters.q?.trim();
     if (q) {
       where.OR = [
@@ -74,65 +79,78 @@ export class AdmissionsService {
         { guardian: { cnic: { contains: q, mode: "insensitive" } } },
       ];
     }
-    const [total, rows, years, campuses, classes] = await Promise.all([
+    const summaryWhere: Prisma.AdmissionApplicationWhereInput = { schoolId };
+    if (campusId) summaryWhere.campusId = campusId;
+    if (yearId) summaryWhere.yearId = yearId;
+    const [total, rows, groups] = await Promise.all([
       this.prisma.admissionApplication.count({ where }),
       this.prisma.admissionApplication.findMany({
         where,
         include: {
           guardian: true,
           campus: true,
-          scores: true,
-          invoices: { include: { payments: true } },
+          createdBy: { select: { id: true, name: true } },
         },
         orderBy: { createdAt: "desc" },
         skip: (filters.page - 1) * filters.pageSize,
         take: filters.pageSize,
       }),
-      this.prisma.academicYear.findMany({ where: { schoolId }, orderBy: { startsOn: "desc" } }),
-      this.prisma.campus.findMany({ where: { schoolId }, orderBy: { createdAt: "asc" } }),
-      this.prisma.class.findMany({
-        where: { schoolId },
-        include: { year: true, campus: true },
-        orderBy: [{ name: "asc" }, { section: "asc" }],
+      this.prisma.admissionApplication.groupBy({
+        by: ["status"],
+        where: summaryWhere,
+        _count: { _all: true },
       }),
     ]);
-    const docs = await this.prisma.schoolDocument.findMany({
-      where: { schoolId, ownerType: "application", ownerId: { in: rows.map((row) => row.id) } },
-    });
-    const docsByOwner = new Map<string, typeof docs>();
-    for (const doc of docs) {
-      const list = docsByOwner.get(doc.ownerId) ?? [];
-      list.push(doc);
-      docsByOwner.set(doc.ownerId, list);
-    }
     return {
-      items: rows.map((row) => {
-        const ownerDocs = docsByOwner.get(row.id) ?? [];
-        return this.toListRow(row, ownerDocs);
-      }),
+      items: rows.map((row) => this.toListRow(row)),
       total,
       page: filters.page,
       pageSize: filters.pageSize,
-      years: years.map((year) => ({ id: year.id, name: year.name, current: year.current })),
-      campuses: campuses.map((campus) => ({ id: campus.id, name: campus.name })),
-      classes: classes.map((cls) => ({
-        id: cls.id,
-        name: cls.name,
-        section: cls.section,
-        yearId: cls.yearId,
-        campusId: cls.campusId,
-      })),
+      summary: this.countsFromGroups(groups),
     };
   }
 
-  async create(schoolId: string, actorId: string, body: unknown) {
+  private countsFromGroups(groups: { status: AdmissionStatus; _count: { _all: number } }[]) {
+    const counts = Object.fromEntries(groups.map((row) => [row.status, row._count._all])) as Record<string, number>;
+    const total = groups.reduce((sum, row) => sum + row._count._all, 0);
+    const open = total - (counts.ADMISSION_CONFIRMED ?? 0) - (counts.REJECTED ?? 0) - (counts.WITHDRAWN ?? 0);
+    return {
+      total,
+      open,
+      draft: counts.DRAFT ?? 0,
+      submitted: counts.SUBMITTED ?? 0,
+      underReview: counts.UNDER_REVIEW ?? 0,
+      assessmentPending: counts.ASSESSMENT_PENDING ?? 0,
+      interviewPending: counts.INTERVIEW_PENDING ?? 0,
+      accepted: counts.ACCEPTED ?? 0,
+      feePending: counts.FEE_PENDING ?? 0,
+      documentsPending: counts.DOCUMENTS_PENDING ?? 0,
+      waitlisted: counts.WAITLISTED ?? 0,
+      rejected: counts.REJECTED ?? 0,
+      confirmed: counts.ADMISSION_CONFIRMED ?? 0,
+      withdrawn: counts.WITHDRAWN ?? 0,
+    };
+  }
+
+  async create(schoolId: string, actorId: string, body: unknown, scope: SchoolScope = {}) {
     await assertWritableSchool(this.prisma, schoolId);
     const data = admissionDraftSchema.parse(body ?? {});
-    const year = data.yearId
-      ? await this.prisma.academicYear.findFirst({ where: { id: data.yearId, schoolId } })
+    const firstName = data.firstName?.trim() ?? "";
+    const lastName = data.lastName?.trim() ?? "";
+    if (!firstName || !lastName) throw new BadRequestException("Applicant first and last name are required");
+    const family = this.familyRecord(data.family);
+    if (!family.guardianName?.trim() || !family.guardianPhone?.trim()) {
+      throw new BadRequestException("Guardian name and phone are required");
+    }
+    const year = data.yearId || scope.yearId
+      ? await this.prisma.academicYear.findFirst({
+          where: { id: data.yearId || scope.yearId, schoolId },
+        })
       : await this.prisma.academicYear.findFirst({ where: { schoolId, current: true } });
-    const campus = data.campusId
-      ? await this.prisma.campus.findFirst({ where: { id: data.campusId, schoolId } })
+    const campus = data.campusId || scope.campusId
+      ? await this.prisma.campus.findFirst({
+          where: { id: data.campusId || scope.campusId, schoolId },
+        })
       : await this.prisma.campus.findFirst({ where: { schoolId, isMain: true } });
     let studentId = data.studentId;
     let studentType = data.studentType ?? "new";
@@ -149,16 +167,19 @@ export class AdmissionsService {
           applicationNo,
           studentId,
           studentType,
-          firstName: data.firstName ?? (studentId ? undefined : "") ?? "",
-          lastName: data.lastName ?? "",
+          firstName,
+          lastName: lastName,
+          gender: data.gender ?? "",
+          dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
+          cnic: data.cnic ?? "",
+          address: data.address ?? "",
           yearId: year?.id,
           campusId: campus?.id,
-          className: data.className ?? "",
-          section: data.section ?? "A",
-          targetClassId: data.targetClassId,
           guardianId: data.guardianId,
-          family: (data.family ?? {}) as Prisma.InputJsonValue,
+          family: family as Prisma.InputJsonValue,
           extra: (data.extra ?? {}) as Prisma.InputJsonValue,
+          createdById: actorId,
+          wizardStep: 2,
         },
       });
     });
@@ -173,7 +194,7 @@ export class AdmissionsService {
             gender: student.gender,
             dateOfBirth: student.dateOfBirth,
             photoUrl: this.extraText(student.extra, "photo"),
-            address: this.extraText(student.extra, "address"),
+            address: this.extraText(student.extra, "address") || application.address,
           },
         });
       }
@@ -199,6 +220,7 @@ export class AdmissionsService {
         year: true,
         targetClass: true,
         student: true,
+        createdBy: { select: { id: true, name: true } },
         scores: true,
         invoices: { include: { payments: true, feePlan: true } },
       },
@@ -208,33 +230,8 @@ export class AdmissionsService {
       where: { schoolId, ownerType: "application", ownerId: id },
       orderBy: { createdAt: "asc" },
     });
-    const feeItems = await this.prisma.feeItem.findMany({
-      where: { schoolId, enabled: true },
-      orderBy: { sortOrder: "asc" },
-    });
-    const classes = await this.prisma.class.findMany({
-      where: { schoolId },
-      include: { year: true, campus: true },
-      orderBy: [{ name: "asc" }, { section: "asc" }],
-    });
-    const campuses = await this.prisma.campus.findMany({ where: { schoolId }, orderBy: { createdAt: "asc" } });
-    const years = await this.prisma.academicYear.findMany({ where: { schoolId }, orderBy: { startsOn: "desc" } });
     const blockers = this.blockers(application, documents);
-    return {
-      ...this.toDetail(application, documents, blockers),
-      feeItems: feeItems.map((item) => ({ id: item.id, name: item.name, amountPkr: item.amountPkr })),
-      classes: classes.map((cls) => ({
-        id: cls.id,
-        name: cls.name,
-        section: cls.section,
-        yearId: cls.yearId,
-        campusId: cls.campusId,
-        yearName: cls.year.name,
-        campusName: cls.campus?.name ?? "",
-      })),
-      campuses: campuses.map((campus) => ({ id: campus.id, name: campus.name })),
-      years: years.map((year) => ({ id: year.id, name: year.name, current: year.current })),
-    };
+    return this.toDetail(application, documents, blockers);
   }
 
   async patch(schoolId: string, actorId: string, id: string, body: unknown) {
@@ -275,6 +272,14 @@ export class AdmissionsService {
     if (data.interviewAt !== undefined) update.interviewAt = data.interviewAt ? new Date(data.interviewAt) : null;
     if (data.extra) update.extra = data.extra as Prisma.InputJsonValue;
     if (data.family) update.family = data.family as Prisma.InputJsonValue;
+    if (data.feeQuotes) update.feeQuotes = data.feeQuotes as Prisma.InputJsonValue;
+    if (data.wizardStep !== undefined) {
+      update.wizardStep = Math.max(current.wizardStep, data.wizardStep);
+      if (data.wizardStep >= 6 && (current.status === "DRAFT" || current.status === "SUBMITTED")) {
+        update.status = "UNDER_REVIEW";
+        update.submittedAt = current.submittedAt ?? new Date();
+      }
+    }
     if (data.assessmentMode) update.assessmentMode = data.assessmentMode as AssessmentMode;
     if (data.yearId !== undefined) update.year = data.yearId ? { connect: { id: data.yearId } } : { disconnect: true };
     if (data.campusId !== undefined) {
@@ -383,8 +388,25 @@ export class AdmissionsService {
   }
 
   async reject(schoolId: string, actorId: string, id: string, body: unknown) {
-    const data = admissionDecisionSchema.parse(body ?? {});
-    return this.setStatus(schoolId, actorId, id, "REJECTED", "application_rejected", data.note);
+    await assertWritableSchool(this.prisma, schoolId);
+    admissionDecisionSchema.parse(body ?? {});
+    const application = await this.requireApplication(schoolId, id);
+    if (application.status === "ADMISSION_CONFIRMED") {
+      throw new BadRequestException("Admitted students cannot be deleted from admissions");
+    }
+    await this.prisma.schoolDocument.deleteMany({
+      where: { schoolId, ownerType: "application", ownerId: id },
+    });
+    await this.prisma.admissionApplication.delete({ where: { id } });
+    await audit(this.prisma, {
+      schoolId,
+      actorId,
+      action: "application_rejected",
+      entity: "admission",
+      entityId: id,
+      summary: application.applicationNo,
+    });
+    return { deleted: true, id };
   }
 
   async withdraw(schoolId: string, actorId: string, id: string, body: unknown) {
@@ -397,7 +419,7 @@ export class AdmissionsService {
     const data = admissionConfirmSchema.parse(body ?? {});
     const application = await this.requireApplication(schoolId, id);
     if (application.status === "ADMISSION_CONFIRMED") throw new BadRequestException("Already confirmed");
-    if (["REJECTED", "WITHDRAWN", "DRAFT"].includes(application.status)) {
+    if (["REJECTED", "WITHDRAWN"].includes(application.status)) {
       throw new BadRequestException("This application cannot be confirmed yet");
     }
     const family = this.familyRecord(application.family);
@@ -414,12 +436,8 @@ export class AdmissionsService {
     const documents = await this.prisma.schoolDocument.findMany({
       where: { schoolId, ownerType: "application", ownerId: id },
     });
-    const invoices = await this.prisma.invoice.findMany({
-      where: { applicationId: id },
-      include: { payments: true },
-    });
-    const blockers = this.blockers({ ...application, invoices, guardianId }, documents);
-    if (blockers.length) throw new BadRequestException(blockers[0]);
+    if (!application.firstName || !application.lastName) throw new BadRequestException("Applicant name is incomplete");
+    if (!application.className && !classId) throw new BadRequestException("Choose a class");
 
     const result = await this.prisma.$transaction(async (tx) => {
       let studentId = application.studentId;
@@ -510,6 +528,7 @@ export class AdmissionsService {
       entityId: result.studentId,
       summary: application.applicationNo,
     });
+    await this.issueAdmissionInvoice(schoolId, id, result.studentId);
     return this.byId(schoolId, id);
   }
 
@@ -710,30 +729,56 @@ export class AdmissionsService {
     });
   }
 
-  private async issueAdmissionInvoice(schoolId: string, applicationId: string) {
+  private async issueAdmissionInvoice(schoolId: string, applicationId: string, studentId?: string) {
     const existing = await this.prisma.invoice.findFirst({ where: { applicationId } });
-    if (existing) return existing;
-    const items = await this.prisma.feeItem.findMany({ where: { schoolId, enabled: true }, orderBy: { sortOrder: "asc" } });
-    const amount = items.reduce((sum, item) => sum + item.amountPkr, 0);
+    if (existing) {
+      if (studentId) await this.prisma.invoice.updateMany({ where: { applicationId }, data: { studentId } });
+      return existing;
+    }
+    const application = await this.prisma.admissionApplication.findFirst({
+      where: { id: applicationId, schoolId },
+      select: { feeQuotes: true, yearId: true },
+    });
+    const quotes = this.feeQuotes(application?.feeQuotes);
+    const amount = quotes.reduce((sum, item) => sum + item.amountPkr, 0);
     if (!amount) return null;
-    const year = await this.prisma.academicYear.findFirst({ where: { schoolId, current: true } });
-    if (!year) return null;
-    let plan = await this.prisma.feePlan.findFirst({ where: { schoolId, yearId: year.id, name: "Admission fee" } });
+    const yearId =
+      application?.yearId ??
+      (await this.prisma.academicYear.findFirst({ where: { schoolId, current: true } }))?.id;
+    if (!yearId) return null;
+    let plan = await this.prisma.feePlan.findFirst({ where: { schoolId, yearId, name: "Admission fee" } });
     if (!plan) {
       plan = await this.prisma.feePlan.create({
-        data: { schoolId, yearId: year.id, name: "Admission fee", amountPkr: amount },
+        data: { schoolId, yearId, name: "Admission fee", amountPkr: amount },
       });
     }
     return this.prisma.invoice.create({
       data: {
         schoolId,
         applicationId,
+        studentId,
         feePlanId: plan.id,
         amountPkr: amount,
         status: "ISSUED",
         dueOn: new Date(),
       },
     });
+  }
+
+  private feeQuotes(value: unknown) {
+    if (!Array.isArray(value)) return [] as { feeItemId: string; name: string; catalogAmountPkr: number; amountPkr: number }[];
+    return value
+      .map((row) => {
+        if (!row || typeof row !== "object") return null;
+        const item = row as Record<string, unknown>;
+        return {
+          feeItemId: String(item.feeItemId ?? ""),
+          name: String(item.name ?? "Fee"),
+          catalogAmountPkr: Number(item.catalogAmountPkr ?? 0) || 0,
+          amountPkr: Number(item.amountPkr ?? 0) || 0,
+        };
+      })
+      .filter((row): row is { feeItemId: string; name: string; catalogAmountPkr: number; amountPkr: number } => Boolean(row));
   }
 
   private async resolveClassId(
@@ -823,14 +868,12 @@ export class AdmissionsService {
       guardianId: string | null;
       invoices: { amountPkr: number; payments: { amountPkr: number }[]; status: string }[];
     },
-    documents: { required: boolean; url: string }[],
+    _documents: { required: boolean; url: string }[],
   ) {
     const issues: string[] = [];
     if (!application.firstName || !application.lastName) issues.push("Applicant name is incomplete");
     if (!application.targetClassId && !application.className) issues.push("Choose a class");
     if (!application.guardianId) issues.push("Add a guardian");
-    if (this.feeDue(application.invoices) > 0) issues.push("Admission fee is still due");
-    if (documents.some((doc) => doc.required && !doc.url)) issues.push("Required documents are missing");
     return issues;
   }
 
@@ -852,16 +895,16 @@ export class AdmissionsService {
 
   private nextAction(status: AdmissionStatus) {
     const map: Record<AdmissionStatus, string> = {
-      DRAFT: "Continue application",
-      SUBMITTED: "Start review",
-      UNDER_REVIEW: "Accept, waitlist, or reject",
-      ASSESSMENT_PENDING: "Enter test scores",
-      INTERVIEW_PENDING: "Log interview",
-      ACCEPTED: "Confirm admission",
-      WAITLISTED: "Accept or reject from waitlist",
+      DRAFT: "Continue",
+      SUBMITTED: "Continue",
+      UNDER_REVIEW: "Continue",
+      ASSESSMENT_PENDING: "Continue",
+      INTERVIEW_PENDING: "Continue",
+      ACCEPTED: "Continue",
+      WAITLISTED: "Continue",
       REJECTED: "Closed",
-      FEE_PENDING: "Record admission fee",
-      DOCUMENTS_PENDING: "Upload required documents",
+      FEE_PENDING: "Continue",
+      DOCUMENTS_PENDING: "Continue",
       ADMISSION_CONFIRMED: "Open student record",
       WITHDRAWN: "Closed",
     };
@@ -886,24 +929,21 @@ export class AdmissionsService {
     return this.extraRecord(extra)[key] ?? "";
   }
 
-  private toListRow(
-    row: {
-      id: string;
-      applicationNo: string;
-      status: AdmissionStatus;
-      firstName: string;
-      lastName: string;
-      className: string;
-      section: string;
-      createdAt: Date;
-      campus: { name: string } | null;
-      guardian: { name: string; phone: string } | null;
-      scores: { maxMarks: number; obtainedMarks: number }[];
-      invoices: { amountPkr: number; payments: { amountPkr: number }[]; status: string }[];
-    },
-    documents: { required: boolean; url: string }[],
-  ) {
-    const uploaded = documents.filter((doc) => doc.url).length;
+  private toListRow(row: {
+    id: string;
+    applicationNo: string;
+    status: AdmissionStatus;
+    firstName: string;
+    lastName: string;
+    className: string;
+    section: string;
+    wizardStep: number;
+    createdAt: Date;
+    campus: { name: string } | null;
+    guardian: { name: string; phone: string } | null;
+    createdBy: { name: string } | null;
+  }) {
+    const family = this.familyRecord((row as { family?: unknown }).family);
     return {
       id: row.id,
       applicationNo: row.applicationNo,
@@ -913,12 +953,11 @@ export class AdmissionsService {
       className: row.className,
       section: row.section,
       campus: row.campus?.name ?? "",
-      guardianName: row.guardian?.name ?? "",
-      guardianPhone: row.guardian?.phone ?? "",
+      guardianName: row.guardian?.name ?? family.guardianName ?? "",
+      guardianPhone: row.guardian?.phone ?? family.guardianPhone ?? "",
       createdAt: row.createdAt,
-      assessmentPct: this.assessmentPct(row.scores),
-      docs: { uploaded, total: documents.length },
-      feeDue: this.feeDue(row.invoices),
+      wizardStep: row.wizardStep,
+      addedBy: row.createdBy?.name ?? "",
       nextAction: this.nextAction(row.status),
     };
   }
@@ -954,6 +993,9 @@ export class AdmissionsService {
       guardianId: string | null;
       studentId: string | null;
       family: unknown;
+      feeQuotes: unknown;
+      wizardStep: number;
+      createdBy: { id: string; name: string } | null;
       assessmentMode: AssessmentMode;
       interviewAt: Date | null;
       interviewer: string;
@@ -1012,6 +1054,9 @@ export class AdmissionsService {
       guardianId: application.guardianId,
       studentId: application.studentId,
       family: this.familyRecord(application.family),
+      feeQuotes: this.feeQuotes(application.feeQuotes),
+      wizardStep: application.wizardStep,
+      createdBy: application.createdBy,
       assessmentMode: application.assessmentMode,
       interviewAt: application.interviewAt,
       interviewer: application.interviewer,

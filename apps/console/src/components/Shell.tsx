@@ -14,10 +14,11 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { currentUser, api, token } from "@/lib/api";
 import { ApiError, queryKeys } from "@/lib/query";
+import { defaultCampusId, writeCampusId } from "@/lib/campus";
+import { readSchoolContext, writeSchoolContext } from "@/lib/school-context";
 
 const titles: [string, string][] = [
   ["/admissions/new", "New application"],
-  ["/admission/settings", "Admission settings"],
   ["/fees/receipt", "Receipt"],
   ["/admissions/", "Application"],
   ["/admissions", "Admissions"],
@@ -48,12 +49,20 @@ function pageTitle(pathname: string) {
 export function Shell() {
   const user = currentUser();
   const location = useLocation();
-  const { data: setupStatus, error: setupError } = useQuery({
-    queryKey: queryKeys.setupStatus,
-    queryFn: api.setupStatus,
-    enabled: user?.role === "SCHOOL_ADMIN",
-    staleTime: 5 * 60_000,
+  const stored = readSchoolContext();
+  const { data: session, error: setupError } = useQuery({
+    queryKey: queryKeys.schoolSession,
+    queryFn: async () => {
+      const next = await api.schoolSession();
+      writeSchoolContext(next);
+      const campusId = defaultCampusId(next.campuses);
+      if (campusId) writeCampusId(campusId);
+      return next;
+    },
+    enabled: Boolean(user?.role === "SCHOOL_ADMIN" || user?.role === "TEACHER") && !stored,
+    staleTime: Infinity,
   });
+  const setupStatus = stored ?? session;
 
   if (!token() || (setupError instanceof ApiError && setupError.status === 401)) {
     return <Navigate to="/login" replace />;

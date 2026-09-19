@@ -1,14 +1,20 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { CreatePaymentInput } from "@wellrun/shared";
+import type { SchoolScope } from "../common/school-scope";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
 export class FeesService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  invoices(schoolId: string) {
+  invoices(schoolId: string, scope: SchoolScope = {}) {
     return this.prisma.invoice.findMany({
-      where: { schoolId },
+      where: {
+        schoolId,
+        ...(scope.campusId
+          ? { OR: [{ student: { campusId: scope.campusId } }, { application: { campusId: scope.campusId } }] }
+          : {}),
+      },
       include: { student: true, feePlan: true, payments: true, application: true },
       orderBy: { dueOn: "desc" },
     });

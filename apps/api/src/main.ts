@@ -25,6 +25,14 @@ async function bootstrap() {
       callback(null, false);
     },
     credentials: true,
+    exposedHeaders: ["X-Request-Id", "X-Server-Duration-Ms", "Server-Timing"],
+    allowedHeaders: [
+      "Authorization",
+      "Content-Type",
+      "X-Campus-Id",
+      "X-Year-Id",
+      "X-Request-Id",
+    ],
   });
   const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3000);
   await app.listen(port, "0.0.0.0");

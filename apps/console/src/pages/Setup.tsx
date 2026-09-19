@@ -12,7 +12,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { AdmissionFieldsEditor } from "../components/AdmissionFieldsEditor";
 import { FileUpload } from "../components/FileUpload";
 import { DatePicker } from "@/components/form/date-picker";
 import { FormSelect } from "@/components/form/form-select";
@@ -21,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { ApiError } from "../lib/query";
 import { api, currentUser, setSession, type AdmissionField, type Setup } from "../lib/api";
 import { queryKeys } from "../lib/query";
+import { refreshSchoolContext } from "../lib/school-context";
 import { fileToDataUrl, nextSection, parseImportFile } from "../lib/setup-helpers";
 
 const STEPS = [
@@ -30,7 +30,7 @@ const STEPS = [
   "Classes",
   "Staff",
   "Subjects",
-  "Admission form",
+  "Admission",
   "Import students",
   "Fee structure",
 ];
@@ -278,6 +278,7 @@ export function SetupPage() {
                   code: String(form.get("code") || "MAIN"),
                   isMain: true,
                 });
+                await refreshSchoolContext();
                 await load();
                 setStep(3);
               });
@@ -308,6 +309,7 @@ export function SetupPage() {
                   endsOn: String(form.get("endsOn")),
                   current: true,
                 });
+                await refreshSchoolContext();
                 await load();
                 setStep(4);
               });
@@ -417,6 +419,7 @@ export function SetupPage() {
                   void run(async () => {
                     if (!yearId) throw new Error("Create an academic year first.");
                     await api.applyClasses({ yearId, campusId: data.campus?.id, template, grades });
+                    await refreshSchoolContext();
                     await load();
                     setStep(5);
                   })
@@ -540,26 +543,13 @@ export function SetupPage() {
 
         {step === 7 ? (
           <section className="mt-8 rounded-3xl bg-surface p-6">
-            <h2 className="font-display text-xl">Admission form</h2>
+            <h2 className="font-display text-xl">Admission</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Guardian and student required fields stay on the form. Roll number and admission dates are assigned automatically later.
+              Applications already include applicant, family, class, documents, and fees. You can continue without editing a custom form.
             </p>
-            <div className="mt-5">
-              <AdmissionFieldsEditor fields={fields} onChange={setFields} />
-            </div>
             <div className="mt-6 flex gap-2">
-              <Button
-                type="button"
-                loading={saving}
-                onClick={() =>
-                  void run(async () => {
-                    await api.saveAdmissionForm({ name: "Default admission form", fields });
-                    setMessage("Admission form saved.");
-                    setStep(8);
-                  })
-                }
-              >
-                Save and continue
+              <Button type="button" onClick={() => setStep(8)}>
+                Continue
               </Button>
               <Button type="button" variant="outline" onClick={() => setStep(8)}>
                 Skip
@@ -683,6 +673,7 @@ export function SetupPage() {
                   void run(async () => {
                     await api.saveFees({ items: feeItems });
                     await api.completeSetup();
+                    await refreshSchoolContext();
                     queryClient.setQueryData(queryKeys.setupStatus, { setupCompleted: true, setupStep: 9 });
                     navigate("/");
                   })
@@ -697,6 +688,7 @@ export function SetupPage() {
                 onClick={() =>
                   void run(async () => {
                     await api.completeSetup();
+                    await refreshSchoolContext();
                     queryClient.setQueryData(queryKeys.setupStatus, { setupCompleted: true, setupStep: 9 });
                     navigate("/");
                   })
