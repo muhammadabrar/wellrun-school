@@ -215,6 +215,7 @@ export const api = {
   },
   admissionsSummary: () => request<AdmissionSummary>("/console/admissions/summary"),
   admissionApplication: (id: string) => request<AdmissionDetail>(`/console/admissions/${id}`),
+  admissionSiblingFees: (id: string) => request<AdmissionSiblingFees>(`/console/admissions/${id}/sibling-fees`),
   createAdmission: (payload: Record<string, unknown> = {}) =>
     request<AdmissionDetail>("/console/admissions", { method: "POST", body: JSON.stringify(payload) }),
   patchAdmission: (id: string, payload: Record<string, unknown>) =>
@@ -354,9 +355,24 @@ export type Guardian = {
   cnic?: string;
   email?: string | null;
   relation: string;
+  occupation?: string;
   extra?: Record<string, unknown>;
+  students?: { id: string; firstName: string; lastName: string }[];
   _count?: { students: number };
 };
+
+export type AdmissionSiblingFees = {
+  siblings: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    rollNo: string;
+    class: { name: string; section: string } | null;
+    fees: { name: string; amountPkr: number; catalogAmountPkr: number }[];
+  }[];
+};
+
+export type AttendanceMark = "PRESENT" | "ABSENT" | "LATE" | "LEAVE" | "EXCUSED";
 
 export type StudentRow = {
   id: string;
@@ -365,7 +381,6 @@ export type StudentRow = {
   firstName: string;
   lastName: string;
   status: string;
-  photo?: string;
   guardianName: string;
   phone: string;
   address: string;
@@ -373,6 +388,7 @@ export type StudentRow = {
   class: { id: string; name: string; section: string } | null;
   attendancePct: number;
   attendanceMarked: boolean;
+  todayAttendance: AttendanceMark | null;
   pendingFees: { status: "pending" | "paid" | "none"; amountPkr: number };
 };
 
@@ -418,6 +434,7 @@ export type StudentProfile = {
   address: string;
   campus: { id: string; name: string } | null;
   class: { id: string; name: string; section: string; yearId: string } | null;
+  todayAttendance: AttendanceMark | null;
   guardians: { guardian: Guardian }[];
   siblings?: {
     id: string;

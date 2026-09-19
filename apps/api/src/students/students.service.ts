@@ -17,6 +17,7 @@ import { Prisma } from "@prisma/client";
 import { audit } from "../common/audit";
 import { assertWritableSchool } from "../common/school";
 import type { SchoolScope } from "../common/school-scope";
+import { karachiToday } from "../common/date";
 import { nextSchoolNumber } from "../common/sequence";
 import { saveDataUrl } from "../common/uploads";
 import { PrismaService } from "../prisma/prisma.service";
@@ -78,9 +79,17 @@ export class StudentsService {
     }
     if (filters.status && filters.status !== "all") where.status = filters.status;
     const enrollmentFilter: Prisma.EnrollmentWhereInput = { active: true };
+    const className = filters.className === "all" || !filters.className ? undefined : filters.className;
+    const section = filters.section === "all" || !filters.section ? undefined : filters.section;
     if (classId) enrollmentFilter.classId = classId;
     if (classIds) enrollmentFilter.classId = classId ? classId : { in: classIds };
-    if (classId || classIds) where.enrollments = { some: enrollmentFilter };
+    if (className || section) {
+      enrollmentFilter.class = {
+        ...(className ? { name: className } : {}),
+        ...(section ? { section } : {}),
+      };
+    }
+    if (classId || classIds || className || section) where.enrollments = { some: enrollmentFilter };
 
     const students = await this.prisma.student.findMany({
       where,
@@ -91,6 +100,7 @@ export class StudentsService {
         invoices: { include: { payments: true } },
         attendance: {
           where: { date: { gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) } },
+          select: { status: true, date: true },
         },
       },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -121,8 +131,9 @@ export class StudentsService {
   }
 
   async guardians(schoolId: string, q?: string) {
-    const query = q?.trim();
-    return this.prisma.guardian.findMany({
+    const query = q?.trim() ?? "";
+    if (query && query.length < 3) return [];
+    const rows = await this.prisma.guardian.findMany({
       where: query
         ? {
             schoolId,
@@ -133,10 +144,30 @@ export class StudentsService {
             ],
           }
         : { schoolId },
-      include: { _count: { select: { students: true } } },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        cnic: true,
+        email: true,
+        relation: true,
+        occupation: true,
+        students: { select: { student: { select: { id: true, firstName: true, lastName: true } } } },
+      },
       orderBy: { name: "asc" },
       take: 40,
     });
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      phone: row.phone,
+      cnic: row.cnic,
+      email: row.email,
+      relation: row.relation,
+      occupation: row.occupation,
+      students: row.students.map((link) => link.student),
+      _count: { students: row.students.length },
+    }));
   }
 
   async byId(schoolId: string, id: string, classIds: string[] | null = null) {
@@ -160,6 +191,9 @@ export class StudentsService {
     const current = student.enrollments.find((row) => row.active) ?? student.enrollments[0] ?? null;
     const presentLike = student.attendance.filter((row) => row.status === "PRESENT" || row.status === "LATE").length;
     const marked = student.attendance.length;
+    const today = karachiToday();
+    const todayAttendance =
+      student.attendance.find((row) => this.attendanceDay(row.date) === today)?.status ?? null;
     let feesDue = 0;
     for (const invoice of student.invoices) {
       if (invoice.status === "VOID" || invoice.status === "DRAFT") continue;
@@ -186,6 +220,7 @@ export class StudentsService {
       class: current
         ? { id: current.class.id, name: current.class.name, section: current.class.section, yearId: current.class.yearId }
         : null,
+      todayAttendance,
       guardians: student.guardians.map((link) => ({
         guardian: {
           id: link.guardian.id,
@@ -378,6 +413,9 @@ export class StudentsService {
 
   async savePhoto(schoolId: string, actorId: string, id: string, dataUrl: string) {
     await assertWritableSchool(this.prisma, schoolId);
+    if (!/^data:image\/(jpeg|jpg|png|webp)/i.test(dataUrl)) {
+      throw new BadRequestException("Upload a JPG, PNG, or WebP image");
+    }
     const student = await this.prisma.student.findFirst({ where: { id, schoolId } });
     if (!student) throw new NotFoundException("Student not found");
     const url = saveDataUrl(schoolId, `student-${id}`, dataUrl);
@@ -399,6 +437,7 @@ export class StudentsService {
     await assertWritableSchool(this.prisma, schoolId);
     const current = await this.prisma.student.findFirst({ where: { id, schoolId } });
     if (!current) throw new NotFoundException("Student not found");
+    const raw = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
     const data = studentSchema.partial().parse(body);
     const extra = { ...this.extraRecord(current.extra), ...(data.extra ?? {}) };
     if (data.phone !== undefined) extra.phone = data.phone;
@@ -410,7 +449,7 @@ export class StudentsService {
         lastName: data.lastName,
         admissionNo: data.admissionNo,
         gender: data.gender,
-        status: data.status,
+        status: "status" in raw ? data.status : undefined,
         dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
         extra: extra as Prisma.InputJsonValue,
       },
@@ -521,6 +560,10 @@ export class StudentsService {
 
   private extraText(extra: unknown, key: string) {
     return this.extraRecord(extra)[key] ?? "";
+  }
+
+  private attendanceDay(value: Date | string) {
+    return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
   }
 
   private toProfile(
@@ -709,10 +752,12 @@ export class StudentsService {
     enrollments: { rollNo?: string; class: { id: string; name: string; section: string } }[];
     guardians: { guardian: { name: string; phone?: string } }[];
     invoices: { status: string; amountPkr: number; payments: { amountPkr: number }[] }[];
-    attendance: { status: string }[];
+    attendance: { status: string; date: Date }[];
   }) {
     const presentLike = student.attendance.filter((row) => row.status === "PRESENT" || row.status === "LATE").length;
     const marked = student.attendance.length;
+    const today = karachiToday();
+    const todayAttendance = student.attendance.find((row) => this.attendanceDay(row.date) === today)?.status ?? null;
     let pending = 0;
     for (const invoice of student.invoices) {
       if (invoice.status === "VOID" || invoice.status === "DRAFT") continue;
@@ -726,7 +771,6 @@ export class StudentsService {
       firstName: student.firstName,
       lastName: student.lastName,
       status: student.status,
-      photo: this.extraText(student.extra, "photo"),
       guardianName: student.guardians[0]?.guardian.name ?? "",
       phone: this.extraText(student.extra, "phone") || student.guardians[0]?.guardian.phone || "",
       address: this.extraText(student.extra, "address"),
@@ -734,6 +778,7 @@ export class StudentsService {
       class: student.enrollments[0]?.class ?? null,
       attendancePct: marked ? Math.round((presentLike / marked) * 100) : 0,
       attendanceMarked: marked > 0,
+      todayAttendance,
       pendingFees: {
         status: pending > 0 ? "pending" : student.invoices.length ? "paid" : "none",
         amountPkr: pending,

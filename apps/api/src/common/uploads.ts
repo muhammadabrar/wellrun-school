@@ -11,5 +11,5 @@ export function saveDataUrl(schoolId: string, prefix: string, dataUrl: string) {
   mkdirSync(dir, { recursive: true });
   const name = `${schoolId}-${prefix}-${Date.now()}.${ext}`;
   writeFileSync(join(dir, name), Buffer.from(match[2], "base64"));
-  return `http://localhost:3000/uploads/${name}`;
+  return `/uploads/${name}`;
 }

@@ -39,10 +39,11 @@ export function Toast({ message }: { message: string | null }) {
     <AnimatePresence>
       {message ? (
         <motion.div
+          role="status"
           initial={{ y: 8, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 4, opacity: 0 }}
-          className="fixed right-8 bottom-8 rounded-lg bg-foreground px-4 py-3 text-sm text-background shadow-lg"
+          className="fixed right-8 bottom-8 z-50 rounded-lg bg-foreground px-4 py-3 text-sm text-background shadow-lg"
         >
           {message}
         </motion.div>

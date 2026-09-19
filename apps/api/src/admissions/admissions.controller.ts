@@ -38,6 +38,11 @@ export class AdmissionsController {
     return this.admissions.byId(requireSchoolAdmin(req.user), id);
   }
 
+  @Get(":id/sibling-fees")
+  siblingFees(@Req() req: { user: CurrentUser }, @Param("id") id: string) {
+    return this.admissions.siblingFees(requireSchoolAdmin(req.user), id);
+  }
+
   @Patch(":id")
   patch(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Body() body: unknown) {
     return this.admissions.patch(requireSchoolAdmin(req.user), req.user.id, id, body);

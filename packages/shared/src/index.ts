@@ -105,6 +105,8 @@ export const studentListQuerySchema = z.object({
   address: z.string().optional(),
   dateOfBirth: z.string().optional(),
   classId: z.string().optional(),
+  className: z.string().optional(),
+  section: z.string().optional(),
   campusId: z.string().optional(),
   status: z.string().optional(),
   topScorer: z.enum(["true", "false"]).optional(),

@@ -20,6 +20,7 @@ const AdmissionWizardPage = lazyPage(() => import("./pages/AdmissionWizard"), "A
 const AdmissionPage = lazyPage(() => import("./pages/Admission"), "AdmissionPage");
 const StudentsPage = lazyPage(() => import("./pages/Students"), "StudentsPage");
 const StudentPage = lazyPage(() => import("./pages/Student"), "StudentPage");
+const StudentEditPage = lazyPage(() => import("./pages/StudentEdit"), "StudentEditPage");
 const AttendancePage = lazyPage(() => import("./pages/Attendance"), "AttendancePage");
 const AbsentPage = lazyPage(() => import("./pages/Absent"), "AbsentPage");
 const TimetablePage = lazyPage(() => import("./pages/Timetable"), "TimetablePage");
@@ -78,6 +79,7 @@ export function App() {
         <Route path="/admissions/:id" element={<AdmissionWizardPage />} />
         <Route path="/admission" element={<AdmissionPage />} />
         <Route path="/students" element={<StudentsPage />} />
+        <Route path="/students/:id/edit" element={<StudentEditPage />} />
         <Route path="/students/:id" element={<StudentPage />} />
         <Route path="/attendance" element={<AttendancePage />} />
         <Route path="/absent" element={<AbsentPage />} />

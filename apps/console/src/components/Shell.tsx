@@ -40,6 +40,7 @@ const titles: [string, string][] = [
 ];
 
 function pageTitle(pathname: string) {
+  if (/\/students\/[^/]+\/edit$/.test(pathname)) return "Edit student";
   return titles.find(([path]) => {
     if (path.endsWith("/") && path !== "/") return pathname.startsWith(path);
     return pathname === path || (path !== "/" && pathname.startsWith(`${path}/`));

@@ -27,6 +27,7 @@ const peopleItems: NavItem[] = [
     url: "/students",
     icon: <GraduationCapIcon />,
     items: [
+      { title: "New application", url: "/admissions/new", end: true },
       { title: "Admissions", url: "/admissions" },
       { title: "Quick admission", url: "/admission", end: true },
       { title: "Students", url: "/students" },

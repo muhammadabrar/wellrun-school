@@ -1,18 +1,20 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Dialog, EmptyState, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
-import { Camera, IdCard, MessageCircle, Phone } from "lucide-react";
-import { FormEvent, useRef, useState } from "react";
+import { MessageCircle, Pencil, Phone, Wallet } from "lucide-react";
+import { FormEvent, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { FormSelect } from "@/components/form/form-select";
+import { AttendanceMeter } from "@/components/students/attendance-meter";
+import { SubmitFeeDialog } from "@/components/students/submit-fee-dialog";
+import { TodayAttendance, todayAttendanceLabel, useTodayAttendance } from "@/components/students/today-attendance";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { AttendanceRing } from "../components/AttendanceRing";
 import { Toast } from "../components/motion";
 import { api, currentUser } from "../lib/api";
-import { pkr } from "../lib/format";
+import { mediaUrl, pkr } from "../lib/format";
 import { queryKeys } from "../lib/query";
 import { fileToDataUrl } from "../lib/setup-helpers";
 import { useCampus } from "@/hooks/use-campus";
@@ -34,9 +36,9 @@ export function StudentPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") || "overview";
-  const photoInput = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const canMutate = currentUser()?.role === "SCHOOL_ADMIN";
+  const canMarkAttendance = currentUser()?.role === "SCHOOL_ADMIN" || currentUser()?.role === "TEACHER";
   const { classes, years } = useCampus();
   const { data: student, error: queryError, refetch } = useQuery({
     queryKey: queryKeys.student(id ?? ""),
@@ -49,10 +51,12 @@ export function StudentPage() {
     enabled: Boolean(id) && tab !== "overview",
   });
   const [toast, setToast] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<"promote" | "transfer" | "deactivate" | "print" | null>(null);
+  const [dialog, setDialog] = useState<"promote" | "deactivate" | null>(null);
   const [classId, setClassId] = useState("");
   const [pending, setPending] = useState(false);
   const [note, setNote] = useState({ type: "NOTE", body: "" });
+  const [feeOpen, setFeeOpen] = useState(false);
+  const todayMark = useTodayAttendance();
 
   if (!student) {
     if (queryError) {
@@ -74,18 +78,14 @@ export function StudentPage() {
     student.metrics.enrollmentYears ? { label: "Years enrolled", value: String(student.metrics.enrollmentYears) } : null,
   ].filter(Boolean) as { label: string; value: string }[];
 
-  async function move(action: "promote" | "transfer" | "deactivate") {
+  async function move(action: "promote" | "deactivate") {
     if (!id) return;
     setPending(true);
     try {
-      const next =
-        action === "deactivate"
-          ? await api.deactivateStudent(id)
-          : action === "promote"
-            ? await api.promoteStudent(id, classId)
-            : await api.transferStudent(id, classId);
+      const next = action === "deactivate" ? await api.deactivateStudent(id) : await api.promoteStudent(id, classId);
       queryClient.setQueryData(queryKeys.student(id), next);
       await queryClient.invalidateQueries({ queryKey: queryKeys.studentTab(id, "enrollments") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.studentsRoot });
       setToast(action === "deactivate" ? "Student marked inactive." : "Enrollment updated.");
     } finally {
       setPending(false);
@@ -100,32 +100,34 @@ export function StudentPage() {
       </Link>
       <div className="mt-4 rounded-3xl bg-surface p-6">
         <div className="flex flex-wrap items-start gap-5">
-          <button type="button" className="relative shrink-0" onClick={() => canMutate && photoInput.current?.click()} aria-label="Change photo">
-            <Avatar name={`${student.firstName} ${student.lastName}`} photo={student.photo} />
-            {canMutate ? (
-              <span className="absolute right-0 bottom-0 flex h-8 w-8 items-center justify-center rounded-full bg-indigo text-white">
-                <Camera size={14} />
-              </span>
-            ) : null}
-          </button>
-          <input
-            ref={photoInput}
-            type="file"
-            accept="image/*"
-            className="sr-only"
-            onChange={async (event) => {
-              const file = event.target.files?.[0];
-              if (!file || !id) return;
-              const next = await api.saveStudentPhoto(id, await fileToDataUrl(file));
-              queryClient.setQueryData(queryKeys.student(id), next);
-            }}
-          />
+          <Avatar name={`${student.firstName} ${student.lastName}`} photo={student.photo} />
           <div className="min-w-0 flex-1">
             <PageHeader
               title={`${student.firstName} ${student.lastName}`}
               description={`${student.admissionNo} · Roll ${student.rollNo}${student.class ? ` · ${student.class.name} • Section ${student.class.section}` : ""}`}
               actions={<Badge tone={student.status === "active" ? "indigo" : "neutral"}>{student.status}</Badge>}
             />
+            <div className="mt-4 flex flex-wrap items-end gap-4 print:hidden">
+              {student.class && canMarkAttendance ? (
+                <TodayAttendance
+                  value={student.todayAttendance}
+                  onChange={(status) =>
+                    todayMark.mutate({
+                      classId: student.class!.id,
+                      studentId: student.id,
+                      status,
+                      firstName: student.firstName,
+                      lastName: student.lastName,
+                      rollNo: student.rollNo,
+                      className: student.class!.name,
+                      section: student.class!.section,
+                    })
+                  }
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">Today: {todayAttendanceLabel(student.todayAttendance)}</p>
+              )}
+            </div>
             <div className="mt-4 flex flex-wrap gap-2 print:hidden">
               {student.phone ? (
                 <Button variant="outline" render={<a href={`tel:${student.phone.replace(/\D/g, "")}`} />}>
@@ -137,16 +139,15 @@ export function StudentPage() {
                   <MessageCircle data-icon="inline-start" /> WhatsApp
                 </Button>
               ) : null}
-              <Button type="button" variant="outline" icon={<IdCard data-icon="inline-start" />} onClick={() => window.print()}>
-                Print ID card
-              </Button>
               {canMutate ? (
                 <>
-                  <Button variant="outline" render={<Link to={`/admissions/new?studentId=${student.id}`} />}>
-                    Re-admit
+                  <Button variant="outline" render={<Link to={`/students/${student.id}/edit`} />}>
+                    <Pencil data-icon="inline-start" /> Edit profile
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setFeeOpen(true)}>
+                    <Wallet data-icon="inline-start" /> Submit fee
                   </Button>
                   <Button type="button" variant="outline" onClick={() => setDialog("promote")}>Promote</Button>
-                  <Button type="button" variant="outline" onClick={() => setDialog("transfer")}>Transfer</Button>
                   <Button type="button" variant="destructive" onClick={() => setDialog("deactivate")}>Deactivate</Button>
                 </>
               ) : null}
@@ -239,14 +240,21 @@ export function StudentPage() {
         )}
       </div>
 
-      <section className="id-card mt-6 hidden print:block rounded-3xl border border-line p-6">
-        <p className="text-sm text-muted-foreground">Student ID</p>
-        <h2 className="font-display text-3xl">{student.firstName} {student.lastName}</h2>
-        <p>{student.admissionNo}</p>
-        <p>{student.class ? `${student.class.name} • Section ${student.class.section}` : ""}</p>
-      </section>
-
-      <Dialog open={dialog === "promote" || dialog === "transfer"} title={dialog === "promote" ? "Promote student" : "Transfer student"} description="The current enrollment is closed and a new one is created." confirmLabel="Confirm" loading={pending} onClose={() => setDialog(null)} onConfirm={() => void move(dialog === "promote" ? "promote" : "transfer")}>
+      <Dialog
+        open={dialog === "promote"}
+        title="Promote student"
+        description="The current enrollment is closed and a new one is created."
+        confirmLabel="Promote"
+        loading={pending}
+        onClose={() => setDialog(null)}
+        onConfirm={() => void move("promote")}
+      >
+        <p className="mb-4 text-sm">
+          Current class:{" "}
+          <span className="font-medium">
+            {student.class ? `${student.class.name} • Section ${student.class.section}` : "No class assigned"}
+          </span>
+        </p>
         <Field>
           <FieldLabel htmlFor="new-class">New class</FieldLabel>
           <FormSelect
@@ -262,7 +270,13 @@ export function StudentPage() {
         </Field>
       </Dialog>
       <Dialog open={dialog === "deactivate"} title="Deactivate this student?" description="The current enrollment is closed. History stays in place." confirmLabel="Deactivate" danger loading={pending} onClose={() => setDialog(null)} onConfirm={() => void move("deactivate")} />
-      <Toast message={toast} />
+      <SubmitFeeDialog
+        studentId={student.id}
+        studentName={`${student.firstName} ${student.lastName}`}
+        open={feeOpen}
+        onClose={() => setFeeOpen(false)}
+      />
+      <Toast message={todayMark.toast ?? toast} />
     </div>
   );
 }
@@ -287,7 +301,7 @@ function AttendanceList({ rows }: { rows: { id: string; date: string; status: st
   return (
     <div>
       <div className="mb-4 flex items-center gap-3">
-        <AttendanceRing value={pct} />
+        <AttendanceMeter value={pct} marked />
         <p className="text-sm text-muted-foreground">{pct}% present across {rows.length} days</p>
       </div>
       <ul className="max-h-[28rem] space-y-2 overflow-auto text-sm">
@@ -442,7 +456,7 @@ function DocumentsPanel({ id, rows, canMutate, onSaved }: { id: string; rows: { 
           {rows.map((row) => (
             <li key={row.id} className="flex justify-between rounded-2xl bg-paper px-4 py-3">
               <span>{row.label}</span>
-              {row.url ? <a href={row.url} className="text-sm text-primary" target="_blank" rel="noreferrer">Open</a> : <span className="text-sm text-muted-foreground">Pending</span>}
+              {row.url ? <a href={mediaUrl(row.url) || row.url} className="text-sm text-primary" target="_blank" rel="noreferrer">Open</a> : <span className="text-sm text-muted-foreground">Pending</span>}
             </li>
           ))}
         </ul>
@@ -480,7 +494,8 @@ function ActivityList({ rows }: { rows: { id: string; action: string; summary: s
 }
 
 function Avatar({ name, photo }: { name: string; photo?: string }) {
-  if (photo) return <img src={photo} alt="" className="h-24 w-24 rounded-full object-cover" />;
+  const src = mediaUrl(photo);
+  if (src) return <img src={src} alt="" className="h-24 w-24 rounded-full object-cover" />;
   const initials = name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
   return <span className="flex h-24 w-24 items-center justify-center rounded-full bg-indigo text-2xl text-white">{initials || "S"}</span>;
 }

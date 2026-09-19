@@ -11,6 +11,7 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.useGlobalFilters(new ZodFilter(), new PrismaFilter(app.get(PrismaService)));
   app.useStaticAssets(join(process.cwd(), "uploads"), { prefix: "/uploads/" });
+  app.useBodyParser("json", { limit: "8mb" });
   const configured = process.env.CORS_ORIGINS;
   const origins = (configured ?? "http://localhost:3001,http://localhost:5173")
     .split(",")

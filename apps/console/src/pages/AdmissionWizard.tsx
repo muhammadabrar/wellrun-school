@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
 import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -9,10 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DatePicker } from "@/components/form/date-picker";
 import { FormSelect } from "@/components/form/form-select";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useCampus } from "@/hooks/use-campus";
@@ -45,7 +47,6 @@ function NewApplicationPage() {
     queryFn: () => api.student(returningId),
     enabled: Boolean(returningId),
   });
-  const { data: guardians = [] } = useQuery({ queryKey: queryKeys.guardians, queryFn: () => api.guardians() });
   const [error, setError] = useState<string | null>(null);
   const createMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => api.createAdmission(payload),
@@ -68,7 +69,6 @@ function NewApplicationPage() {
       <WizardStepper steps={steps} current={1} maxStep={1} onSelect={() => undefined} />
       <ApplicantFamilyForm
         application={returning ? returningToDraft(returning) : null}
-        guardians={guardians}
         studentId={returningId}
         pending={createMutation.isPending}
         submitLabel="Create application"
@@ -175,11 +175,6 @@ function WizardStep({
   onAdmitted: (studentId: string) => void;
 }) {
   const { campusId: selectedCampusId, classes, campuses, currentYear } = useCampus();
-  const { data: guardians = [] } = useQuery({
-    queryKey: queryKeys.guardians,
-    queryFn: () => api.guardians(),
-    enabled: step === 1,
-  });
   const [pending, setPending] = useState(false);
   const [studentType, setStudentType] = useState(application.studentType || "new");
   const [quotes, setQuotes] = useState<AdmissionFeeQuote[]>(application.feeQuotes ?? []);
@@ -212,8 +207,13 @@ function WizardStep({
       [...form.entries()].map(([key, value]) => [key, String(value)]),
     );
     if (step === 1) {
-      payload.family = familyFromForm(form);
-      if (form.get("guardianId")) payload.guardianId = String(form.get("guardianId"));
+      const family = familyFromForm(form);
+      payload.family = family;
+      payload.guardianId = String(form.get("guardianId") || "").trim();
+      if (!family.guardianName || !family.guardianPhone) {
+        onError(payload.guardianId ? "Guardian details are missing from this record." : "Add a new guardian or select an existing one.");
+        return;
+      }
     }
     if (step === 5) payload.feeQuotes = quotes;
     payload.wizardStep = Math.min(6, step + 1);
@@ -246,9 +246,7 @@ function WizardStep({
 
   return (
     <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-6">
-      {step === 1 ? (
-        <ApplicantFamilyFields application={application} guardians={guardians} />
-      ) : null}
+      {step === 1 ? <ApplicantFamilyFields application={application} /> : null}
       {step === 2 ? (
         <Card>
           <CardHeader>
@@ -365,7 +363,7 @@ function WizardStep({
               <ul className="text-sm text-muted-foreground">
                 {application.feeQuotes.map((quote) => (
                   <li key={quote.feeItemId}>
-                    {quote.name}: {pkr(quote.amountPkr)} charged
+                    {quote.name}: {pkr(quote.amountPkr)}
                     {quote.amountPkr !== quote.catalogAmountPkr ? ` (listed ${pkr(quote.catalogAmountPkr)})` : ""}
                   </li>
                 ))}
@@ -419,19 +417,18 @@ function WizardStep({
 
 function ApplicantFamilyForm({
   application,
-  guardians,
   studentId,
   pending,
   submitLabel,
   onSubmit,
 }: {
   application: AdmissionDetail | ReturnType<typeof returningToDraft> | null;
-  guardians: Guardian[];
   studentId?: string;
   pending: boolean;
   submitLabel: string;
   onSubmit: (payload: Record<string, unknown>) => void;
 }) {
+  const [formError, setFormError] = useState<string | null>(null);
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -439,7 +436,11 @@ function ApplicantFamilyForm({
     const lastName = String(form.get("lastName") || "").trim();
     const family = familyFromForm(form);
     if (!firstName || !lastName) return;
-    if (!family.guardianName || !family.guardianPhone) return;
+    if (!family.guardianName || !family.guardianPhone) {
+      setFormError("Select an existing guardian, or switch to New guardian.");
+      return;
+    }
+    setFormError(null);
     const payload: Record<string, unknown> = {
       firstName,
       lastName,
@@ -449,14 +450,21 @@ function ApplicantFamilyForm({
       address: String(form.get("address") || ""),
       family,
     };
-    if (form.get("guardianId")) payload.guardianId = String(form.get("guardianId"));
+    const guardianId = String(form.get("guardianId") || "").trim();
+    if (guardianId) payload.guardianId = guardianId;
     if (studentId) payload.studentId = studentId;
     onSubmit(payload);
   }
 
   return (
     <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-6">
-      <ApplicantFamilyFields application={application} guardians={guardians} />
+      {formError ? (
+        <Alert variant="destructive">
+          <AlertTitle>Could not start this application</AlertTitle>
+          <AlertDescription>{formError}</AlertDescription>
+        </Alert>
+      ) : null}
+      <ApplicantFamilyFields application={application} />
       <div className="flex justify-end">
         <Button type="submit" disabled={pending}>
           {pending ? <Spinner data-icon="inline-start" /> : null}
@@ -470,19 +478,31 @@ function ApplicantFamilyForm({
 
 function ApplicantFamilyFields({
   application,
-  guardians,
 }: {
   application: AdmissionDetail | ReturnType<typeof returningToDraft> | null;
-  guardians: Guardian[];
 }) {
+  const linkedGuardian = application && "guardian" in application ? application.guardian : null;
+  const linkedGuardianId = application && "guardianId" in application ? application.guardianId : null;
+  const [familyTab, setFamilyTab] = useState<"new" | "existing">("new");
   const [guardianSearch, setGuardianSearch] = useState("");
+  const [selectedGuardianId, setSelectedGuardianId] = useState(linkedGuardianId ?? "");
   const [gender, setGender] = useState(application?.gender && application.gender !== "unspecified" ? application.gender : "");
-  const matchedGuardians = guardians.filter((row) => {
-    const hay = `${row.name} ${row.phone} ${row.cnic ?? ""}`.toLowerCase();
-    return hay.includes(guardianSearch.toLowerCase());
+  const debouncedSearch = useDebouncedValue(guardianSearch.trim(), 300);
+  const canSearch = familyTab === "existing" && debouncedSearch.length >= 3;
+  const guardiansQuery = useQuery({
+    queryKey: queryKeys.guardianSearch(debouncedSearch),
+    queryFn: () => api.guardians(debouncedSearch),
+    enabled: canSearch,
+    placeholderData: keepPreviousData,
   });
   const dateOfBirth = application?.dateOfBirth ? String(application.dateOfBirth).slice(0, 10) : "";
   const family = application && "family" in application ? application.family : {};
+  const typedEnough = guardianSearch.trim().length >= 3;
+  const matches = canSearch ? (guardiansQuery.data ?? []) : [];
+  const waitingForSearch = typedEnough && (debouncedSearch !== guardianSearch.trim() || guardiansQuery.isFetching);
+  const selectedGuardian =
+    matches.find((guardian) => guardian.id === selectedGuardianId) ??
+    (linkedGuardian && linkedGuardian.id === selectedGuardianId ? linkedGuardian : null);
 
   return (
     <>
@@ -529,89 +549,145 @@ function ApplicantFamilyFields({
       <Card>
         <CardHeader>
           <CardTitle>Family</CardTitle>
-          <CardDescription>Link an existing guardian or add a new one.</CardDescription>
+          <CardDescription>Add a new guardian or link one already in the school.</CardDescription>
         </CardHeader>
         <CardContent>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="guardianSearch">Search existing guardians</FieldLabel>
-              <Input
-                id="guardianSearch"
-                value={guardianSearch}
-                onChange={(event) => setGuardianSearch(event.target.value)}
-                placeholder="Name, phone, or CNIC"
-              />
-              <FieldDescription>Matches appear below. Selecting one fills the family record.</FieldDescription>
-            </Field>
-            {guardianSearch && matchedGuardians.length ? (
-              <FieldSet>
-                <FieldLegend variant="label">Matches</FieldLegend>
-                <FieldGroup>
-                  <RadioGroup name="guardianId" defaultValue={application && "guardianId" in application ? application.guardianId ?? undefined : undefined}>
-                    {matchedGuardians.slice(0, 6).map((guardian) => (
-                      <Field key={guardian.id} orientation="horizontal">
-                        <RadioGroupItem value={guardian.id} id={`guardian-${guardian.id}`} />
-                        <FieldLabel htmlFor={`guardian-${guardian.id}`}>
-                          {guardian.name} · {guardian.phone}
-                          {guardian._count?.students ? ` · ${guardian._count.students} children` : ""}
-                        </FieldLabel>
-                      </Field>
+          <Tabs
+            value={familyTab}
+            onValueChange={(next) => {
+              const tab = next === "existing" ? "existing" : "new";
+              setFamilyTab(tab);
+              if (tab === "new") setSelectedGuardianId("");
+            }}
+          >
+            <TabsList className="w-full">
+              <TabsTrigger value="new">New guardian</TabsTrigger>
+              <TabsTrigger value="existing">Existing guardian</TabsTrigger>
+            </TabsList>
+            <TabsContent value="new" className="mt-4">
+              <NewGuardianFields family={family} application={application} />
+            </TabsContent>
+            <TabsContent value="existing" className="mt-4">
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="guardianSearch">Search existing guardians</FieldLabel>
+                  <Input
+                    id="guardianSearch"
+                    value={guardianSearch}
+                    onChange={(event) => setGuardianSearch(event.target.value)}
+                    placeholder="Name, phone, or CNIC"
+                    autoComplete="off"
+                  />
+                  <FieldDescription>Type at least 3 characters. Matches appear after you pause typing.</FieldDescription>
+                </Field>
+                {selectedGuardian ? (
+                  <>
+                    <input type="hidden" name="guardianId" value={selectedGuardian.id} />
+                    <input type="hidden" name="guardianName" value={selectedGuardian.name} />
+                    <input type="hidden" name="guardianPhone" value={selectedGuardian.phone} />
+                    <input type="hidden" name="guardianCnic" value={selectedGuardian.cnic ?? ""} />
+                    <input type="hidden" name="guardianRelation" value={selectedGuardian.relation || "Parent"} />
+                    <input type="hidden" name="guardianOccupation" value={selectedGuardian.occupation ?? family.guardianOccupation ?? ""} />
+                  </>
+                ) : null}
+                {guardianSearch.trim().length < 3 ? (
+                  <p className="text-sm text-muted-foreground">Enter at least 3 characters to search.</p>
+                ) : waitingForSearch && !matches.length ? (
+                  <div className="flex flex-col gap-2">
+                    <Skeleton className="h-16 w-full rounded-lg" />
+                    <Skeleton className="h-16 w-full rounded-lg" />
+                    <Skeleton className="h-16 w-full rounded-lg" />
+                  </div>
+                ) : guardiansQuery.isError ? (
+                  <p className="text-sm text-destructive">Could not search guardians. Try again.</p>
+                ) : canSearch && !matches.length ? (
+                  <p className="text-sm text-muted-foreground">No guardians match "{debouncedSearch}".</p>
+                ) : matches.length ? (
+                  <RadioGroup
+                    value={selectedGuardianId || undefined}
+                    onValueChange={(value) => setSelectedGuardianId(value ?? "")}
+                    className="gap-3"
+                  >
+                    {matches.slice(0, 8).map((guardian) => (
+                      <FieldLabel key={guardian.id} htmlFor={`guardian-${guardian.id}`}>
+                        <Field orientation="horizontal">
+                          <FieldContent>
+                            <FieldTitle>{guardian.name}</FieldTitle>
+                            <FieldDescription>
+                              {parentOfLabel(guardian.students)}
+                              {guardian.phone ? ` · ${guardian.phone}` : ""}
+                            </FieldDescription>
+                          </FieldContent>
+                          <RadioGroupItem value={guardian.id} id={`guardian-${guardian.id}`} />
+                        </Field>
+                      </FieldLabel>
                     ))}
                   </RadioGroup>
-                </FieldGroup>
-              </FieldSet>
-            ) : null}
-            <FieldGroup className="grid grid-cols-1 md:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="guardianName">Guardian name</FieldLabel>
-                <Input
-                  id="guardianName"
-                  name="guardianName"
-                  required
-                  defaultValue={family.guardianName || (application && "guardian" in application ? application.guardian?.name : "") || ""}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="guardianPhone">Guardian phone</FieldLabel>
-                <Input
-                  id="guardianPhone"
-                  name="guardianPhone"
-                  required
-                  defaultValue={family.guardianPhone || (application && "guardian" in application ? application.guardian?.phone : "") || ""}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="guardianCnic">Guardian CNIC</FieldLabel>
-                <Input
-                  id="guardianCnic"
-                  name="guardianCnic"
-                  defaultValue={family.guardianCnic || (application && "guardian" in application ? application.guardian?.cnic : "") || ""}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="guardianRelation">Relation</FieldLabel>
-                <FormSelect
-                  id="guardianRelation"
-                  name="guardianRelation"
-                  defaultValue={family.guardianRelation || (application && "guardian" in application ? application.guardian?.relation : "") || "Parent"}
-                  options={[
-                    { value: "Parent", label: "Parent" },
-                    { value: "Mother", label: "Mother" },
-                    { value: "Father", label: "Father" },
-                    { value: "Guardian", label: "Guardian" },
-                    { value: "Other", label: "Other" },
-                  ]}
-                />
-              </Field>
-              <Field className="md:col-span-2">
-                <FieldLabel htmlFor="guardianOccupation">Occupation</FieldLabel>
-                <Input id="guardianOccupation" name="guardianOccupation" defaultValue={family.guardianOccupation || ""} />
-              </Field>
-            </FieldGroup>
-          </FieldGroup>
+                ) : null}
+              </FieldGroup>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </>
+  );
+}
+
+function NewGuardianFields({
+  family,
+  application,
+}: {
+  family: Record<string, string>;
+  application: AdmissionDetail | ReturnType<typeof returningToDraft> | null;
+}) {
+  return (
+    <FieldGroup className="grid grid-cols-1 md:grid-cols-2">
+      <Field>
+        <FieldLabel htmlFor="guardianName">Guardian name</FieldLabel>
+        <Input
+          id="guardianName"
+          name="guardianName"
+          required
+          defaultValue={family.guardianName || (application && "guardian" in application ? application.guardian?.name : "") || ""}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="guardianPhone">Guardian phone</FieldLabel>
+        <Input
+          id="guardianPhone"
+          name="guardianPhone"
+          required
+          defaultValue={family.guardianPhone || (application && "guardian" in application ? application.guardian?.phone : "") || ""}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="guardianCnic">Guardian CNIC</FieldLabel>
+        <Input
+          id="guardianCnic"
+          name="guardianCnic"
+          defaultValue={family.guardianCnic || (application && "guardian" in application ? application.guardian?.cnic : "") || ""}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="guardianRelation">Relation</FieldLabel>
+        <FormSelect
+          id="guardianRelation"
+          name="guardianRelation"
+          defaultValue={family.guardianRelation || (application && "guardian" in application ? application.guardian?.relation : "") || "Parent"}
+          options={[
+            { value: "Parent", label: "Parent" },
+            { value: "Mother", label: "Mother" },
+            { value: "Father", label: "Father" },
+            { value: "Guardian", label: "Guardian" },
+            { value: "Other", label: "Other" },
+          ]}
+        />
+      </Field>
+      <Field className="md:col-span-2">
+        <FieldLabel htmlFor="guardianOccupation">Occupation</FieldLabel>
+        <Input id="guardianOccupation" name="guardianOccupation" defaultValue={family.guardianOccupation || ""} />
+      </Field>
+    </FieldGroup>
   );
 }
 
@@ -682,6 +758,12 @@ function FeesStep({
     queryKey: queryKeys.feeStructure,
     queryFn: api.feeStructure,
   });
+  const siblingFeesQuery = useQuery({
+    queryKey: queryKeys.admissionSiblingFees(application.id),
+    queryFn: () => api.admissionSiblingFees(application.id),
+    enabled: Boolean(application.guardianId || application.family.guardianPhone || application.family.guardianCnic),
+  });
+  const siblings = siblingFeesQuery.data?.siblings ?? [];
 
   const items = (data?.feeItems ?? []).filter((item) => item.enabled !== false && item.id);
   useEffect(() => {
@@ -727,10 +809,11 @@ function FeesStep({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Fees</CardTitle>
-          <CardDescription>Quote amounts here. Do not collect payment on this page.</CardDescription>
+        <CardTitle>Fees</CardTitle>
+        <CardDescription>Set this student’s fees here. Do not collect payment on this page.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-4">
+          <SiblingFeesList siblings={siblings} loading={siblingFeesQuery.isFetching && !siblingFeesQuery.data} />
           <p className="text-sm text-muted-foreground">
             No fee items for this school yet. Continue without quotes, or add items on Fee structure first.
           </p>
@@ -744,10 +827,11 @@ function FeesStep({
       <CardHeader>
         <CardTitle>Fees</CardTitle>
         <CardDescription>
-          Listed amount is from the fee structure. Charged amount is what this application will invoice after admit. Collect payment on Fees.
+          Listed amount is from the fee structure. Set this student’s fee for each item. Payment is collected later on Fees.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex flex-col gap-6">
+        <SiblingFeesList siblings={siblings} loading={siblingFeesQuery.isFetching && !siblingFeesQuery.data} />
         {rows.map((quote, index) => (
           <FieldGroup key={quote.feeItemId} className="grid grid-cols-1 md:grid-cols-3">
             <Field>
@@ -759,7 +843,7 @@ function FeesStep({
               <p className="text-sm">{pkr(quote.catalogAmountPkr)}</p>
             </Field>
             <Field>
-              <FieldLabel htmlFor={`quote-${quote.feeItemId}`}>Charged amount (Rs.)</FieldLabel>
+              <FieldLabel htmlFor={`quote-${quote.feeItemId}`}>Student fee (Rs.)</FieldLabel>
               <Input
                 id={`quote-${quote.feeItemId}`}
                 type="number"
@@ -833,6 +917,78 @@ function familyFromForm(form: FormData) {
     guardianRelation: String(form.get("guardianRelation") || "Parent"),
     guardianOccupation: String(form.get("guardianOccupation") || "").trim(),
   };
+}
+
+function parentOfLabel(students?: { firstName: string; lastName: string }[]) {
+  const names = (students ?? []).map((student) => `${student.firstName} ${student.lastName}`.trim()).filter(Boolean);
+  if (!names.length) return "No students linked yet";
+  if (names.length === 1) return `Parent of ${names[0]}`;
+  if (names.length === 2) return `Parent of ${names[0]} and ${names[1]}`;
+  return `Parent of ${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
+function useDebouncedValue<T>(value: T, delay: number) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
+function SiblingFeesList({
+  siblings,
+  loading,
+}: {
+  siblings: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    rollNo: string;
+    class: { name: string; section: string } | null;
+    fees: { name: string; amountPkr: number; catalogAmountPkr: number }[];
+  }[];
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-20 w-full rounded-lg" />
+      </div>
+    );
+  }
+  if (!siblings.length) return null;
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border p-4">
+      <div>
+        <p className="text-sm font-medium">Sibling fees</p>
+        <p className="text-sm text-muted-foreground">
+          Other children of this guardian. Use these amounts if you want to discount this applicant.
+        </p>
+      </div>
+      {siblings.map((sibling) => (
+        <div key={sibling.id} className="rounded-lg bg-muted px-4 py-3">
+          <p className="font-medium">
+            {sibling.firstName} {sibling.lastName}
+            {sibling.class ? ` · ${sibling.class.name} ${sibling.class.section}` : ""}
+          </p>
+          {sibling.fees.length ? (
+            <ul className="mt-1 flex flex-col gap-0.5 text-sm text-muted-foreground">
+              {sibling.fees.map((fee) => (
+                <li key={`${sibling.id}-${fee.name}`}>
+                  {fee.name}: {pkr(fee.amountPkr)}
+                  {fee.amountPkr !== fee.catalogAmountPkr ? ` (listed ${pkr(fee.catalogAmountPkr)})` : ""}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-sm text-muted-foreground">No fees set yet.</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function returningToDraft(student: {

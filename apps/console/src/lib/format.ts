@@ -10,3 +10,10 @@ export function todayIso() {
     day: "2-digit",
   }).format(new Date());
 }
+
+export function mediaUrl(url?: string | null) {
+  if (!url) return "";
+  const api = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+  if (url.startsWith("/")) return `${api}${url}`;
+  return url.replace(/^https?:\/\/localhost:\d+/, api);
+}

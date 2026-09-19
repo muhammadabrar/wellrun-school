@@ -234,6 +234,95 @@ export class AdmissionsService {
     return this.toDetail(application, documents, blockers);
   }
 
+  async siblingFees(schoolId: string, id: string) {
+    const application = await this.prisma.admissionApplication.findFirst({
+      where: { id, schoolId },
+      select: { id: true, guardianId: true, studentId: true, family: true },
+    });
+    if (!application) throw new NotFoundException("Application not found");
+    let guardianId = application.guardianId;
+    if (!guardianId) {
+      const family = this.familyRecord(application.family);
+      const phone = family.guardianPhone?.trim();
+      const cnic = family.guardianCnic?.trim();
+      if (phone || cnic) {
+        const guardian = await this.prisma.guardian.findFirst({
+          where: {
+            schoolId,
+            OR: [
+              ...(phone ? [{ phone }] : []),
+              ...(cnic ? [{ cnic }] : []),
+            ],
+          },
+          select: { id: true },
+        });
+        guardianId = guardian?.id ?? null;
+      }
+    }
+    if (!guardianId) return { siblings: [] as const };
+
+    const links = await this.prisma.studentGuardian.findMany({
+      where: { guardianId },
+      select: {
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            rollNo: true,
+            enrollments: {
+              where: { active: true },
+              take: 1,
+              select: { class: { select: { name: true, section: true } } },
+            },
+            invoices: {
+              where: { status: { notIn: ["VOID", "DRAFT"] } },
+              orderBy: { createdAt: "desc" },
+              select: {
+                amountPkr: true,
+                status: true,
+                feePlan: { select: { name: true, amountPkr: true } },
+              },
+            },
+            applications: {
+              where: { status: "ADMISSION_CONFIRMED" },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: { feeQuotes: true },
+            },
+          },
+        },
+      },
+    });
+
+    return {
+      siblings: links
+        .filter((link) => link.student.id !== application.studentId)
+        .map((link) => {
+          const quotes = this.feeQuotes(link.student.applications[0]?.feeQuotes);
+          const fees = quotes.length
+            ? quotes.map((quote) => ({
+                name: quote.name,
+                amountPkr: quote.amountPkr,
+                catalogAmountPkr: quote.catalogAmountPkr,
+              }))
+            : link.student.invoices.map((invoice) => ({
+                name: invoice.feePlan.name,
+                amountPkr: invoice.amountPkr,
+                catalogAmountPkr: invoice.feePlan.amountPkr,
+              }));
+          return {
+            id: link.student.id,
+            firstName: link.student.firstName,
+            lastName: link.student.lastName,
+            rollNo: link.student.rollNo,
+            class: link.student.enrollments[0]?.class ?? null,
+            fees,
+          };
+        }),
+    };
+  }
+
   async patch(schoolId: string, actorId: string, id: string, body: unknown) {
     await assertWritableSchool(this.prisma, schoolId);
     const current = await this.requireApplication(schoolId, id);
