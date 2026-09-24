@@ -43,10 +43,139 @@ export const saveAttendanceSchema = z.object({
   ),
 });
 
+export const feeFrequencies = ["MONTHLY", "QUARTERLY", "ANNUAL", "ONE_TIME"] as const;
+export const discountTypes = ["FIXED", "PERCENT"] as const;
+export const lateFeeModes = ["NONE", "FIXED", "DAILY", "PERCENT"] as const;
+export const paymentMethods = ["cash", "bank", "cheque", "online", "other"] as const;
+
 export const createPaymentSchema = z.object({
-  invoiceId: z.string(),
+  invoiceId: z.string().optional(),
+  invoiceIds: z.array(z.string()).optional(),
+  allocations: z
+    .array(z.object({ invoiceId: z.string(), amountPkr: z.number().int().positive() }))
+    .optional(),
+  studentId: z.string().optional(),
   amountPkr: z.number().int().positive(),
   method: z.string().default("cash"),
+  referenceNumber: z.string().optional(),
+  notes: z.string().optional(),
+  paymentDate: z.string().optional(),
+});
+
+export const feeHeadSchema = z.object({
+  name: z.string().min(1),
+  code: z.string().optional(),
+  category: z.string().optional(),
+  frequency: z.enum(feeFrequencies).optional(),
+  recurring: z.boolean().optional(),
+  taxable: z.boolean().optional(),
+  description: z.string().optional(),
+  active: z.boolean().optional(),
+  amountPkr: z.number().int().min(0).optional(),
+  campusId: z.string().nullable().optional(),
+});
+
+export const feeStructureItemSchema = z.object({
+  feeHeadId: z.string().min(1),
+  amountPkr: z.number().int().min(0),
+  isOptional: z.boolean().optional(),
+  taxable: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+});
+
+export const feeStructureSchema = z.object({
+  name: z.string().min(1),
+  campusId: z.string().nullable().optional(),
+  academicYearId: z.string().min(1),
+  className: z.string().optional(),
+  section: z.string().optional(),
+  frequency: z.enum(feeFrequencies).optional(),
+  effectiveFrom: z.string().optional(),
+  effectiveUntil: z.string().nullable().optional(),
+  status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).optional(),
+  notes: z.string().optional(),
+  items: z.array(feeStructureItemSchema).optional(),
+});
+
+export const studentFeeAssignmentSchema = z.object({
+  studentId: z.string().min(1),
+  academicYearId: z.string().min(1),
+  feeStructureId: z.string().min(1),
+  effectiveFrom: z.string().optional(),
+  effectiveUntil: z.string().nullable().optional(),
+  notes: z.string().optional(),
+  overrides: z
+    .array(
+      z.object({
+        feeHeadId: z.string(),
+        amountPkr: z.number().int().min(0).nullable().optional(),
+        enabled: z.boolean().optional(),
+      }),
+    )
+    .optional(),
+});
+
+export const discountSchema = z.object({
+  name: z.string().min(1),
+  type: z.enum(discountTypes),
+  value: z.number().int().min(0),
+  feeHeadIds: z.array(z.string()).optional(),
+  classNames: z.array(z.string()).optional(),
+  active: z.boolean().optional(),
+});
+
+export const studentDiscountSchema = z.object({
+  studentId: z.string().min(1),
+  discountId: z.string().optional(),
+  name: z.string().min(1),
+  type: z.enum(discountTypes),
+  value: z.number().int().min(0),
+  feeHeadIds: z.array(z.string()).optional(),
+  notes: z.string().optional(),
+  active: z.boolean().optional(),
+});
+
+export const generateFeesSchema = z.object({
+  billingPeriod: z.string().min(4),
+  campusId: z.string().optional(),
+  academicYearId: z.string().optional(),
+  className: z.string().optional(),
+  section: z.string().optional(),
+  feeStructureId: z.string().optional(),
+  confirm: z.boolean().optional(),
+});
+
+export const feeSettingsSchema = z.object({
+  defaultDueDay: z.number().int().min(1).max(28).optional(),
+  graceDays: z.number().int().min(0).max(31).optional(),
+  lateFeeMode: z.enum(lateFeeModes).optional(),
+  lateFeeAmountPkr: z.number().int().min(0).optional(),
+  lateFeePercent: z.number().int().min(0).max(100).optional(),
+  lateFeeCapPkr: z.number().int().min(0).optional(),
+  invoicePrefix: z.string().optional(),
+  paymentPrefix: z.string().optional(),
+  receiptPrefix: z.string().optional(),
+  receiptHeader: z.string().optional(),
+  receiptFooter: z.string().optional(),
+  showTaxOnReceipt: z.boolean().optional(),
+  taxNumber: z.string().optional(),
+  ntn: z.string().optional(),
+  strn: z.string().optional(),
+  primaryColor: z.string().optional(),
+  fbrEnabled: z.boolean().optional(),
+  fbrEnvironment: z.enum(["sandbox", "production"]).optional(),
+  fbrCredentials: z.string().optional(),
+});
+
+export const applyCreditSchema = z.object({
+  studentId: z.string().min(1),
+  creditId: z.string().min(1),
+  invoiceId: z.string().optional(),
+  amountPkr: z.number().int().positive().optional(),
+});
+
+export const cancelInvoiceSchema = z.object({
+  notes: z.string().optional(),
 });
 
 export const guardianSchema = z.object({
@@ -475,5 +604,9 @@ export const documentUploadSchema = z.object({
 export type LoginInput = z.infer<typeof loginSchema>;
 export type SaveAttendanceInput = z.infer<typeof saveAttendanceSchema>;
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
+export type FeeHeadInput = z.infer<typeof feeHeadSchema>;
+export type FeeStructureInput = z.infer<typeof feeStructureSchema>;
+export type GenerateFeesInput = z.infer<typeof generateFeesSchema>;
+export type FeeSettingsInput = z.infer<typeof feeSettingsSchema>;
 
 export * from "./templates";

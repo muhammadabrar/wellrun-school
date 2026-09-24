@@ -9,6 +9,9 @@ import {
   documentUploadSchema,
 } from "@wellrun/shared";
 import { audit } from "../common/audit";
+import { invoiceLabel } from "../fees/billing";
+import { ensureStudentFeeAssignment } from "../fees/assignment.service";
+import { writeInvoiceSnapshot } from "../fees/invoice-writer";
 import { assertWritableSchool } from "../common/school";
 import type { SchoolScope } from "../common/school-scope";
 import { nextSchoolNumber } from "../common/sequence";
@@ -222,7 +225,7 @@ export class AdmissionsService {
         student: true,
         createdBy: { select: { id: true, name: true } },
         scores: true,
-        invoices: { include: { payments: true, feePlan: true } },
+        invoices: { include: { payments: true, feePlan: true, items: { take: 1 } } },
       },
     });
     if (!application) throw new NotFoundException("Application not found");
@@ -276,11 +279,12 @@ export class AdmissionsService {
               select: { class: { select: { name: true, section: true } } },
             },
             invoices: {
-              where: { status: { notIn: ["VOID", "DRAFT"] } },
+              where: { status: { notIn: ["CANCELLED", "DRAFT"] } },
               orderBy: { createdAt: "desc" },
               select: {
                 amountPkr: true,
                 status: true,
+                items: { take: 1, select: { description: true } },
                 feePlan: { select: { name: true, amountPkr: true } },
               },
             },
@@ -307,9 +311,9 @@ export class AdmissionsService {
                 catalogAmountPkr: quote.catalogAmountPkr,
               }))
             : link.student.invoices.map((invoice) => ({
-                name: invoice.feePlan.name,
+                name: invoiceLabel(invoice),
                 amountPkr: invoice.amountPkr,
-                catalogAmountPkr: invoice.feePlan.amountPkr,
+                catalogAmountPkr: invoice.feePlan?.amountPkr ?? invoice.amountPkr,
               }));
           return {
             id: link.student.id,
@@ -618,6 +622,16 @@ export class AdmissionsService {
       summary: application.applicationNo,
     });
     await this.issueAdmissionInvoice(schoolId, id, result.studentId);
+    if (application.yearId) {
+      await ensureStudentFeeAssignment(this.prisma, {
+        schoolId,
+        studentId: result.studentId,
+        className: application.className || cls.name,
+        section: application.section || cls.section,
+        campusId: application.campusId ?? cls.campusId,
+        academicYearId: application.yearId,
+      });
+    }
     return this.byId(schoolId, id);
   }
 
@@ -826,7 +840,7 @@ export class AdmissionsService {
     }
     const application = await this.prisma.admissionApplication.findFirst({
       where: { id: applicationId, schoolId },
-      select: { feeQuotes: true, yearId: true },
+      select: { feeQuotes: true, yearId: true, campusId: true, applicationNo: true },
     });
     const quotes = this.feeQuotes(application?.feeQuotes);
     const amount = quotes.reduce((sum, item) => sum + item.amountPkr, 0);
@@ -841,16 +855,31 @@ export class AdmissionsService {
         data: { schoolId, yearId, name: "Admission fee", amountPkr: amount },
       });
     }
-    return this.prisma.invoice.create({
-      data: {
-        schoolId,
-        applicationId,
-        studentId,
-        feePlanId: plan.id,
-        amountPkr: amount,
-        status: "ISSUED",
-        dueOn: new Date(),
-      },
+    const heads = await this.prisma.feeHead.findMany({
+      where: { schoolId, id: { in: quotes.map((row) => row.feeItemId).filter(Boolean) } },
+      select: { id: true },
+    });
+    const headIds = new Set(heads.map((row) => row.id));
+    return writeInvoiceSnapshot(this.prisma, {
+      schoolId,
+      campusId: application?.campusId,
+      studentId,
+      applicationId,
+      academicYearId: yearId,
+      feePlanId: plan.id,
+      billingPeriod: `ADM-${application?.applicationNo ?? applicationId.slice(-6)}`,
+      dueOn: new Date(),
+      notes: "Admission",
+      lines: quotes.map((quote) => ({
+        feeHeadId: headIds.has(quote.feeItemId) ? quote.feeItemId : null,
+        description: quote.name,
+        quantity: 1,
+        unitAmountPkr: quote.amountPkr,
+        grossAmountPkr: quote.amountPkr,
+        discountAmountPkr: 0,
+        taxAmountPkr: 0,
+        netAmountPkr: quote.amountPkr,
+      })),
     });
   }
 
@@ -969,7 +998,7 @@ export class AdmissionsService {
   private feeDue(invoices: { amountPkr: number; payments: { amountPkr: number }[]; status: string }[]) {
     let pending = 0;
     for (const invoice of invoices) {
-      if (invoice.status === "VOID" || invoice.status === "DRAFT") continue;
+      if (invoice.status === "CANCELLED" || invoice.status === "DRAFT") continue;
       const paid = invoice.payments.reduce((sum, payment) => sum + payment.amountPkr, 0);
       pending += Math.max(invoice.amountPkr - paid, 0);
     }
@@ -1106,7 +1135,8 @@ export class AdmissionsService {
         amountPkr: number;
         status: string;
         dueOn: Date;
-        feePlan: { name: string };
+        feePlan: { name: string } | null;
+        items?: { description: string }[];
         payments: { id: string; amountPkr: number }[];
       }[];
     },
@@ -1171,7 +1201,7 @@ export class AdmissionsService {
         const paid = invoice.payments.reduce((sum, payment) => sum + payment.amountPkr, 0);
         return {
           id: invoice.id,
-          name: invoice.feePlan.name,
+          name: invoiceLabel(invoice),
           amountPkr: invoice.amountPkr,
           paidPkr: paid,
           status: invoice.status,

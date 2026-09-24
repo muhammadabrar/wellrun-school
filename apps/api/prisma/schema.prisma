@@ -26,9 +26,62 @@ enum AttendanceStatus {
 enum InvoiceStatus {
   DRAFT
   ISSUED
-  PARTIAL
+  PARTIALLY_PAID
   PAID
-  VOID
+  OVERDUE
+  CANCELLED
+}
+
+enum FeeFrequency {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+  ONE_TIME
+}
+
+enum FeeStructureStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum DiscountType {
+  FIXED
+  PERCENT
+}
+
+enum LateFeeMode {
+  NONE
+  FIXED
+  DAILY
+  PERCENT
+}
+
+enum PaymentStatus {
+  COMPLETED
+  VOIDED
+  REFUNDED
+}
+
+enum CreditStatus {
+  AVAILABLE
+  PARTIALLY_USED
+  USED
+  REFUNDED
+}
+
+enum FbrStatus {
+  NOT_REQUIRED
+  PENDING
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  ENDED
 }
 
 enum MediaKind {
@@ -88,6 +141,8 @@ model User {
   documents  SchoolDocument[] @relation("DocumentUploader")
   notes      CommunicationLog[] @relation("CommunicationAuthor")
   applications AdmissionApplication[] @relation("ApplicationCreator")
+  collectedPayments Payment[] @relation("PaymentCollector")
+  generatedReceipts Receipt[] @relation("ReceiptGenerator")
 
   @@index([schoolId])
 }
@@ -107,6 +162,10 @@ model School {
   province    String    @default("")
   country     String    @default("Pakistan")
   registrationNo String @default("")
+  taxNumber   String    @default("")
+  ntn         String    @default("")
+  strn        String    @default("")
+  primaryColor String   @default("#4642ff")
   educationLevel String @default("")
   feeBand     String    @default("10k_20k")
   levels      Json      @default("[]")
@@ -131,8 +190,17 @@ model School {
   enrollments Enrollment[]
   attendance  AttendanceRecord[]
   feePlans    FeePlan[]
+  feeHeads    FeeHead[]
+  feeStructures FeeStructure[]
+  feeAssignments StudentFeeAssignment[]
+  discounts   Discount[]
+  studentDiscounts StudentDiscount[]
+  feeSettings SchoolFeeSettings?
   invoices    Invoice[]
   payments    Payment[]
+  receipts    Receipt[]
+  credits     StudentCredit[]
+  fbrInvoices FbrInvoice[]
   campuses    Campus[]
   subjects    Subject[]
   classSubjects ClassSubject[]
@@ -227,6 +295,8 @@ model AcademicYear {
   current   Boolean   @default(false)
   classes   Class[]
   feePlans  FeePlan[]
+  feeStructures FeeStructure[]
+  invoices  Invoice[]
   exams     Exam[]
   applications AdmissionApplication[]
   createdAt DateTime  @default(now())
@@ -278,6 +348,11 @@ model Student {
   enrollments        Enrollment[]
   attendance         AttendanceRecord[]
   invoices           Invoice[]
+  payments           Payment[]
+  receipts           Receipt[]
+  feeAssignments     StudentFeeAssignment[]
+  studentDiscounts   StudentDiscount[]
+  credits            StudentCredit[]
   guardians          StudentGuardian[]
   examResults        ExamResult[]
   applications       AdmissionApplication[]
@@ -392,42 +467,338 @@ model FeePlan {
   @@index([schoolId])
 }
 
+model FeeHead {
+  id          String        @id @default(cuid())
+  schoolId    String
+  school      School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  campusId    String?
+  campus      Campus?       @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  name        String
+  code        String        @default("")
+  category    String        @default("tuition")
+  frequency   FeeFrequency  @default(MONTHLY)
+  recurring   Boolean       @default(true)
+  taxable     Boolean       @default(false)
+  description String        @default("")
+  active      Boolean       @default(true)
+  amountPkr   Int           @default(0)
+  sortOrder   Int           @default(0)
+  items       FeeStructureItem[]
+  invoiceItems InvoiceItem[]
+  overrides   StudentFeeOverride[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([schoolId])
+  @@index([schoolId, code])
+}
+
+model FeeStructure {
+  id              String              @id @default(cuid())
+  schoolId        String
+  school          School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  campusId        String?
+  campus          Campus?             @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  academicYearId  String
+  year            AcademicYear        @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  name            String
+  className       String              @default("")
+  section         String              @default("")
+  frequency       FeeFrequency        @default(MONTHLY)
+  effectiveFrom   DateTime
+  effectiveUntil  DateTime?
+  status          FeeStructureStatus  @default(DRAFT)
+  notes           String              @default("")
+  items           FeeStructureItem[]
+  assignments     StudentFeeAssignment[]
+  invoices        Invoice[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([schoolId])
+  @@index([schoolId, academicYearId, className])
+}
+
+model FeeStructureItem {
+  id              String        @id @default(cuid())
+  feeStructureId  String
+  structure       FeeStructure  @relation(fields: [feeStructureId], references: [id], onDelete: Cascade)
+  feeHeadId       String
+  feeHead         FeeHead       @relation(fields: [feeHeadId], references: [id], onDelete: Restrict)
+  amountPkr       Int
+  isOptional      Boolean       @default(false)
+  taxable         Boolean       @default(false)
+  sortOrder       Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([feeStructureId])
+}
+
+model StudentFeeAssignment {
+  id              String            @id @default(cuid())
+  schoolId        String
+  school          School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYearId  String
+  feeStructureId  String
+  structure       FeeStructure      @relation(fields: [feeStructureId], references: [id], onDelete: Restrict)
+  effectiveFrom   DateTime
+  effectiveUntil  DateTime?
+  status          AssignmentStatus  @default(ACTIVE)
+  notes           String            @default("")
+  overrides       StudentFeeOverride[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([schoolId, studentId])
+  @@index([feeStructureId])
+}
+
+model StudentFeeOverride {
+  id            String                @id @default(cuid())
+  assignmentId  String
+  assignment    StudentFeeAssignment  @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  feeHeadId     String
+  feeHead       FeeHead               @relation(fields: [feeHeadId], references: [id], onDelete: Restrict)
+  amountPkr     Int?
+  enabled       Boolean               @default(true)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@unique([assignmentId, feeHeadId])
+}
+
+model Discount {
+  id          String        @id @default(cuid())
+  schoolId    String
+  school      School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name        String
+  type        DiscountType
+  value       Int
+  feeHeadIds  Json          @default("[]")
+  classNames  Json          @default("[]")
+  active      Boolean       @default(true)
+  students    StudentDiscount[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([schoolId])
+}
+
+model StudentDiscount {
+  id          String    @id @default(cuid())
+  schoolId    String
+  school      School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  discountId  String?
+  discount    Discount? @relation(fields: [discountId], references: [id], onDelete: SetNull)
+  name        String
+  type        DiscountType
+  value       Int
+  feeHeadIds  Json      @default("[]")
+  active      Boolean   @default(true)
+  notes       String    @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([schoolId, studentId])
+}
+
+model SchoolFeeSettings {
+  id                  String      @id @default(cuid())
+  schoolId            String      @unique
+  school              School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  defaultDueDay       Int         @default(10)
+  graceDays           Int         @default(0)
+  lateFeeMode         LateFeeMode @default(NONE)
+  lateFeeAmountPkr    Int         @default(0)
+  lateFeePercent      Int         @default(0)
+  lateFeeCapPkr       Int         @default(0)
+  invoicePrefix       String      @default("INV")
+  paymentPrefix       String      @default("PAY")
+  receiptPrefix       String      @default("REC")
+  receiptHeader       String      @default("")
+  receiptFooter       String      @default("Thank you for your payment.")
+  showTaxOnReceipt    Boolean     @default(false)
+  fbrEnabled          Boolean     @default(false)
+  fbrEnvironment      String      @default("sandbox")
+  fbrCredentialsEnc   String      @default("")
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+}
+
 model Invoice {
-  id            String                 @id @default(cuid())
-  schoolId      String
-  school        School                 @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  studentId     String?
-  student       Student?               @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  applicationId String?
-  application   AdmissionApplication?  @relation(fields: [applicationId], references: [id], onDelete: SetNull)
-  feePlanId     String
-  feePlan       FeePlan                @relation(fields: [feePlanId], references: [id], onDelete: Restrict)
-  amountPkr     Int
-  status        InvoiceStatus          @default(ISSUED)
-  dueOn         DateTime
-  payments      Payment[]
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
+  id                String                 @id @default(cuid())
+  schoolId          String
+  school            School                 @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  campusId          String?
+  campus            Campus?                @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  studentId         String?
+  student           Student?               @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  applicationId     String?
+  application       AdmissionApplication?  @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  academicYearId    String?
+  year              AcademicYear?          @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  feeStructureId    String?
+  feeStructure      FeeStructure?          @relation(fields: [feeStructureId], references: [id], onDelete: SetNull)
+  feePlanId         String?
+  feePlan           FeePlan?               @relation(fields: [feePlanId], references: [id], onDelete: Restrict)
+  invoiceNumber     String                 @default("")
+  billingPeriod     String                 @default("")
+  issueDate         DateTime               @default(now())
+  dueOn             DateTime
+  dueDate           DateTime?
+  subtotalPkr       Int                    @default(0)
+  discountAmountPkr Int                    @default(0)
+  lateFeeAmountPkr  Int                    @default(0)
+  taxAmountPkr      Int                    @default(0)
+  totalAmountPkr    Int                    @default(0)
+  paidAmountPkr     Int                    @default(0)
+  balanceAmountPkr  Int                    @default(0)
+  amountPkr         Int
+  status            InvoiceStatus          @default(ISSUED)
+  notes             String                 @default("")
+  payments          Payment[]
+  allocations       PaymentAllocation[]
+  items             InvoiceItem[]
+  fbrInvoice        FbrInvoice?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
 
   @@index([schoolId])
   @@index([studentId])
   @@index([applicationId])
+  @@index([schoolId, billingPeriod])
+  @@index([schoolId, invoiceNumber])
+}
+
+model InvoiceItem {
+  id                String    @id @default(cuid())
+  invoiceId         String
+  invoice           Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  feeHeadId         String?
+  feeHead           FeeHead?  @relation(fields: [feeHeadId], references: [id], onDelete: SetNull)
+  description       String
+  quantity          Int       @default(1)
+  unitAmountPkr     Int
+  grossAmountPkr    Int
+  discountAmountPkr Int       @default(0)
+  taxAmountPkr      Int       @default(0)
+  netAmountPkr      Int
+  metadata          Json      @default("{}")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([invoiceId])
 }
 
 model Payment {
-  id        String   @id @default(cuid())
-  schoolId  String
-  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  invoiceId String
-  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  amountPkr Int
-  method    String
-  receiptNo String
-  paidAt    DateTime @default(now())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String          @id @default(cuid())
+  schoolId        String
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  campusId        String?
+  campus          Campus?         @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  studentId       String?
+  student         Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  invoiceId       String?
+  invoice         Invoice?        @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  paymentNumber   String          @default("")
+  paymentDate     DateTime        @default(now())
+  amountPkr       Int
+  method          String
+  referenceNumber String          @default("")
+  notes           String          @default("")
+  collectedById   String?
+  collectedBy     User?           @relation("PaymentCollector", fields: [collectedById], references: [id], onDelete: SetNull)
+  status          PaymentStatus   @default(COMPLETED)
+  receiptNo       String
+  paidAt          DateTime        @default(now())
+  allocations     PaymentAllocation[]
+  receipt         Receipt?
+  credits         StudentCredit[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   @@unique([schoolId, receiptNo])
+  @@index([schoolId])
+  @@index([studentId])
+  @@index([schoolId, paymentNumber])
+}
+
+model PaymentAllocation {
+  id          String   @id @default(cuid())
+  paymentId   String
+  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  amountPkr   Int
+  createdAt   DateTime @default(now())
+
+  @@unique([paymentId, invoiceId])
+  @@index([invoiceId])
+}
+
+model StudentCredit {
+  id                String        @id @default(cuid())
+  schoolId          String
+  school            School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId         String
+  student           Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  sourcePaymentId   String?
+  sourcePayment     Payment?      @relation(fields: [sourcePaymentId], references: [id], onDelete: SetNull)
+  amountPkr         Int
+  remainingAmountPkr Int
+  status            CreditStatus  @default(AVAILABLE)
+  reason            String        @default("")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([schoolId, studentId])
+}
+
+model Receipt {
+  id            String   @id @default(cuid())
+  schoolId      String
+  school        School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  campusId      String?
+  campus        Campus?  @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  studentId     String?
+  student       Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  paymentId     String   @unique
+  payment       Payment  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  receiptNumber String
+  receiptDate   DateTime @default(now())
+  amountPkr     Int
+  generatedById String?
+  generatedBy   User?    @relation("ReceiptGenerator", fields: [generatedById], references: [id], onDelete: SetNull)
+  pdfPath       String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([schoolId, receiptNumber])
+  @@index([schoolId])
+  @@index([studentId])
+}
+
+model FbrInvoice {
+  id               String    @id @default(cuid())
+  schoolId         String
+  school           School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  invoiceId        String    @unique
+  invoice          Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  fbrInvoiceNumber String?
+  fbrStatus        FbrStatus @default(NOT_REQUIRED)
+  qrCodeData       String?
+  submissionDate   DateTime?
+  responseData     Json?
+  errorMessage     String?
+  environment      String    @default("sandbox")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
   @@index([schoolId])
 }
 
@@ -446,6 +817,11 @@ model Campus {
   students     Student[]
   memberships  CampusMembership[]
   applications AdmissionApplication[]
+  feeHeads     FeeHead[]
+  feeStructures FeeStructure[]
+  invoices     Invoice[]
+  payments     Payment[]
+  receipts     Receipt[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

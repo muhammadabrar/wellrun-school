@@ -86,6 +86,7 @@ export async function refreshSchoolContext() {
     ["attendance"],
     ["absent"],
     queryKeys.invoices,
+    ["fees"],
     ["timetable"],
   ] as const) {
     void queryClient.invalidateQueries({ queryKey: key });

@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Dialog, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
+import { Dialog, EmptyState, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
 import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useCampus } from "@/hooks/use-campus";
 import { api, type AdmissionDetail, type AdmissionFeeQuote, type Guardian } from "@/lib/api";
@@ -215,7 +216,7 @@ function WizardStep({
         return;
       }
     }
-    if (step === 5) payload.feeQuotes = quotes;
+    if (step === 5) payload.feeQuotes = quotes.filter((row) => row.amountPkr > 0);
     payload.wizardStep = Math.min(6, step + 1);
     await save(payload);
     onNext();
@@ -560,9 +561,13 @@ function ApplicantFamilyFields({
               if (tab === "new") setSelectedGuardianId("");
             }}
           >
-            <TabsList className="w-full">
-              <TabsTrigger value="new">New guardian</TabsTrigger>
-              <TabsTrigger value="existing">Existing guardian</TabsTrigger>
+            <TabsList size="default" className="h-12 w-full">
+              <TabsTrigger value="new" className="px-4 text-base">
+                New guardian
+              </TabsTrigger>
+              <TabsTrigger value="existing" className="px-4 text-base">
+                Existing guardian
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="new" className="mt-4">
               <NewGuardianFields family={family} application={application} />
@@ -754,112 +759,199 @@ function FeesStep({
   quotes: AdmissionFeeQuote[];
   onQuotesChange: (quotes: AdmissionFeeQuote[]) => void;
 }) {
-  const { data, isPending, isError, refetch } = useQuery({
-    queryKey: queryKeys.feeStructure,
-    queryFn: api.feeStructure,
-  });
+  const structures = useQuery({ queryKey: queryKeys.feeStructures, queryFn: api.feeStructures });
+  const discounts = useQuery({ queryKey: queryKeys.feeDiscounts, queryFn: api.feeDiscounts });
   const siblingFeesQuery = useQuery({
     queryKey: queryKeys.admissionSiblingFees(application.id),
     queryFn: () => api.admissionSiblingFees(application.id),
     enabled: Boolean(application.guardianId || application.family.guardianPhone || application.family.guardianCnic),
   });
   const siblings = siblingFeesQuery.data?.siblings ?? [];
+  const [discountId, setDiscountId] = useState<string | null>(null);
+  const [includedOptional, setIncludedOptional] = useState<Record<string, boolean>>({});
 
-  const items = (data?.feeItems ?? []).filter((item) => item.enabled !== false && item.id);
-  useEffect(() => {
-    if (!data) return;
-    onQuotesChange(
-      items.map((item) => {
-        const saved = application.feeQuotes.find((quote) => quote.feeItemId === item.id);
-        return {
-          feeItemId: item.id,
-          name: item.name,
-          catalogAmountPkr: item.amountPkr,
-          amountPkr: saved?.amountPkr ?? item.amountPkr,
-        };
-      }),
+  const structure = useMemo(() => {
+    const rows = (structures.data ?? []).filter((row) => row.className === application.className);
+    return (
+      rows.find((row) => row.status === "ACTIVE" && !row.section) ??
+      rows.find((row) => row.status === "ACTIVE") ??
+      rows[0] ??
+      null
     );
-    // Sync catalog rows once the fee structure loads. Edits are kept in parent state after that.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, [structures.data, application.className]);
+  const discount = (discounts.data ?? []).find((row) => row.id === discountId && row.active) ?? null;
 
-  if (isPending && !data) return <LoadingState variant="form" />;
-  if (isError) {
+  const catalogRows = (structure?.items ?? []).map((item) => ({
+    feeItemId: item.feeHeadId,
+    name: item.feeHead?.name ?? "Fee",
+    catalogAmountPkr: item.amountPkr,
+    isOptional: item.isOptional,
+  }));
+
+  useEffect(() => {
+    if (!structure) {
+      onQuotesChange([]);
+      return;
+    }
+    onQuotesChange(quotesFromCatalog(catalogRows, quotes, application.feeQuotes, includedOptional, discount));
+    // Rebuild quotes when the selected class structure or discount changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [structure?.id, discountId, includedOptional]);
+
+  if (structures.isPending && !structures.data) return <LoadingState variant="form" />;
+  if (structures.isError) {
     return (
       <ErrorState
-        title="Could not load fee structure"
-        description="Open Fee structure to add items, then try again."
-        onRetry={() => void refetch()}
+        title="Could not load class fees"
+        description="Open Fee structures, then try again."
+        onRetry={() => void structures.refetch()}
       />
     );
   }
 
-  const rows = items.map((item) => {
-    const current = quotes.find((quote) => quote.feeItemId === item.id);
-    const saved = application.feeQuotes.find((quote) => quote.feeItemId === item.id);
-    return {
-      feeItemId: item.id,
-      name: item.name,
-      catalogAmountPkr: item.amountPkr,
-      amountPkr: current?.amountPkr ?? saved?.amountPkr ?? item.amountPkr,
-    };
-  });
-
-  if (!items.length) {
-    return (
-      <Card>
-        <CardHeader>
-        <CardTitle>Fees</CardTitle>
-        <CardDescription>Set this student’s fees here. Do not collect payment on this page.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <SiblingFeesList siblings={siblings} loading={siblingFeesQuery.isFetching && !siblingFeesQuery.data} />
-          <p className="text-sm text-muted-foreground">
-            No fee items for this school yet. Continue without quotes, or add items on Fee structure first.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
+  const rows = quotesFromCatalog(catalogRows, quotes, application.feeQuotes, includedOptional, discount);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Fees</CardTitle>
         <CardDescription>
-          Listed amount is from the fee structure. Set this student’s fee for each item. Payment is collected later on Fees.
+          {application.className
+            ? `Fees for ${application.className} this campus and year. Optional items are off until you include them. Payment is collected later on Fees.`
+            : "Choose a grade on Applying for to load that class’s fee structure."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         <SiblingFeesList siblings={siblings} loading={siblingFeesQuery.isFetching && !siblingFeesQuery.data} />
-        {rows.map((quote, index) => (
-          <FieldGroup key={quote.feeItemId} className="grid grid-cols-1 md:grid-cols-3">
+        {!application.className ? (
+          <p className="text-sm text-muted-foreground">Go back to Applying for and select a grade.</p>
+        ) : !structure || !catalogRows.length ? (
+          <EmptyState
+            title={`No fee structure for ${application.className}`}
+            description="Add monthly fees for this class on Fee structures, then return here."
+          />
+        ) : (
+          <>
+            {rows.map((quote) => {
+              const item = catalogRows.find((row) => row.feeItemId === quote.feeItemId);
+              return (
+                <FieldGroup key={quote.feeItemId} className="grid grid-cols-1 md:grid-cols-3">
+                  <Field>
+                    <FieldLabel>Fee</FieldLabel>
+                    <p className="text-sm">
+                      {quote.name}
+                      {item?.isOptional ? <span className="text-muted-foreground"> · Optional</span> : null}
+                    </p>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Listed</FieldLabel>
+                    <p className="text-sm">{pkr(quote.catalogAmountPkr)}</p>
+                  </Field>
+                  {item?.isOptional ? (
+                    <Field>
+                      <FieldLabel htmlFor={`include-${quote.feeItemId}`}>Include</FieldLabel>
+                      <div className="flex h-10 items-center">
+                        <Switch
+                          id={`include-${quote.feeItemId}`}
+                          checked={Boolean(includedOptional[quote.feeItemId])}
+                          onCheckedChange={(checked) =>
+                            setIncludedOptional((current) => ({ ...current, [quote.feeItemId]: checked }))
+                          }
+                        />
+                      </div>
+                    </Field>
+                  ) : (
+                    <Field>
+                      <FieldLabel htmlFor={`quote-${quote.feeItemId}`}>Student fee (Rs.)</FieldLabel>
+                      <Input
+                        id={`quote-${quote.feeItemId}`}
+                        type="number"
+                        min={0}
+                        value={String(quote.amountPkr)}
+                        onChange={(event) => {
+                          const amountPkr = Number(event.target.value) || 0;
+                          onQuotesChange(rows.map((row) => (row.feeItemId === quote.feeItemId ? { ...row, amountPkr } : row)));
+                        }}
+                      />
+                    </Field>
+                  )}
+                </FieldGroup>
+              );
+            })}
             <Field>
-              <FieldLabel>Fee</FieldLabel>
-              <p className="text-sm">{quote.name}</p>
-            </Field>
-            <Field>
-              <FieldLabel>Listed</FieldLabel>
-              <p className="text-sm">{pkr(quote.catalogAmountPkr)}</p>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor={`quote-${quote.feeItemId}`}>Student fee (Rs.)</FieldLabel>
-              <Input
-                id={`quote-${quote.feeItemId}`}
-                type="number"
-                min={0}
-                value={String(quote.amountPkr)}
-                onChange={(event) => {
-                  const amountPkr = Number(event.target.value) || 0;
-                  onQuotesChange(rows.map((row, i) => (i === index ? { ...row, amountPkr } : row)));
-                }}
+              <FieldLabel htmlFor="admission-discount">Discount</FieldLabel>
+              <FormSelect
+                id="admission-discount"
+                value={discountId || "none"}
+                onValueChange={(value) => setDiscountId(!value || value === "none" ? null : value)}
+                options={[
+                  { value: "none", label: "No discount" },
+                  ...(discounts.data ?? [])
+                    .filter((row) => row.active)
+                    .map((row) => ({
+                      value: row.id,
+                      label: `${row.name} · ${row.type === "PERCENT" ? `${row.value}%` : pkr(row.value)}`,
+                    })),
+                ]}
               />
+              <FieldDescription>
+                Applies to this applicant’s quoted fees. It does not change the class structure.
+              </FieldDescription>
             </Field>
-          </FieldGroup>
-        ))}
+            <p className="text-sm font-medium">
+              Total {pkr(rows.reduce((sum, row) => sum + (shouldCharge(row.feeItemId, catalogRows, includedOptional) ? row.amountPkr : 0), 0))}
+            </p>
+          </>
+        )}
       </CardContent>
     </Card>
   );
+}
+
+function shouldCharge(
+  feeItemId: string,
+  catalog: { feeItemId: string; isOptional: boolean }[],
+  includedOptional: Record<string, boolean>,
+) {
+  const item = catalog.find((row) => row.feeItemId === feeItemId);
+  if (!item) return false;
+  return !item.isOptional || Boolean(includedOptional[feeItemId]);
+}
+
+function quotesFromCatalog(
+  catalog: { feeItemId: string; name: string; catalogAmountPkr: number; isOptional: boolean }[],
+  current: AdmissionFeeQuote[],
+  saved: AdmissionFeeQuote[],
+  includedOptional: Record<string, boolean>,
+  discount: { type: "FIXED" | "PERCENT"; value: number } | null,
+): AdmissionFeeQuote[] {
+  const included = catalog.filter((row) => !row.isOptional || includedOptional[row.feeItemId]);
+  const listedTotal = included.reduce((sum, row) => sum + row.catalogAmountPkr, 0);
+  let remainingFixed = discount?.type === "FIXED" ? Math.min(discount.value, listedTotal) : 0;
+  let lastIncluded = -1;
+  catalog.forEach((row, index) => {
+    if (!row.isOptional || includedOptional[row.feeItemId]) lastIncluded = index;
+  });
+  return catalog.map((item, index) => {
+    const previous = current.find((row) => row.feeItemId === item.feeItemId) ?? saved.find((row) => row.feeItemId === item.feeItemId);
+    const charge = !item.isOptional || includedOptional[item.feeItemId];
+    let amountPkr = previous?.amountPkr ?? item.catalogAmountPkr;
+    if (item.isOptional && !charge) amountPkr = 0;
+    else if (discount?.type === "PERCENT") amountPkr = Math.round((item.catalogAmountPkr * (100 - discount.value)) / 100);
+    else if (discount?.type === "FIXED" && charge) {
+      const isLast = index === lastIncluded;
+      const share = listedTotal ? Math.round((item.catalogAmountPkr / listedTotal) * Math.min(discount.value, listedTotal)) : 0;
+      const cut = isLast ? remainingFixed : Math.min(share, remainingFixed);
+      remainingFixed -= cut;
+      amountPkr = Math.max(item.catalogAmountPkr - cut, 0);
+    }
+    return {
+      feeItemId: item.feeItemId,
+      name: item.name,
+      catalogAmountPkr: item.catalogAmountPkr,
+      amountPkr: charge ? amountPkr : 0,
+    };
+  });
 }
 
 function Duplicates({ application }: { application: AdmissionDetail }) {

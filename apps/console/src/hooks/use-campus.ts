@@ -12,6 +12,7 @@ const listKeys = [
   ["attendance"],
   ["absent"],
   queryKeys.invoices,
+  ["fees"],
   ["timetable"],
 ] as const;
 

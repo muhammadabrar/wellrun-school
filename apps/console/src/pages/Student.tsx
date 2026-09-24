@@ -193,7 +193,7 @@ export function StudentPage() {
         ) : tab === "attendance" ? (
           <AttendanceList rows={tabQuery.data as never} />
         ) : tab === "fees" ? (
-          <FeesList rows={tabQuery.data as never} onReceipt={(receiptId) => navigate(`/fees/receipt/${receiptId}`)} />
+          <FeesList data={tabQuery.data} canMutate={canMutate} onReceipt={(receiptId) => navigate(`/fees/receipt/${receiptId}`)} />
         ) : tab === "results" ? (
           <ResultsPanel id={student.id} rows={tabQuery.data as never} canMutate={canMutate} onSaved={() => void tabQuery.refetch()} />
         ) : tab === "family" ? (
@@ -316,29 +316,80 @@ function AttendanceList({ rows }: { rows: { id: string; date: string; status: st
   );
 }
 
-function FeesList({ rows, onReceipt }: { rows: { id: string; name: string; amountPkr: number; paidPkr: number; dueOn: string; receiptId: string | null }[]; onReceipt: (id: string) => void }) {
-  if (!rows?.length) return <EmptyState title="No invoices" description="Fee invoices appear after billing." />;
+function FeesList({
+  data,
+  canMutate,
+  onReceipt,
+}: {
+  data: unknown;
+  canMutate: boolean;
+  onReceipt: (id: string) => void;
+}) {
+  const payload = feeTabPayload(data);
+  if (!payload.invoices.length) return <EmptyState title="No invoices" description="Fee invoices appear after billing." />;
   return (
-    <ul className="space-y-3">
-      {rows.map((invoice) => (
-        <li key={invoice.id} className="flex items-center justify-between rounded-2xl bg-paper px-4 py-3">
-          <div>
-            <p className="font-medium">{invoice.name}</p>
-            <p className="text-sm text-muted-foreground">Due {String(invoice.dueOn).slice(0, 10)}</p>
-          </div>
-          <div className="text-right">
-            <p>{pkr(invoice.amountPkr)}</p>
-            {invoice.receiptId ? (
-              <button type="button" className="text-sm text-indigo" onClick={() => onReceipt(invoice.receiptId!)}>Receipt</button>
-            ) : (
-              <p className="text-sm text-orange">Due {pkr(invoice.amountPkr - invoice.paidPkr)}</p>
-            )}
-          </div>
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-6">
+      <p className="text-sm text-muted-foreground">Balance {pkr(payload.balancePkr)}</p>
+      {canMutate && payload.credits.some((row) => row.remainingAmountPkr > 0) ? (
+        <p className="text-sm">This student has unused credit. Apply it from Student credits.</p>
+      ) : null}
+      <ul className="space-y-3">
+        {payload.invoices.map((invoice) => (
+          <li key={invoice.id} className="flex items-center justify-between rounded-2xl bg-paper px-4 py-3">
+            <div>
+              <p className="font-medium">{invoice.name}</p>
+              <p className="text-sm text-muted-foreground">Due {String(invoice.dueOn).slice(0, 10)}</p>
+            </div>
+            <div className="text-right">
+              <p>{pkr(invoice.amountPkr)}</p>
+              {invoice.receiptId ? (
+                <button type="button" className="text-sm text-indigo" onClick={() => onReceipt(invoice.receiptId!)}>
+                  Receipt
+                </button>
+              ) : (
+                <p className="text-sm text-orange">Due {pkr(invoice.amountPkr - invoice.paidPkr)}</p>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {payload.ledger.length ? (
+        <div>
+          <h3 className="mb-2 text-sm font-medium">Ledger</h3>
+          <ul className="space-y-2 text-sm">
+            {payload.ledger.map((row) => (
+              <li key={`${row.kind}-${row.id}`} className="flex justify-between">
+                <span>{row.label}</span>
+                <span>{row.debitPkr ? pkr(row.debitPkr) : `−${pkr(row.creditPkr)}`}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }
+
+function feeTabPayload(data: unknown) {
+  if (Array.isArray(data)) {
+    return { invoices: data as FeeInvoiceRow[], credits: [] as { remainingAmountPkr: number }[], ledger: [] as LedgerRow[], balancePkr: 0 };
+  }
+  const row = (data ?? {}) as {
+    invoices?: FeeInvoiceRow[];
+    credits?: { remainingAmountPkr: number }[];
+    ledger?: LedgerRow[];
+    balancePkr?: number;
+  };
+  return {
+    invoices: row.invoices ?? [],
+    credits: row.credits ?? [],
+    ledger: row.ledger ?? [],
+    balancePkr: row.balancePkr ?? 0,
+  };
+}
+
+type FeeInvoiceRow = { id: string; name: string; amountPkr: number; paidPkr: number; dueOn: string; receiptId: string | null; status: string };
+type LedgerRow = { id: string; kind: string; label: string; debitPkr: number; creditPkr: number };
 
 function ResultsPanel({
   id,

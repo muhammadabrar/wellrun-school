@@ -22,7 +22,8 @@ export function CampusesPage() {
 
   async function onAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formEl = event.currentTarget;
+    const form = new FormData(formEl);
     setError(null);
     setBusy("add");
     try {
@@ -33,7 +34,7 @@ export function CampusesPage() {
         phone: String(form.get("phone")),
         principal: String(form.get("principal")),
       });
-      event.currentTarget.reset();
+      formEl.reset();
       setMessage("Campus added.");
       await reload();
     } catch (err) {

@@ -17,6 +17,12 @@ type FeeRow = {
   status: string;
 };
 
+function feeRows(data: unknown): FeeRow[] {
+  if (Array.isArray(data)) return data as FeeRow[];
+  const payload = data as { invoices?: FeeRow[] } | null;
+  return payload?.invoices ?? [];
+}
+
 export function SubmitFeeDialog({
   studentId,
   studentName,
@@ -40,7 +46,7 @@ export function SubmitFeeDialog({
 
   if (!open) return null;
 
-  const due = (data ?? []).filter((row) => row.status !== "VOID" && row.status !== "DRAFT" && row.paidPkr < row.amountPkr);
+  const due = feeRows(data).filter((row) => row.status !== "CANCELLED" && row.status !== "VOID" && row.status !== "DRAFT" && row.paidPkr < row.amountPkr);
 
   async function pay(row: FeeRow) {
     const remaining = row.amountPkr - row.paidPkr;

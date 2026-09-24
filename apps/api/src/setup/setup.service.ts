@@ -586,20 +586,40 @@ export class SetupService {
   async saveFees(schoolId: string, actorId: string, body: unknown) {
     await this.writable(schoolId);
     const data = feeItemsSchema.parse(body);
-    await this.prisma.feeItem.deleteMany({ where: { schoolId } });
-    const items = await Promise.all(
-      data.items.map((item, index) =>
-        this.prisma.feeItem.create({
-          data: {
-            schoolId,
-            name: item.name,
-            amountPkr: item.amountPkr,
-            enabled: item.enabled ?? true,
-            sortOrder: item.sortOrder ?? index,
-          },
-        }),
-      ),
-    );
+    const existing = await this.prisma.feeItem.findMany({ where: { schoolId }, orderBy: { sortOrder: "asc" } });
+    const keep: string[] = [];
+    const items = [];
+    for (const [index, item] of data.items.entries()) {
+      const match = existing.find((row) => row.name === item.name && !keep.includes(row.id)) ?? existing.find((row) => !keep.includes(row.id) && existing.indexOf(row) === index);
+      const payload = {
+        name: item.name,
+        amountPkr: item.amountPkr,
+        enabled: item.enabled ?? true,
+        sortOrder: item.sortOrder ?? index,
+      };
+      const row = match
+        ? await this.prisma.feeItem.update({ where: { id: match.id }, data: payload })
+        : await this.prisma.feeItem.create({ data: { schoolId, ...payload } });
+      keep.push(row.id);
+      items.push(row);
+      await this.prisma.feeHead.upsert({
+        where: { id: row.id },
+        create: {
+          id: row.id,
+          schoolId,
+          name: row.name,
+          code: row.name.replace(/[^A-Za-z0-9]+/g, "_").toUpperCase().slice(0, 32),
+          amountPkr: row.amountPkr,
+          active: row.enabled,
+          sortOrder: row.sortOrder,
+        },
+        update: { name: row.name, amountPkr: row.amountPkr, active: row.enabled, sortOrder: row.sortOrder },
+      });
+    }
+    if (keep.length) {
+      await this.prisma.feeItem.updateMany({ where: { schoolId, id: { notIn: keep } }, data: { enabled: false } });
+      await this.prisma.feeHead.updateMany({ where: { schoolId, id: { notIn: keep } }, data: { active: false } });
+    }
     await audit(this.prisma, { schoolId, actorId, action: "fee_structure_saved", entity: "fee_item", entityId: schoolId });
     return items;
   }
@@ -607,11 +627,23 @@ export class SetupService {
   async seedFees(schoolId: string) {
     const existing = await this.prisma.feeItem.count({ where: { schoolId } });
     if (existing) return this.prisma.feeItem.findMany({ where: { schoolId }, orderBy: { sortOrder: "asc" } });
-    return Promise.all(
-      FEE_TEMPLATE.map((name, index) =>
-        this.prisma.feeItem.create({ data: { schoolId, name, amountPkr: 0, enabled: true, sortOrder: index } }),
-      ),
-    );
+    const items = [];
+    for (const [index, name] of FEE_TEMPLATE.entries()) {
+      const row = await this.prisma.feeItem.create({ data: { schoolId, name, amountPkr: 0, enabled: true, sortOrder: index } });
+      await this.prisma.feeHead.create({
+        data: {
+          id: row.id,
+          schoolId,
+          name,
+          code: name.replace(/[^A-Za-z0-9]+/g, "_").toUpperCase().slice(0, 32),
+          amountPkr: 0,
+          active: true,
+          sortOrder: index,
+        },
+      });
+      items.push(row);
+    }
+    return items;
   }
 
   async addRole(schoolId: string, actorId: string, body: unknown) {

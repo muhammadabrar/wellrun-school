@@ -15,6 +15,8 @@ import {
 } from "@wellrun/shared";
 import { Prisma } from "@prisma/client";
 import { audit } from "../common/audit";
+import { invoiceLabel } from "../fees/billing";
+import { ensureStudentFeeAssignment } from "../fees/assignment.service";
 import { assertWritableSchool } from "../common/school";
 import type { SchoolScope } from "../common/school-scope";
 import { karachiToday } from "../common/date";
@@ -196,8 +198,9 @@ export class StudentsService {
       student.attendance.find((row) => this.attendanceDay(row.date) === today)?.status ?? null;
     let feesDue = 0;
     for (const invoice of student.invoices) {
-      if (invoice.status === "VOID" || invoice.status === "DRAFT") continue;
-      feesDue += Math.max(invoice.amountPkr - invoice.payments.reduce((sum, payment) => sum + payment.amountPkr, 0), 0);
+      if (invoice.status === "CANCELLED" || invoice.status === "DRAFT") continue;
+      const paid = invoice.paidAmountPkr || invoice.payments.filter((payment) => payment.status !== "VOIDED" && payment.status !== "REFUNDED").reduce((sum, payment) => sum + payment.amountPkr, 0);
+      feesDue += invoice.balanceAmountPkr || Math.max(invoice.amountPkr - paid, 0);
     }
     const latest = student.examResults[0];
     const enrollmentYears = new Set(student.enrollments.map((row) => row.class.yearId)).size;
@@ -329,6 +332,14 @@ export class StudentsService {
     const guardian = await this.prisma.guardian.findFirst({ where: { id: guardianId, schoolId } });
     if (!guardian) throw new BadRequestException("Guardian not found");
     await this.prisma.studentGuardian.create({ data: { studentId: student.id, guardianId: guardian.id } });
+    await ensureStudentFeeAssignment(this.prisma, {
+      schoolId,
+      studentId: student.id,
+      className: cls.name,
+      section: cls.section,
+      campusId: cls.campusId,
+      academicYearId: cls.yearId,
+    });
     await audit(this.prisma, {
       schoolId,
       actorId,
@@ -607,10 +618,14 @@ export class StudentsService {
       invoices: {
         id: string;
         amountPkr: number;
+        paidAmountPkr?: number;
+        balanceAmountPkr?: number;
+        academicYearId?: string | null;
         status: string;
         dueOn: Date;
-        feePlan: { name: string; yearId: string; year: { id: string; name: string } };
-        payments: { id: string; amountPkr: number }[];
+        feePlan: { name: string; yearId: string; year: { id: string; name: string } } | null;
+        items?: { description: string }[];
+        payments: { id: string; amountPkr: number; status?: string }[];
       }[];
       attendance: { id: string; date: Date; status: string; class: { name: string; section: string } }[];
       examResults: {
@@ -713,16 +728,20 @@ export class StudentsService {
         className: `${row.class.name} ${row.class.section}`,
       })),
       invoices: student.invoices.map((invoice) => {
-        const paid = invoice.payments.reduce((sum, payment) => sum + payment.amountPkr, 0);
+        const paid =
+          invoice.paidAmountPkr ||
+          invoice.payments
+            .filter((payment) => payment.status !== "VOIDED" && payment.status !== "REFUNDED")
+            .reduce((sum, payment) => sum + payment.amountPkr, 0);
         return {
           id: invoice.id,
-          name: invoice.feePlan.name,
+          name: invoiceLabel(invoice),
           amountPkr: invoice.amountPkr,
           paidPkr: paid,
           status: invoice.status,
           dueOn: invoice.dueOn,
-          yearId: invoice.feePlan.yearId,
-          receiptId: invoice.payments[0]?.id ?? null,
+          yearId: invoice.feePlan?.yearId ?? invoice.academicYearId ?? "",
+          receiptId: invoice.payments.find((payment) => payment.status !== "VOIDED" && payment.status !== "REFUNDED")?.id ?? invoice.payments[0]?.id ?? null,
         };
       }),
       enrollments: student.enrollments.map((row) => ({
@@ -751,7 +770,7 @@ export class StudentsService {
     campus?: { id: string; name: string } | null;
     enrollments: { rollNo?: string; class: { id: string; name: string; section: string } }[];
     guardians: { guardian: { name: string; phone?: string } }[];
-    invoices: { status: string; amountPkr: number; payments: { amountPkr: number }[] }[];
+    invoices: { status: string; amountPkr: number; paidAmountPkr?: number; balanceAmountPkr?: number; payments: { amountPkr: number; status?: string }[] }[];
     attendance: { status: string; date: Date }[];
   }) {
     const presentLike = student.attendance.filter((row) => row.status === "PRESENT" || row.status === "LATE").length;
@@ -760,9 +779,13 @@ export class StudentsService {
     const todayAttendance = student.attendance.find((row) => this.attendanceDay(row.date) === today)?.status ?? null;
     let pending = 0;
     for (const invoice of student.invoices) {
-      if (invoice.status === "VOID" || invoice.status === "DRAFT") continue;
-      const paid = invoice.payments.reduce((sum, payment) => sum + payment.amountPkr, 0);
-      pending += Math.max(invoice.amountPkr - paid, 0);
+      if (invoice.status === "CANCELLED" || invoice.status === "DRAFT") continue;
+      const paid =
+        invoice.paidAmountPkr ||
+        invoice.payments
+          .filter((payment) => payment.status !== "VOIDED" && payment.status !== "REFUNDED")
+          .reduce((sum, payment) => sum + payment.amountPkr, 0);
+      pending += invoice.balanceAmountPkr || Math.max(invoice.amountPkr - paid, 0);
     }
     return {
       id: student.id,
@@ -828,24 +851,80 @@ export class StudentsService {
 
   async feesTab(schoolId: string, id: string, classIds: string[] | null = null) {
     await this.byId(schoolId, id, classIds);
-    const invoices = await this.prisma.invoice.findMany({
-      where: { schoolId, studentId: id },
-      include: { payments: true, feePlan: { include: { year: true } } },
-      orderBy: { dueOn: "desc" },
-    });
-    return invoices.map((invoice) => {
-      const paid = invoice.payments.reduce((sum, payment) => sum + payment.amountPkr, 0);
+    const [invoices, payments, credits, assignment, discounts] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where: { schoolId, studentId: id },
+        include: {
+          payments: true,
+          feePlan: { include: { year: true } },
+          items: { take: 3, select: { description: true } },
+          allocations: { include: { payment: { select: { id: true, status: true } } } },
+        },
+        orderBy: { dueOn: "desc" },
+      }),
+      this.prisma.payment.findMany({
+        where: { schoolId, studentId: id },
+        include: { receipt: { select: { id: true, receiptNumber: true } } },
+        orderBy: { paidAt: "desc" },
+      }),
+      this.prisma.studentCredit.findMany({ where: { schoolId, studentId: id }, orderBy: { createdAt: "desc" } }),
+      this.prisma.studentFeeAssignment.findFirst({
+        where: { schoolId, studentId: id, status: "ACTIVE" },
+        include: { structure: { select: { id: true, name: true } }, overrides: true },
+      }),
+      this.prisma.studentDiscount.findMany({ where: { schoolId, studentId: id, active: true } }),
+    ]);
+    const mapped = invoices.map((invoice) => {
+      const paid = invoice.paidAmountPkr || invoice.payments.reduce((sum, payment) => sum + payment.amountPkr, 0);
       return {
         id: invoice.id,
-        name: invoice.feePlan.name,
+        name: invoiceLabel(invoice),
         amountPkr: invoice.amountPkr,
         paidPkr: paid,
         status: invoice.status,
         dueOn: invoice.dueOn,
-        yearId: invoice.feePlan.yearId,
-        receiptId: invoice.payments[0]?.id ?? null,
+        yearId: invoice.feePlan?.yearId ?? invoice.academicYearId ?? "",
+        receiptId: invoice.allocations.find((row) => row.payment.status === "COMPLETED")?.payment.id ?? invoice.payments[0]?.id ?? null,
       };
     });
+    const balancePkr = mapped
+      .filter((row) => row.status !== "CANCELLED" && row.status !== "DRAFT")
+      .reduce((sum, row) => sum + Math.max(row.amountPkr - row.paidPkr, 0), 0);
+    return {
+      invoices: mapped,
+      payments: payments.map((row) => ({
+        id: row.id,
+        amountPkr: row.amountPkr,
+        method: row.method,
+        status: row.status,
+        paymentDate: row.paymentDate,
+        receiptId: row.receipt?.id ?? row.id,
+      })),
+      credits,
+      assignment,
+      discounts,
+      balancePkr,
+      ledger: [
+        ...invoices.map((row) => ({
+          id: row.id,
+          at: row.issueDate,
+          kind: "invoice",
+          label: invoiceLabel(row),
+          debitPkr: row.amountPkr,
+          creditPkr: 0,
+        })),
+        ...payments
+          .filter((row) => row.status === "COMPLETED")
+          .map((row) => ({
+            id: row.id,
+            at: row.paymentDate,
+            kind: "payment",
+            label: `Payment ${row.paymentNumber || row.receiptNo}`,
+            debitPkr: 0,
+            creditPkr: row.amountPkr,
+          })),
+      ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()),
+    };
   }
 
   async resultsTab(schoolId: string, id: string, classIds: string[] | null = null) {

@@ -9,7 +9,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:seed": "tsx prisma/seed.ts",
+    "test": "vitest run"
   },
   "prisma": {
     "schema": "prisma/schema.prisma",
@@ -25,6 +26,7 @@
     "prisma": "^6.16.2",
     "@wellrun/shared": "workspace:*",
     "bcryptjs": "^3.0.2",
+    "pdfkit": "^0.17.2",
     "zod": "^3.25.76",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
@@ -35,7 +37,9 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/express": "^5.0.3",
     "@types/node": "^22.18.0",
+    "@types/pdfkit": "^0.17.3",
     "tsx": "^4.20.5",
+    "vitest": "^3.2.4",
     "typescript": "^5.9.2"
   }
 }

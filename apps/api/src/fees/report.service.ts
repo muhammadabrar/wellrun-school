@@ -1,0 +1,316 @@
+import { Inject, Injectable } from "@nestjs/common";
+import type { InvoiceStatus } from "@prisma/client";
+import type { SchoolScope } from "../common/school-scope";
+import { PrismaService } from "../prisma/prisma.service";
+import { invoiceLabel } from "./billing";
+import { addPkr } from "./money";
+import { slimStudent } from "./invoice-writer";
+
+@Injectable()
+export class FeeReportService {
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+
+  async dashboard(schoolId: string, scope: SchoolScope = {}) {
+    const now = new Date();
+    const startOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const paymentWhere = {
+      schoolId,
+      status: "COMPLETED" as const,
+      ...(scope.campusId
+        ? { OR: [{ campusId: scope.campusId }, { campusId: null, student: { campusId: scope.campusId } }] }
+        : {}),
+    };
+    const invoiceWhere = {
+      schoolId,
+      status: { notIn: ["CANCELLED", "DRAFT"] as InvoiceStatus[] },
+      AND: [
+        scope.campusId
+          ? { OR: [{ campusId: scope.campusId }, { campusId: null, student: { campusId: scope.campusId } }] }
+          : {},
+        scope.yearId
+          ? { OR: [{ academicYearId: scope.yearId }, { academicYearId: null, feePlan: { yearId: scope.yearId } }] }
+          : {},
+      ],
+    };
+    const [today, month, invoices, recentPayments, overdue, recentReceipts] = await Promise.all([
+      this.prisma.payment.aggregate({ where: { ...paymentWhere, paymentDate: { gte: startOfDay } }, _sum: { amountPkr: true } }),
+      this.prisma.payment.aggregate({ where: { ...paymentWhere, paymentDate: { gte: startOfMonth } }, _sum: { amountPkr: true } }),
+      this.prisma.invoice.findMany({
+        where: invoiceWhere,
+        select: { status: true, balanceAmountPkr: true, amountPkr: true, paidAmountPkr: true },
+      }),
+      this.prisma.payment.findMany({
+        where: paymentWhere,
+        include: { student: { select: { id: true, firstName: true, lastName: true, admissionNo: true } } },
+        orderBy: { paidAt: "desc" },
+        take: 8,
+      }),
+      this.prisma.invoice.findMany({
+        where: { ...invoiceWhere, status: { in: ["OVERDUE", "ISSUED", "PARTIALLY_PAID"] }, dueOn: { lt: now }, balanceAmountPkr: { gt: 0 } },
+        include: { student: { select: { id: true, firstName: true, lastName: true, admissionNo: true } }, items: { take: 1 }, feePlan: true },
+        orderBy: { dueOn: "asc" },
+        take: 8,
+      }),
+      this.prisma.receipt.findMany({
+        where: {
+          schoolId,
+          ...(scope.campusId
+            ? { OR: [{ campusId: scope.campusId }, { campusId: null, student: { campusId: scope.campusId } }] }
+            : {}),
+        },
+        include: { student: { select: { id: true, firstName: true, lastName: true, admissionNo: true } } },
+        orderBy: { receiptDate: "desc" },
+        take: 8,
+      }),
+    ]);
+    const outstanding = addPkr(...invoices.map((row) => row.balanceAmountPkr || Math.max(row.amountPkr - row.paidAmountPkr, 0)));
+    const overdueAmount = addPkr(
+      ...invoices.filter((row) => row.status === "OVERDUE").map((row) => row.balanceAmountPkr || Math.max(row.amountPkr - row.paidAmountPkr, 0)),
+    );
+    const counts = {
+      unpaid: invoices.filter((row) => row.status === "ISSUED" || row.status === "OVERDUE").length,
+      partial: invoices.filter((row) => row.status === "PARTIALLY_PAID").length,
+      paid: invoices.filter((row) => row.status === "PAID").length,
+      overdue: invoices.filter((row) => row.status === "OVERDUE").length,
+    };
+    return {
+      todayPkr: today._sum.amountPkr ?? 0,
+      monthPkr: month._sum.amountPkr ?? 0,
+      outstandingPkr: outstanding,
+      overduePkr: overdueAmount,
+      counts,
+      recentPayments: recentPayments.map((row) => ({
+        id: row.id,
+        amountPkr: row.amountPkr,
+        method: row.method,
+        paymentDate: row.paymentDate,
+        student: slimStudent(row.student),
+      })),
+      overdueInvoices: overdue.map((row) => ({
+        id: row.id,
+        name: invoiceLabel(row),
+        amountPkr: row.balanceAmountPkr || row.amountPkr,
+        dueOn: row.dueOn,
+        student: slimStudent(row.student),
+      })),
+      recentReceipts: recentReceipts.map((row) => ({
+        id: row.id,
+        receiptNumber: row.receiptNumber,
+        amountPkr: row.amountPkr,
+        receiptDate: row.receiptDate,
+        student: slimStudent(row.student),
+      })),
+    };
+  }
+
+  outstanding(schoolId: string, scope: SchoolScope = {}, query: { className?: string; section?: string } = {}) {
+    return this.prisma.invoice.findMany({
+      where: {
+        schoolId,
+        status: { in: ["ISSUED", "PARTIALLY_PAID", "OVERDUE"] },
+        AND: [
+          scope.campusId
+            ? { OR: [{ campusId: scope.campusId }, { campusId: null, student: { campusId: scope.campusId } }] }
+            : {},
+          scope.yearId
+            ? { OR: [{ academicYearId: scope.yearId }, { academicYearId: null, feePlan: { yearId: scope.yearId } }] }
+            : {},
+        ],
+        ...(query.className || query.section
+          ? {
+              student: {
+                enrollments: {
+                  some: {
+                    active: true,
+                    class: {
+                      ...(query.className ? { name: query.className } : {}),
+                      ...(query.section ? { section: query.section } : {}),
+                    },
+                  },
+                },
+              },
+            }
+          : {}),
+      },
+      include: {
+        student: { select: { id: true, firstName: true, lastName: true, admissionNo: true } },
+        items: { take: 1, select: { description: true } },
+        feePlan: { select: { name: true } },
+      },
+      orderBy: { dueOn: "asc" },
+      take: 500,
+    }).then((rows) =>
+      rows.map((row) => ({
+        id: row.id,
+        invoiceNumber: row.invoiceNumber,
+        name: invoiceLabel(row),
+        billingPeriod: row.billingPeriod,
+        dueOn: row.dueOn,
+        status: row.status,
+        amountPkr: row.amountPkr,
+        paidAmountPkr: row.paidAmountPkr,
+        balanceAmountPkr: row.balanceAmountPkr || row.amountPkr - row.paidAmountPkr,
+        student: slimStudent(row.student),
+      })),
+    );
+  }
+
+  async reports(
+    schoolId: string,
+    scope: SchoolScope = {},
+    query: { from?: string; to?: string; className?: string; section?: string; feeHeadId?: string; method?: string } = {},
+  ) {
+    const from = query.from ? new Date(query.from) : new Date(Date.now() - 30 * 86_400_000);
+    const to = query.to ? new Date(query.to) : new Date();
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        schoolId,
+        status: "COMPLETED",
+        paymentDate: { gte: from, lte: to },
+        ...(scope.campusId
+          ? { OR: [{ campusId: scope.campusId }, { campusId: null, student: { campusId: scope.campusId } }] }
+          : {}),
+        ...(query.method ? { method: query.method } : {}),
+        ...(query.className || query.section
+          ? {
+              student: {
+                enrollments: {
+                  some: {
+                    active: true,
+                    class: {
+                      ...(query.className ? { name: query.className } : {}),
+                      ...(query.section ? { section: query.section } : {}),
+                    },
+                  },
+                },
+              },
+            }
+          : {}),
+      },
+      include: {
+        student: { select: { id: true, firstName: true, lastName: true, admissionNo: true } },
+        allocations: {
+          include: {
+            invoice: {
+              include: {
+                items: { select: { feeHeadId: true, description: true, netAmountPkr: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { paymentDate: "desc" },
+      take: 500,
+    });
+    const rows = query.feeHeadId
+      ? payments.filter((payment) =>
+          payment.allocations.some((row) => row.invoice.items.some((item) => item.feeHeadId === query.feeHeadId)),
+        )
+      : payments;
+    return {
+      from,
+      to,
+      totalPkr: addPkr(...rows.map((row) => row.amountPkr)),
+      count: rows.length,
+      rows: rows.map((row) => ({
+        id: row.id,
+        paymentNumber: row.paymentNumber,
+        paymentDate: row.paymentDate,
+        method: row.method,
+        amountPkr: row.amountPkr,
+        student: slimStudent(row.student),
+      })),
+    };
+  }
+
+  async studentLedger(schoolId: string, studentId: string) {
+    const [invoices, payments, credits, assignment, discounts] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where: { schoolId, studentId, status: { not: "DRAFT" } },
+        include: { items: true, feePlan: true, allocations: { include: { payment: { select: { id: true, receiptNo: true, status: true } } } } },
+        orderBy: { dueOn: "desc" },
+      }),
+      this.prisma.payment.findMany({
+        where: { schoolId, studentId },
+        include: { receipt: true, allocations: true },
+        orderBy: { paidAt: "desc" },
+      }),
+      this.prisma.studentCredit.findMany({ where: { schoolId, studentId }, orderBy: { createdAt: "desc" } }),
+      this.prisma.studentFeeAssignment.findFirst({
+        where: { schoolId, studentId, status: "ACTIVE" },
+        include: { structure: { select: { id: true, name: true } }, overrides: true },
+      }),
+      this.prisma.studentDiscount.findMany({ where: { schoolId, studentId, active: true } }),
+    ]);
+    const current = invoices.find((row) => row.status !== "CANCELLED" && row.status !== "PAID") ?? invoices[0] ?? null;
+    const balancePkr = addPkr(...invoices.filter((row) => row.status !== "CANCELLED").map((row) => row.balanceAmountPkr || 0));
+    const ledger = [
+      ...invoices.map((row) => ({
+        id: row.id,
+        at: row.issueDate,
+        kind: "invoice" as const,
+        label: invoiceLabel(row),
+        debitPkr: row.totalAmountPkr || row.amountPkr,
+        creditPkr: 0,
+      })),
+      ...payments
+        .filter((row) => row.status === "COMPLETED")
+        .map((row) => ({
+          id: row.id,
+          at: row.paymentDate,
+          kind: "payment" as const,
+          label: `Payment ${row.paymentNumber || row.receiptNo}`,
+          debitPkr: 0,
+          creditPkr: row.amountPkr,
+        })),
+      ...credits.map((row) => ({
+        id: row.id,
+        at: row.createdAt,
+        kind: "credit" as const,
+        label: row.reason || "Credit",
+        debitPkr: 0,
+        creditPkr: row.amountPkr,
+      })),
+    ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+    return {
+      balancePkr,
+      currentInvoice: current
+        ? {
+            id: current.id,
+            name: invoiceLabel(current),
+            billingPeriod: current.billingPeriod,
+            amountPkr: current.amountPkr,
+            paidPkr: current.paidAmountPkr,
+            dueOn: current.dueOn,
+            status: current.status,
+            receiptId: current.allocations.find((row) => row.payment.status === "COMPLETED")?.payment.id ?? null,
+          }
+        : null,
+      invoices: invoices.map((row) => ({
+        id: row.id,
+        name: invoiceLabel(row),
+        invoiceNumber: row.invoiceNumber,
+        billingPeriod: row.billingPeriod,
+        amountPkr: row.amountPkr,
+        paidPkr: row.paidAmountPkr,
+        status: row.status,
+        dueOn: row.dueOn,
+        receiptId: row.allocations.find((item) => item.payment.status === "COMPLETED")?.payment.id ?? null,
+      })),
+      payments: payments.map((row) => ({
+        id: row.id,
+        paymentNumber: row.paymentNumber,
+        amountPkr: row.amountPkr,
+        method: row.method,
+        status: row.status,
+        paymentDate: row.paymentDate,
+        receiptId: row.receipt?.id ?? row.id,
+      })),
+      credits,
+      assignment,
+      discounts,
+      ledger,
+    };
+  }
+}

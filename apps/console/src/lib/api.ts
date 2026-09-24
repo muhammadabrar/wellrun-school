@@ -251,9 +251,92 @@ export const api = {
   }) => request("/console/attendance", { method: "POST", body: JSON.stringify(payload) }),
   absent: (date: string) => request<AbsentRow[]>(`/console/attendance/absent?date=${date}`),
   invoices: () => request<Invoice[]>("/console/invoices"),
-  pay: (payload: { invoiceId: string; amountPkr: number; method: string }) =>
-    request<Payment>("/console/payments", { method: "POST", body: JSON.stringify(payload) }),
-  receipt: (id: string) => request<Payment>(`/console/payments/${id}`),
+  pay: (payload: {
+    invoiceId?: string;
+    invoiceIds?: string[];
+    allocations?: { invoiceId: string; amountPkr: number }[];
+    studentId?: string;
+    amountPkr: number;
+    method: string;
+    referenceNumber?: string;
+    notes?: string;
+    paymentDate?: string;
+  }) => request<Payment>("/console/payments", { method: "POST", body: JSON.stringify(payload) }),
+  receipt: (id: string) => request<ReceiptDetail>(`/console/payments/${id}`),
+  feesDashboard: () => request<FeesDashboard>("/console/fees/dashboard"),
+  feeHeads: () => request<FeeHead[]>("/console/fees/heads"),
+  createFeeHead: (payload: Record<string, unknown>) =>
+    request<FeeHead>("/console/fees/heads", { method: "POST", body: JSON.stringify(payload) }),
+  updateFeeHead: (id: string, payload: Record<string, unknown>) =>
+    request<FeeHead>(`/console/fees/heads/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  archiveFeeHead: (id: string) => request(`/console/fees/heads/${id}`, { method: "DELETE" }),
+  feeStructures: () => request<FeeStructureRow[]>("/console/fees/structures"),
+  feeStructureDetail: (id: string) => request<FeeStructureRow>(`/console/fees/structures/${id}`),
+  createFeeStructure: (payload: Record<string, unknown>) =>
+    request<FeeStructureRow>("/console/fees/structures", { method: "POST", body: JSON.stringify(payload) }),
+  updateFeeStructure: (id: string, payload: Record<string, unknown>) =>
+    request<FeeStructureRow>(`/console/fees/structures/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  feeAssignments: (studentId?: string) =>
+    request(`/console/fees/assignments${studentId ? `?studentId=${studentId}` : ""}`),
+  createFeeAssignment: (payload: Record<string, unknown>) =>
+    request("/console/fees/assignments", { method: "POST", body: JSON.stringify(payload) }),
+  updateFeeAssignment: (id: string, payload: Record<string, unknown>) =>
+    request(`/console/fees/assignments/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  feeDiscounts: () => request<FeeDiscount[]>("/console/fees/discounts"),
+  createFeeDiscount: (payload: Record<string, unknown>) =>
+    request("/console/fees/discounts", { method: "POST", body: JSON.stringify(payload) }),
+  updateFeeDiscount: (id: string, payload: Record<string, unknown>) =>
+    request(`/console/fees/discounts/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  assignStudentDiscount: (payload: Record<string, unknown>) =>
+    request("/console/fees/student-discounts", { method: "POST", body: JSON.stringify(payload) }),
+  previewFees: (payload: Record<string, unknown>) =>
+    request<FeePreview>("/console/fees/generate/preview", { method: "POST", body: JSON.stringify(payload) }),
+  generateFees: (payload: Record<string, unknown>) =>
+    request("/console/fees/generate", { method: "POST", body: JSON.stringify(payload) }),
+  feeInvoices: (status?: string) =>
+    request<Invoice[]>(`/console/fees/invoices${status ? `?status=${status}` : ""}`),
+  feeInvoice: (id: string) => request(`/console/fees/invoices/${id}`),
+  cancelFeeInvoice: (id: string, notes?: string) =>
+    request(`/console/fees/invoices/${id}/cancel`, { method: "POST", body: JSON.stringify({ notes }) }),
+  feePayments: () => request<FeePaymentRow[]>("/console/fees/payments"),
+  collectFeePayment: (payload: Record<string, unknown>) =>
+    request<Payment>("/console/fees/payments", { method: "POST", body: JSON.stringify(payload) }),
+  voidFeePayment: (id: string) => request(`/console/fees/payments/${id}/void`, { method: "POST", body: "{}" }),
+  refundFeePayment: (id: string) => request(`/console/fees/payments/${id}/refund`, { method: "POST", body: "{}" }),
+  feeReceipts: () => request<FeeReceiptRow[]>("/console/fees/receipts"),
+  feeReceipt: (id: string) => request<ReceiptDetail>(`/console/fees/receipts/${id}`),
+  feeCredits: (studentId?: string) =>
+    request<StudentCreditRow[]>(`/console/fees/credits${studentId ? `?studentId=${studentId}` : ""}`),
+  applyFeeCredit: (payload: Record<string, unknown>) =>
+    request("/console/fees/credits/apply", { method: "POST", body: JSON.stringify(payload) }),
+  feeOutstanding: (query: Record<string, string | undefined> = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value) params.set(key, value);
+    const suffix = params.toString();
+    return request<OutstandingRow[]>(`/console/fees/outstanding${suffix ? `?${suffix}` : ""}`);
+  },
+  feeReports: (query: Record<string, string | undefined> = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value) params.set(key, value);
+    const suffix = params.toString();
+    return request<FeeReportResult>(`/console/fees/reports${suffix ? `?${suffix}` : ""}`);
+  },
+  feeSettings: () => request<FeeSettings>("/console/fees/settings"),
+  saveFeeSettings: (payload: Record<string, unknown>) =>
+    request<FeeSettings>("/console/fees/settings", { method: "PATCH", body: JSON.stringify(payload) }),
+  studentFeeLedger: (id: string) => request(`/console/fees/students/${id}/ledger`),
+  async receiptPdf(id: string) {
+    const headers: Record<string, string> = {};
+    const auth = token();
+    if (auth) headers.Authorization = `Bearer ${auth}`;
+    const campusId = readCampusId();
+    if (campusId) headers["X-Campus-Id"] = campusId;
+    const yearId = readYearId();
+    if (yearId) headers["X-Year-Id"] = yearId;
+    const res = await fetch(`${API}/console/fees/receipts/${id}/pdf`, { headers, credentials: "include" });
+    if (!res.ok) throw new ApiError("Could not download this PDF", res.status);
+    return URL.createObjectURL(await res.blob());
+  },
   setup: () => request<Setup>("/console/setup"),
   setupStatus: () => request<{ setupCompleted: boolean; setupStep: number }>("/console/setup/status"),
   admissionForm: () => request<{ fields: AdmissionField[] }>("/console/setup/admission-form"),
@@ -459,7 +542,12 @@ export type StudentProfile = {
 
 export type Invoice = {
   id: string;
+  invoiceNumber?: string;
+  billingPeriod?: string;
   amountPkr: number;
+  totalAmountPkr?: number;
+  paidAmountPkr?: number;
+  balanceAmountPkr?: number;
   status: string;
   dueOn: string;
   student: { id: string; firstName: string; lastName: string; admissionNo: string } | null;
@@ -614,10 +702,168 @@ export type Payment = {
   id: string;
   amountPkr: number;
   receiptNo: string;
+  receiptNumber?: string;
   method: string;
   paidAt: string;
-  school?: { name: string };
+  paymentDate?: string;
+  school?: { name: string; address?: string; taxNumber?: string; ntn?: string; strn?: string; primaryColor?: string };
   invoice: Invoice;
+  student?: { id: string; firstName: string; lastName: string; admissionNo: string } | null;
+  lines?: { description: string; amountPkr: number }[];
+  logoUrl?: string;
+  header?: string;
+  footer?: string;
+  remainingPkr?: number;
+};
+
+export type ReceiptDetail = Payment & {
+  receiptNumber: string;
+  studentName: string;
+  admissionNo?: string;
+  referenceNumber?: string;
+  subtotalPkr: number;
+  discountAmountPkr: number;
+  lateFeeAmountPkr: number;
+  taxAmountPkr: number;
+  showTax: boolean;
+  totalPkr: number;
+  paidPkr: number;
+  remainingPkr: number;
+  logoUrl: string;
+  header: string;
+  footer: string;
+  lines: { description: string; amountPkr: number; invoiceNumber?: string }[];
+  fbr?: { number: string } | null;
+};
+
+export type FeesDashboard = {
+  todayPkr: number;
+  monthPkr: number;
+  outstandingPkr: number;
+  overduePkr: number;
+  counts: { unpaid: number; partial: number; paid: number; overdue: number };
+  recentPayments: { id: string; amountPkr: number; method: string; paymentDate: string; student: { firstName: string; lastName: string } | null }[];
+  overdueInvoices: { id: string; name: string; amountPkr: number; dueOn: string; student: { firstName: string; lastName: string } | null }[];
+  recentReceipts: { id: string; receiptNumber: string; amountPkr: number; receiptDate: string; student: { firstName: string; lastName: string } | null }[];
+};
+
+export type FeeHead = {
+  id: string;
+  name: string;
+  code: string;
+  category: string;
+  frequency: string;
+  recurring: boolean;
+  taxable: boolean;
+  description: string;
+  active: boolean;
+  amountPkr: number;
+  sortOrder: number;
+};
+
+export type FeeStructureRow = {
+  id: string;
+  name: string;
+  className: string;
+  section: string;
+  frequency: string;
+  status: string;
+  academicYearId: string;
+  campusId: string | null;
+  subtotalPkr: number;
+  notes?: string;
+  year?: { id: string; name: string };
+  items: { id?: string; feeHeadId: string; amountPkr: number; isOptional: boolean; taxable: boolean; sortOrder: number; feeHead?: { name: string; code: string } }[];
+};
+
+export type FeeDiscount = {
+  id: string;
+  name: string;
+  type: "FIXED" | "PERCENT";
+  value: number;
+  active: boolean;
+  _count?: { students: number };
+};
+
+export type FeePreview = {
+  billingPeriod: string;
+  eligible: number;
+  create: number;
+  skipped: number;
+  totalPkr: number;
+  students: { id: string; name: string; admissionNo: string; amountPkr: number }[];
+};
+
+export type FeePaymentRow = {
+  id: string;
+  paymentNumber: string;
+  amountPkr: number;
+  method: string;
+  status: string;
+  paymentDate: string;
+  student: { firstName: string; lastName: string; admissionNo: string } | null;
+  receipt?: { id: string; receiptNumber: string } | null;
+};
+
+export type FeeReceiptRow = {
+  id: string;
+  receiptNumber: string;
+  amountPkr: number;
+  receiptDate: string;
+  student: { firstName: string; lastName: string } | null;
+  payment: { id: string; method: string; status: string };
+};
+
+export type StudentCreditRow = {
+  id: string;
+  amountPkr: number;
+  remainingAmountPkr: number;
+  status: string;
+  reason: string;
+  student: { id: string; firstName: string; lastName: string; admissionNo: string } | null;
+};
+
+export type OutstandingRow = {
+  id: string;
+  invoiceNumber: string;
+  name: string;
+  billingPeriod: string;
+  dueOn: string;
+  status: string;
+  amountPkr: number;
+  paidAmountPkr: number;
+  balanceAmountPkr: number;
+  student: { id: string; firstName: string; lastName: string; admissionNo: string } | null;
+};
+
+export type FeeReportResult = {
+  from: string;
+  to: string;
+  totalPkr: number;
+  count: number;
+  rows: { id: string; paymentNumber: string; paymentDate: string; method: string; amountPkr: number; student: { firstName: string; lastName: string } | null }[];
+};
+
+export type FeeSettings = {
+  defaultDueDay: number;
+  graceDays: number;
+  lateFeeMode: string;
+  lateFeeAmountPkr: number;
+  lateFeePercent: number;
+  lateFeeCapPkr: number;
+  invoicePrefix: string;
+  paymentPrefix: string;
+  receiptPrefix: string;
+  receiptHeader: string;
+  receiptFooter: string;
+  showTaxOnReceipt: boolean;
+  taxNumber: string;
+  ntn: string;
+  strn: string;
+  primaryColor: string;
+  fbrEnabled: boolean;
+  fbrEnvironment: string;
+  fbrCredentialsSet: boolean;
 };
 
 export type AbsentRow = {

@@ -290,11 +290,31 @@ async function seedSchool(school: SchoolSeed, passwordHash: string) {
     },
   });
 
-  await prisma.feeItem.createMany({
+  const admissionItem = await prisma.feeItem.create({
+    data: { schoolId: created.id, name: "Admission fee", amountPkr: 15000, enabled: true, sortOrder: 1 },
+  });
+  const tuitionItem = await prisma.feeItem.create({
+    data: { schoolId: created.id, name: "Monthly tuition", amountPkr: school.profile.feeMinPkr, enabled: true, sortOrder: 2 },
+  });
+  await prisma.feeHead.createMany({
     data: [
-      { schoolId: created.id, name: "Admission fee", amountPkr: 15000, enabled: true, sortOrder: 1 },
-      { schoolId: created.id, name: "Security deposit", amountPkr: 5000, enabled: true, sortOrder: 2 },
+      { id: admissionItem.id, schoolId: created.id, name: "Admission fee", code: "ADMISSION_FEE", amountPkr: 15000, frequency: "ONE_TIME", recurring: false, sortOrder: 1 },
+      { id: tuitionItem.id, schoolId: created.id, name: "Monthly tuition", code: "MONTHLY_TUITION", amountPkr: school.profile.feeMinPkr, frequency: "MONTHLY", sortOrder: 2 },
     ],
+  });
+  await prisma.schoolFeeSettings.create({ data: { schoolId: created.id } });
+  const feeStructure = await prisma.feeStructure.create({
+    data: {
+      schoolId: created.id,
+      campusId: campus.id,
+      academicYearId: year.id,
+      name: "Grade 5 monthly",
+      className: "Grade 5",
+      section: "A",
+      status: "ACTIVE",
+      effectiveFrom: new Date("2026-04-01"),
+      items: { create: [{ feeHeadId: tuitionItem.id, amountPkr: school.profile.feeMinPkr, sortOrder: 0 }] },
+    },
   });
 
   const today = new Date(`${karachiToday()}T00:00:00.000Z`);
@@ -389,22 +409,64 @@ async function seedSchool(school: SchoolSeed, passwordHash: string) {
     const invoice = await prisma.invoice.create({
       data: {
         schoolId: created.id,
+        campusId: campus.id,
         studentId: student.id,
+        academicYearId: year.id,
         feePlanId: feePlan.id,
+        feeStructureId: i < 6 ? feeStructure.id : undefined,
+        invoiceNumber: `INV-2026-${String(i + 1).padStart(6, "0")}`,
+        billingPeriod: "2026-09",
         amountPkr: school.profile.feeMinPkr,
+        totalAmountPkr: school.profile.feeMinPkr,
+        subtotalPkr: school.profile.feeMinPkr,
+        balanceAmountPkr: i < 3 ? 0 : school.profile.feeMinPkr,
+        paidAmountPkr: i < 3 ? school.profile.feeMinPkr : 0,
         status: i < 3 ? "PAID" : "ISSUED",
         dueOn: new Date("2026-09-10"),
+        dueDate: new Date("2026-09-10"),
+        items: {
+          create: [{ description: "September tuition", unitAmountPkr: school.profile.feeMinPkr, grossAmountPkr: school.profile.feeMinPkr, netAmountPkr: school.profile.feeMinPkr, feeHeadId: tuitionItem.id }],
+        },
       },
     });
 
-    if (i < 3) {
-      await prisma.payment.create({
+    if (i < 6) {
+      await prisma.studentFeeAssignment.create({
         data: {
           schoolId: created.id,
+          studentId: student.id,
+          academicYearId: year.id,
+          feeStructureId: feeStructure.id,
+          effectiveFrom: new Date("2026-04-01"),
+        },
+      });
+    }
+
+    if (i < 3) {
+      const payment = await prisma.payment.create({
+        data: {
+          schoolId: created.id,
+          campusId: campus.id,
+          studentId: student.id,
           invoiceId: invoice.id,
+          paymentNumber: `PAY-2026-${String(i + 1).padStart(6, "0")}`,
           amountPkr: school.profile.feeMinPkr,
           method: "cash",
-          receiptNo: `WR-2026-${school.slug.slice(0, 3).toUpperCase()}${String(i + 1).padStart(3, "0")}`,
+          receiptNo: `REC-2026-${String(i + 1).padStart(6, "0")}`,
+          status: "COMPLETED",
+        },
+      });
+      await prisma.paymentAllocation.create({
+        data: { paymentId: payment.id, invoiceId: invoice.id, amountPkr: school.profile.feeMinPkr },
+      });
+      await prisma.receipt.create({
+        data: {
+          schoolId: created.id,
+          campusId: campus.id,
+          studentId: student.id,
+          paymentId: payment.id,
+          receiptNumber: payment.receiptNo,
+          amountPkr: payment.amountPkr,
         },
       });
     }
@@ -566,12 +628,24 @@ async function seedSchool(school: SchoolSeed, passwordHash: string) {
       await prisma.invoice.create({
         data: {
           schoolId: created.id,
+          campusId: campus.id,
           applicationId: application.id,
           studentId: row.studentId ?? null,
+          academicYearId: year.id,
           feePlanId: admissionPlan.id,
+          invoiceNumber: `INV-2026-${String(80 + index).padStart(6, "0")}`,
+          billingPeriod: `ADM-${row.no}`,
           amountPkr: 20000,
+          totalAmountPkr: 20000,
+          subtotalPkr: 20000,
+          paidAmountPkr: row.status === "FEE_PENDING" ? 0 : 20000,
+          balanceAmountPkr: row.status === "FEE_PENDING" ? 20000 : 0,
           status: row.status === "FEE_PENDING" ? "ISSUED" : "PAID",
           dueOn: new Date("2026-09-01"),
+          dueDate: new Date("2026-09-01"),
+          items: {
+            create: [{ description: "Admission fee", unitAmountPkr: 20000, grossAmountPkr: 20000, netAmountPkr: 20000, feeHeadId: admissionItem.id }],
+          },
         },
       });
     }
@@ -669,6 +743,19 @@ async function main() {
       "ClassSubject",
       "Subject",
       "AdmissionForm",
+      "FbrInvoice",
+      "Receipt",
+      "PaymentAllocation",
+      "StudentCredit",
+      "InvoiceItem",
+      "StudentFeeOverride",
+      "StudentFeeAssignment",
+      "StudentDiscount",
+      "Discount",
+      "FeeStructureItem",
+      "FeeStructure",
+      "FeeHead",
+      "SchoolFeeSettings",
       "FeeItem",
       "CampusMembership",
       "AuditLog",

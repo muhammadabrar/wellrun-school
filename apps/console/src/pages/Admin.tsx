@@ -36,7 +36,8 @@ export function AdminPage() {
 
   async function onCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const formEl = event.currentTarget;
+    const data = new FormData(formEl);
     setBusy("create");
     try {
       await api.createSchool({
@@ -46,7 +47,7 @@ export function AdminPage() {
         area: String(data.get("area")),
         published: true,
       });
-      event.currentTarget.reset();
+      formEl.reset();
       await reload();
     } finally {
       setBusy(null);

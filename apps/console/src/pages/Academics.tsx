@@ -58,7 +58,8 @@ export function AcademicsPage() {
   async function onClass(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!yearId) return;
-    const form = new FormData(event.currentTarget);
+    const formEl = event.currentTarget;
+    const form = new FormData(formEl);
     setError(null);
     setBusy("class");
     try {
@@ -67,7 +68,7 @@ export function AcademicsPage() {
         section: String(form.get("section") || "A"),
         yearId,
       });
-      event.currentTarget.reset();
+      formEl.reset();
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create class");

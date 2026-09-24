@@ -28,7 +28,8 @@ export function TeachersPage() {
 
   async function onStaff(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const formEl = event.currentTarget;
+    const data = new FormData(formEl);
     setBusy("staff");
     try {
       await api.createStaff({
@@ -38,7 +39,7 @@ export function TeachersPage() {
             classId: String(data.get("classId") || "") === "later" ? undefined : String(data.get("classId") || "") || undefined,
         subject: String(data.get("subject") || ""),
       });
-      event.currentTarget.reset();
+      formEl.reset();
       await reload();
     } finally {
       setBusy(null);
@@ -62,7 +63,8 @@ export function TeachersPage() {
 
   async function onInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const formEl = event.currentTarget;
+    const data = new FormData(formEl);
     setError(null);
     setBusy("invite");
     try {
@@ -72,7 +74,7 @@ export function TeachersPage() {
         name: String(data.get("name") || ""),
       });
       setInviteUrl(invite.acceptUrl);
-      event.currentTarget.reset();
+      formEl.reset();
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not invite");
