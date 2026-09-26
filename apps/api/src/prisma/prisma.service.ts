@@ -22,7 +22,12 @@ function prismaDatabaseUrl() {
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
     const url = prismaDatabaseUrl();
-    super(url ? { datasources: { db: { url } } } : undefined);
+    // The database is remote (Azure), so a multi-step write like recording a payment makes many
+    // round trips. Prisma's 5s default for interactive transactions is too tight for that.
+    super({
+      ...(url ? { datasources: { db: { url } } } : {}),
+      transactionOptions: { maxWait: 10_000, timeout: 30_000 },
+    });
     const base = this;
     const extended = this.$extends({
       query: {

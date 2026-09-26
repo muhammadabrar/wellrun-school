@@ -35,12 +35,9 @@ const FeeStructuresPage = lazyPage(() => import("./pages/fees/Structures"), "Fee
 const FeeStructureEditPage = lazyPage(() => import("./pages/fees/StructureEdit"), "FeeStructureEditPage");
 const FeeGeneratePage = lazyPage(() => import("./pages/fees/Generate"), "FeeGeneratePage");
 const FeeInvoicesPage = lazyPage(() => import("./pages/fees/Invoices"), "FeeInvoicesPage");
+const FeeInvoicePage = lazyPage(() => import("./pages/fees/Invoice"), "FeeInvoicePage");
 const FeePaymentsPage = lazyPage(() => import("./pages/fees/Payments"), "FeePaymentsPage");
-const FeeCollectPage = lazyPage(() => import("./pages/fees/Collect"), "FeeCollectPage");
-const FeeReceiptsPage = lazyPage(() => import("./pages/fees/Receipts"), "FeeReceiptsPage");
-const FeeOutstandingPage = lazyPage(() => import("./pages/fees/Outstanding"), "FeeOutstandingPage");
 const FeeDiscountsPage = lazyPage(() => import("./pages/fees/Discounts"), "FeeDiscountsPage");
-const FeeCreditsPage = lazyPage(() => import("./pages/fees/Credits"), "FeeCreditsPage");
 const FeeReportsPage = lazyPage(() => import("./pages/fees/Reports"), "FeeReportsPage");
 const FeeSettingsPage = lazyPage(() => import("./pages/fees/Settings"), "FeeSettingsPage");
 const ReceiptPage = lazyPage(() => import("./pages/Receipt"), "ReceiptPage");
@@ -109,12 +106,12 @@ export function App() {
         <Route path="/fees/structures" element={<FeeStructuresPage />} />
         <Route path="/fees/generate" element={<FeeGeneratePage />} />
         <Route path="/fees/invoices" element={<FeeInvoicesPage />} />
-        <Route path="/fees/payments/collect" element={<FeeCollectPage />} />
+        <Route path="/fees/invoices/:id" element={<FeeInvoicePage />} />
         <Route path="/fees/payments" element={<FeePaymentsPage />} />
-        <Route path="/fees/receipts" element={<FeeReceiptsPage />} />
-        <Route path="/fees/outstanding" element={<FeeOutstandingPage />} />
+        <Route path="/fees/workspace" element={<Navigate to="/fees/invoices" replace />} />
+        <Route path="/fees/outstanding" element={<Navigate to="/fees/invoices" replace />} />
+        <Route path="/fees/credits" element={<Navigate to="/fees/payments" replace />} />
         <Route path="/fees/discounts" element={<FeeDiscountsPage />} />
-        <Route path="/fees/credits" element={<FeeCreditsPage />} />
         <Route path="/fees/reports" element={<FeeReportsPage />} />
         <Route path="/fees/settings" element={<FeeSettingsPage />} />
         <Route path="/fees/receipt/:id" element={<ReceiptPage />} />

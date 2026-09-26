@@ -1,104 +1,209 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import type { CreatePaymentInput } from "@wellrun/shared";
 import { audit } from "../common/audit";
 import type { SchoolScope } from "../common/school-scope";
 import { nextSchoolNumber } from "../common/sequence";
 import { PrismaService } from "../prisma/prisma.service";
-import { allocateOldestFirst, computeLateFeePkr, daysLate, invoiceLabel } from "./billing";
+import { allocateOldestFirst } from "./billing";
 import { refreshInvoiceMoney, slimStudent } from "./invoice-writer";
-import { addPkr, clampPkr, toPkr } from "./money";
+import { invoiceViewInclude, periodLabel, toInvoiceView } from "./invoice-view";
+import { clampPkr, toPkr } from "./money";
 
-const OPEN = ["ISSUED", "PARTIALLY_PAID", "OVERDUE", "PAID"] as const;
+const PAYABLE = ["ISSUED", "PARTIALLY_PAID", "OVERDUE"] as const;
+
+export type InvoiceListQuery = {
+  status?: string;
+  q?: string;
+  studentId?: string;
+  billingPeriod?: string;
+  className?: string;
+  section?: string;
+};
 
 @Injectable()
 export class FeePaymentService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  invoices(schoolId: string, scope: SchoolScope = {}, query: { status?: string; q?: string } = {}) {
-    return this.prisma.invoice
+  async invoices(schoolId: string, scope: SchoolScope = {}, query: InvoiceListQuery = {}) {
+    const q = query.q?.trim();
+    const status =
+      query.status === "unpaid"
+        ? { in: [...PAYABLE] }
+        : query.status && query.status !== "all"
+          ? (query.status as never)
+          : { not: "DRAFT" as const };
+    const rows = await this.prisma.invoice.findMany({
+      where: {
+        schoolId,
+        status,
+        ...(query.studentId ? { studentId: query.studentId } : {}),
+        ...(query.billingPeriod ? { billingPeriod: query.billingPeriod } : {}),
+        AND: [
+          scope.campusId
+            ? { OR: [{ campusId: scope.campusId }, { student: { campusId: scope.campusId } }, { application: { campusId: scope.campusId } }] }
+            : {},
+          query.studentId || !scope.yearId
+            ? {}
+            : { OR: [{ academicYearId: scope.yearId }, { academicYearId: null, feePlan: { yearId: scope.yearId } }] },
+          query.className || query.section
+            ? {
+                student: {
+                  enrollments: {
+                    some: {
+                      active: true,
+                      class: {
+                        ...(query.className ? { name: query.className } : {}),
+                        ...(query.section ? { section: query.section } : {}),
+                      },
+                    },
+                  },
+                },
+              }
+            : {},
+          q
+            ? {
+                OR: [
+                  { invoiceNumber: { contains: q, mode: "insensitive" } },
+                  { student: { firstName: { contains: q, mode: "insensitive" } } },
+                  { student: { lastName: { contains: q, mode: "insensitive" } } },
+                  { student: { admissionNo: { contains: q, mode: "insensitive" } } },
+                ],
+              }
+            : {},
+        ],
+      },
+      include: invoiceViewInclude,
+      orderBy: [{ dueOn: "desc" }, { invoiceNumber: "desc" }],
+      take: 300,
+    });
+    return rows.map((row) => {
+      const view = toInvoiceView(row);
+      return {
+        id: view.id,
+        invoiceNumber: view.invoiceNumber,
+        title: view.title,
+        periodLabel: view.periodLabel,
+        dueOn: view.dueOn,
+        status: view.status,
+        totalPkr: view.totalPkr,
+        paidPkr: view.paidPkr + view.creditAppliedPkr,
+        balancePkr: view.balancePkr,
+        student: view.student,
+      };
+    });
+  }
+
+  /** Everything the invoice document needs: the invoice itself, the school letterhead, and the guardian. */
+  async invoice(schoolId: string, id: string) {
+    const invoice = await this.prisma.invoice.findFirst({ where: { id, schoolId }, include: invoiceViewInclude });
+    if (!invoice) throw new NotFoundException("Invoice not found");
+    const [school, guardian] = await Promise.all([
+      this.schoolHeader(schoolId),
+      invoice.studentId ? this.primaryGuardian(invoice.studentId) : Promise.resolve(null),
+    ]);
+    return { ...toInvoiceView(invoice), school, guardian };
+  }
+
+  payments(schoolId: string, scope: SchoolScope = {}, query: { studentId?: string; q?: string } = {}) {
+    const q = query.q?.trim();
+    return this.prisma.payment
       .findMany({
         where: {
           schoolId,
-          ...(query.status && query.status !== "all" ? { status: query.status as never } : { status: { not: "DRAFT" } }),
+          method: { not: "credit" },
+          ...(query.studentId ? { studentId: query.studentId } : {}),
           AND: [
-            scope.campusId
-              ? { OR: [{ campusId: scope.campusId }, { student: { campusId: scope.campusId } }, { application: { campusId: scope.campusId } }] }
-              : {},
-            scope.yearId
-              ? { OR: [{ academicYearId: scope.yearId }, { academicYearId: null, feePlan: { yearId: scope.yearId } }] }
+            scope.campusId ? { OR: [{ campusId: scope.campusId }, { campusId: null, student: { campusId: scope.campusId } }] } : {},
+            q
+              ? {
+                  OR: [
+                    { paymentNumber: { contains: q, mode: "insensitive" } },
+                    { receiptNo: { contains: q, mode: "insensitive" } },
+                    { student: { firstName: { contains: q, mode: "insensitive" } } },
+                    { student: { lastName: { contains: q, mode: "insensitive" } } },
+                    { student: { admissionNo: { contains: q, mode: "insensitive" } } },
+                  ],
+                }
               : {},
           ],
         },
         include: {
           student: { select: { id: true, firstName: true, lastName: true, admissionNo: true } },
-          application: { select: { id: true, firstName: true, lastName: true, applicationNo: true } },
-          feePlan: { select: { name: true } },
-          items: { select: { description: true }, take: 1 },
-          payments: { where: { status: "COMPLETED" }, select: { id: true, amountPkr: true } },
+          allocations: { include: { invoice: { select: { id: true, invoiceNumber: true, billingPeriod: true } } } },
+          receipt: { select: { id: true, receiptNumber: true } },
         },
-        orderBy: { dueOn: "desc" },
-        take: 500,
+        orderBy: { paidAt: "desc" },
+        take: 300,
       })
       .then((rows) =>
-        rows.map((invoice) => ({
-          id: invoice.id,
-          invoiceNumber: invoice.invoiceNumber,
-          billingPeriod: invoice.billingPeriod,
-          amountPkr: invoice.amountPkr,
-          totalAmountPkr: invoice.totalAmountPkr || invoice.amountPkr,
-          paidAmountPkr: invoice.paidAmountPkr || invoice.payments.reduce((sum, p) => sum + p.amountPkr, 0),
-          balanceAmountPkr: invoice.balanceAmountPkr || Math.max(invoice.amountPkr - invoice.payments.reduce((sum, p) => sum + p.amountPkr, 0), 0),
-          status: invoice.status,
-          dueOn: invoice.dueOn,
-          student: slimStudent(invoice.student),
-          application: invoice.application,
-          feePlan: { name: invoiceLabel(invoice) },
-          payments: invoice.payments,
+        rows.map((row) => ({
+          id: row.id,
+          paymentNumber: row.paymentNumber,
+          paymentDate: row.paymentDate,
+          amountPkr: row.amountPkr,
+          method: row.method,
+          referenceNumber: row.referenceNumber,
+          status: row.status,
+          student: slimStudent(row.student),
+          receipt: row.receipt,
+          invoices: row.allocations.map((item) => ({
+            id: item.invoice.id,
+            invoiceNumber: item.invoice.invoiceNumber,
+            periodLabel: periodLabel(item.invoice.billingPeriod),
+            appliedPkr: item.amountPkr,
+          })),
         })),
       );
   }
 
-  async invoice(schoolId: string, id: string) {
-    const invoice = await this.prisma.invoice.findFirst({
-      where: { id, schoolId },
-      include: {
-        student: { select: { id: true, firstName: true, lastName: true, admissionNo: true } },
-        application: { select: { id: true, firstName: true, lastName: true, applicationNo: true } },
-        feePlan: { select: { name: true } },
-        items: { orderBy: { createdAt: "asc" } },
-        allocations: { include: { payment: { select: { id: true, paymentNumber: true, amountPkr: true, method: true, status: true, paymentDate: true } } } },
+  async schoolHeader(schoolId: string) {
+    const school = await this.prisma.school.findUniqueOrThrow({
+      where: { id: schoolId },
+      select: {
+        name: true,
+        address: true,
+        city: true,
+        phone: true,
+        email: true,
+        website: true,
+        registrationNo: true,
+        primaryColor: true,
+        media: { where: { kind: "LOGO" }, select: { url: true }, take: 1 },
       },
     });
-    if (!invoice) throw new NotFoundException("Invoice not found");
-    return invoice;
+    return {
+      name: school.name,
+      address: school.city && !school.address.toLowerCase().includes(school.city.toLowerCase()) ? [school.address, school.city].filter(Boolean).join(", ") : school.address,
+      phone: school.phone,
+      email: school.email,
+      website: school.website,
+      registrationNo: school.registrationNo,
+      primaryColor: school.primaryColor,
+      logoUrl: school.media[0]?.url ?? "",
+    };
   }
 
-  payments(schoolId: string, scope: SchoolScope = {}) {
-    return this.prisma.payment.findMany({
-      where: {
-        schoolId,
-        ...(scope.campusId
-          ? { OR: [{ campusId: scope.campusId }, { campusId: null, student: { campusId: scope.campusId } }] }
-          : {}),
-      },
-      include: {
-        student: { select: { id: true, firstName: true, lastName: true, admissionNo: true } },
-        allocations: { include: { invoice: { select: { id: true, invoiceNumber: true, billingPeriod: true } } } },
-        receipt: { select: { id: true, receiptNumber: true } },
-      },
-      orderBy: { paidAt: "desc" },
-      take: 300,
+  async primaryGuardian(studentId: string) {
+    const link = await this.prisma.studentGuardian.findFirst({
+      where: { studentId },
+      include: { guardian: { select: { name: true, relation: true, phone: true } } },
     });
+    return link?.guardian ?? null;
+  }
+
+  /** Sum still owed across the student's invoices — the "balance" a parent sees on a receipt. */
+  private async outstandingFor(tx: Prisma.TransactionClient, schoolId: string, studentId: string) {
+    const rows = await tx.invoice.findMany({
+      where: { schoolId, studentId, status: { in: [...PAYABLE] } },
+      select: { balanceAmountPkr: true },
+    });
+    return rows.reduce((sum, row) => sum + Math.max(row.balanceAmountPkr, 0), 0);
   }
 
   async pay(schoolId: string, actorId: string, input: CreatePaymentInput) {
     const amount = toPkr(input.amountPkr);
     if (amount <= 0) throw new BadRequestException("Enter a payment amount");
-    const settings = await this.prisma.schoolFeeSettings.upsert({
-      where: { schoolId },
-      create: { schoolId },
-      update: {},
-    });
     const specified = input.allocations?.length
       ? input.allocations
       : input.invoiceId
@@ -109,39 +214,23 @@ export class FeePaymentService {
       const open = await tx.invoice.findMany({
         where: {
           schoolId,
-          status: { in: [...OPEN] },
+          status: { in: [...PAYABLE] },
           ...(invoiceIds.length ? { id: { in: invoiceIds } } : input.studentId ? { studentId: input.studentId } : {}),
         },
-        include: { allocations: { include: { payment: { select: { status: true } } } }, student: true },
         orderBy: { dueOn: "asc" },
       });
-      if (!open.length) throw new NotFoundException("No open invoices found");
+      if (!open.length) throw new NotFoundException("This invoice is already paid or cancelled");
       const studentId = input.studentId || open[0].studentId;
       if (!studentId) throw new BadRequestException("Payment must belong to a student");
       if (open.some((row) => row.studentId && row.studentId !== studentId)) {
         throw new BadRequestException("All invoices must belong to the same student");
       }
       const asOf = input.paymentDate ? new Date(input.paymentDate) : new Date();
-      const withLate = [];
-      for (const invoice of open) {
-        const due = invoice.dueDate ?? invoice.dueOn;
-        const late = computeLateFeePkr({
-          mode: settings.lateFeeMode,
-          amountPkr: settings.lateFeeAmountPkr,
-          percent: settings.lateFeePercent,
-          capPkr: settings.lateFeeCapPkr,
-          daysLate: daysLate(due, asOf, settings.graceDays),
-          baseAmountPkr: invoice.subtotalPkr || invoice.amountPkr,
-        });
-        if (late && invoice.lateFeeAmountPkr !== late) {
-          await refreshInvoiceMoney(tx, invoice.id, { lateFeeAmountPkr: late });
-        }
-        const refreshed = await tx.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
-        withLate.push(refreshed);
-      }
-      const balances = withLate
-        .filter((row) => row.balanceAmountPkr > 0 && row.status !== "PAID" && row.status !== "CANCELLED")
-        .map((row) => ({ id: row.id, balancePkr: row.balanceAmountPkr || row.amountPkr - row.paidAmountPkr }));
+      const previousBalancePkr = await this.outstandingFor(tx, schoolId, studentId);
+      const withLate = open;
+      const balances = open
+        .filter((row) => row.balanceAmountPkr > 0)
+        .map((row) => ({ id: row.id, balancePkr: row.balanceAmountPkr }));
       let allocations: { invoiceId: string; amountPkr: number }[];
       let leftoverPkr = 0;
       if (specified.some((row) => row.amountPkr > 0) && (input.allocations?.length || (input.invoiceId && !input.invoiceIds))) {
@@ -184,14 +273,11 @@ export class FeePaymentService {
           paidAt: asOf,
           allocations: { create: allocations },
         },
-        include: {
-          allocations: true,
-          invoice: { include: { student: true, feePlan: true, application: true, items: true } },
-          student: true,
-          school: true,
-        },
       });
-      await tx.receipt.create({
+      for (const allocation of allocations) {
+        await refreshInvoiceMoney(tx, allocation.invoiceId);
+      }
+      const receipt = await tx.receipt.create({
         data: {
           schoolId,
           campusId,
@@ -200,12 +286,11 @@ export class FeePaymentService {
           receiptNumber,
           receiptDate: asOf,
           amountPkr: amount,
+          previousBalancePkr,
+          remainingBalancePkr: await this.outstandingFor(tx, schoolId, studentId),
           generatedById: actorId,
         },
       });
-      for (const allocation of allocations) {
-        await refreshInvoiceMoney(tx, allocation.invoiceId);
-      }
       if (leftoverPkr > 0) {
         await tx.studentCredit.create({
           data: {
@@ -238,7 +323,7 @@ export class FeePaymentService {
           }
         }
       }
-      return created;
+      return { id: created.id, paymentNumber, receiptId: receipt.id, receiptNumber, amountPkr: amount, creditPkr: leftoverPkr };
     });
     await audit(this.prisma, {
       schoolId,
@@ -282,12 +367,37 @@ export class FeePaymentService {
   }
 
   async cancelInvoice(schoolId: string, actorId: string, id: string, notes?: string) {
-    const invoice = await this.prisma.invoice.findFirst({ where: { id, schoolId } });
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id, schoolId },
+      include: { allocations: { include: { payment: { select: { id: true, method: true, status: true } } } } },
+    });
     if (!invoice) throw new NotFoundException("Invoice not found");
-    if (invoice.paidAmountPkr > 0) throw new BadRequestException("Void payments before cancelling this invoice");
-    const updated = await this.prisma.invoice.update({
-      where: { id },
-      data: { status: "CANCELLED", notes: notes?.trim() || invoice.notes },
+    const completed = invoice.allocations.filter((row) => row.payment.status === "COMPLETED");
+    if (completed.some((row) => row.payment.method !== "credit")) {
+      throw new BadRequestException("Void the payments on this invoice before cancelling it");
+    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Credit that was carried onto this invoice goes back to the student.
+      for (const row of completed) {
+        await tx.payment.update({ where: { id: row.payment.id }, data: { status: "VOIDED" } });
+        if (invoice.studentId && row.amountPkr > 0) {
+          await tx.studentCredit.create({
+            data: {
+              schoolId,
+              studentId: invoice.studentId,
+              amountPkr: row.amountPkr,
+              remainingAmountPkr: row.amountPkr,
+              status: "AVAILABLE",
+              reason: `Returned from cancelled invoice ${invoice.invoiceNumber}`,
+            },
+          });
+        }
+      }
+      await refreshInvoiceMoney(tx, id);
+      return tx.invoice.update({
+        where: { id },
+        data: { status: "CANCELLED", balanceAmountPkr: 0, notes: notes?.trim() || invoice.notes },
+      });
     });
     await audit(this.prisma, {
       schoolId,

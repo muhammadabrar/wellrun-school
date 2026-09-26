@@ -41,6 +41,7 @@ export class FeeSettingsService {
       data: {
         defaultDueDay: input.defaultDueDay ?? existing.defaultDueDay,
         graceDays: input.graceDays ?? existing.graceDays,
+        autoGenerateEnabled: input.autoGenerateEnabled ?? existing.autoGenerateEnabled,
         lateFeeMode: (input.lateFeeMode ?? existing.lateFeeMode) as LateFeeMode,
         lateFeeAmountPkr: input.lateFeeAmountPkr ?? existing.lateFeeAmountPkr,
         lateFeePercent: input.lateFeePercent ?? existing.lateFeePercent,

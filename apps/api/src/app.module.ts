@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { APP_INTERCEPTOR } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
+import { ScheduleModule } from "@nestjs/schedule";
 import { join } from "path";
 import { AdminModule } from "./admin/admin.module";
 import { AiModule } from "./ai/ai.module";
@@ -29,6 +30,7 @@ import { TraceMiddleware } from "./trace/trace.middleware";
       isGlobal: true,
       envFilePath: [join(__dirname, "../.env"), join(__dirname, "../../../.env")],
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     SessionModule,
     AuthModule,

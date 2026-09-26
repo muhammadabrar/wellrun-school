@@ -22,7 +22,15 @@ export async function writeInvoiceSnapshot(
 ) {
   const totals = totalsFromLines(input.lines);
   const total = totals.netPkr;
-  const invoiceNumber = await nextSchoolNumber(tx, input.schoolId, "INV");
+  const period = /^(\d{4})-(\d{2})$/.exec(input.billingPeriod);
+  const now = new Date();
+  const invoiceNumber = await nextSchoolNumber(
+    tx,
+    input.schoolId,
+    "INV",
+    period ? Number(period[1]) : now.getFullYear(),
+    period ? Number(period[2]) : now.getMonth() + 1,
+  );
   return tx.invoice.create({
     data: {
       schoolId: input.schoolId,

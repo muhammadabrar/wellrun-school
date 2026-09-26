@@ -143,6 +143,38 @@ export function allocateOldestFirst(
   return { allocations, leftoverPkr: remaining };
 }
 
+/** Which academic-year-relative quarter (1-4) a billing period falls in, given when the academic year starts. */
+export function academicQuarter(billingPeriod: string, yearStartsOn: Date): number {
+  const match = /^(\d{4})-(\d{2})$/.exec(billingPeriod.trim());
+  if (!match) return 1;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const startMonth = yearStartsOn.getUTCMonth() + 1;
+  const startYear = yearStartsOn.getUTCFullYear();
+  const monthsSinceStart = (year - startYear) * 12 + (month - startMonth);
+  const normalized = ((monthsSinceStart % 12) + 12) % 12;
+  return Math.floor(normalized / 3) + 1;
+}
+
+/**
+ * Key identifying "this fee head, for this student, in this billing scope" for non-monthly heads.
+ * MONTHLY heads have no scope key (always eligible every period). Used to stop generation from
+ * re-billing a QUARTERLY/ANNUAL/ONE_TIME head every time it runs for a new monthly period.
+ */
+export function frequencyScopeKey(input: {
+  feeHeadId: string;
+  frequency: "MONTHLY" | "QUARTERLY" | "ANNUAL" | "ONE_TIME";
+  billingPeriod: string;
+  yearStartsOn: Date;
+  academicYearId: string;
+}): string | null {
+  if (input.frequency === "MONTHLY") return null;
+  if (input.frequency === "QUARTERLY") {
+    return `${input.feeHeadId}:Q${academicQuarter(input.billingPeriod, input.yearStartsOn)}:${input.academicYearId}`;
+  }
+  return `${input.feeHeadId}:${input.academicYearId}`;
+}
+
 export function invoiceLabel(invoice: {
   billingPeriod?: string | null;
   feePlan?: { name: string } | null;

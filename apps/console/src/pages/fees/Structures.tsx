@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { EmptyState, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
+import { Dialog, EmptyState, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
 import { ChevronDownIcon } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { classSortIndex } from "@wellrun/shared";
@@ -23,6 +23,25 @@ export function FeeStructuresPage() {
   const yearId = readYearId() || currentYear?.id || "";
   const structures = useQuery({ queryKey: queryKeys.feeStructures, queryFn: api.feeStructures });
   const heads = useQuery({ queryKey: queryKeys.feeHeads, queryFn: api.feeHeads });
+  const queryClient = useQueryClient();
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [catalogVersion, setCatalogVersion] = useState(0);
+  const activeHeads = (heads.data ?? []).filter((head) => head.active);
+  const copyableHeads = activeHeads.filter((head) => head.frequency !== "ONE_TIME");
+  const applyCatalog = useMutation({
+    mutationFn: () => api.applyFeeCatalog({ academicYearId: yearId, campusId: campusId || null, classNames }),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.feeStructures });
+      setCatalogVersion((value) => value + 1);
+      setCopyMessage(
+        result.created || result.updated
+          ? `Fee heads added: ${result.created} new class structure(s), ${result.updated} updated. Open a class to change its amounts.`
+          : "Every class already has all catalog fee heads.",
+      );
+    },
+    onError: (err) => setCopyMessage(err instanceof Error ? err.message : "Could not copy the fee heads."),
+  });
 
   const classNames = useMemo(() => {
     const names = new Set<string>();
@@ -57,20 +76,42 @@ export function FeeStructuresPage() {
     <div className="flex flex-col gap-8">
       <PageHeader
         title="Fee structures"
-        description="One monthly structure per class for this campus and year. Open a class to edit. Edits save as you type and do not rewrite issued invoices."
+        description="The monthly fee for each class on this campus and year. Open a class to change amounts — edits save as you type and never change invoices already issued."
+        actions={
+          <Button type="button" disabled={!classNames.length || !copyableHeads.length || !yearId} onClick={() => setCopyOpen(true)}>
+            Copy fee heads to all classes
+          </Button>
+        }
+      />
+      {copyMessage ? (
+        <p className="text-sm text-primary" role="status">
+          {copyMessage}
+        </p>
+      ) : null}
+      <Dialog
+        open={copyOpen}
+        title="Copy all fee heads to every class?"
+        description={`Adds ${copyableHeads.length} fee head(s) (${copyableHeads.map((head) => head.name).join(", ")}) at their catalog amounts to ${classNames.length} class(es). Classes keep the fees and amounts they already have — only missing ones are added. One-time fees such as admission are left out; they are charged at admission.`}
+        confirmLabel="Copy to all classes"
+        loading={applyCatalog.isPending}
+        onClose={() => setCopyOpen(false)}
+        onConfirm={() => {
+          setCopyMessage(null);
+          void applyCatalog.mutateAsync().finally(() => setCopyOpen(false));
+        }}
       />
       {!classNames.length ? (
-        <EmptyState title="No classes yet" description="Add classes in Academics, then set monthly fees for each grade here." />
+        <EmptyState title="No classes yet" description="Add classes in Academics, then set the monthly fee for each class here." />
       ) : (
         <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {classNames.map((className) => (
             <ClassStructureCard
-              key={className}
+              key={`${className}-${catalogVersion}`}
               className={className}
               yearId={yearId}
               campusId={campusId}
               structure={byClass.get(className) ?? null}
-              heads={(heads.data ?? []).filter((head) => head.active)}
+              heads={activeHeads}
             />
           ))}
         </div>
@@ -94,6 +135,7 @@ function ClassStructureCard({
 }) {
   const queryClient = useQueryClient();
   const [items, setItems] = useState<DraftItem[]>(() => toDraft(structure));
+  const [openInitially] = useState(() => !toDraft(structure).length);
   const [addHeadId, setAddHeadId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newAmount, setNewAmount] = useState("");
@@ -115,7 +157,7 @@ function ClassStructureCard({
     setSaving(true);
     try {
       const payload = {
-        name: `${className} monthly fee`,
+        name: className,
         academicYearId: yearId,
         campusId: campusId || null,
         className,
@@ -198,12 +240,12 @@ function ClassStructureCard({
       : "Add the fees charged for this class.";
 
   return (
-    <Collapsible defaultOpen={!items.length} className="group/class-card h-fit">
+    <Collapsible defaultOpen={openInitially} className="group/class-card h-fit">
       <Card className="h-fit overflow-hidden">
         <CollapsibleTrigger className="w-full cursor-pointer border-0 bg-transparent p-0 text-left text-inherit outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
           <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
             <div className="min-w-0">
-              <CardTitle>{className} monthly fee</CardTitle>
+              <CardTitle>{className}</CardTitle>
               <CardDescription>{summary}</CardDescription>
             </div>
             <div className="flex shrink-0 items-center gap-2 pt-0.5">

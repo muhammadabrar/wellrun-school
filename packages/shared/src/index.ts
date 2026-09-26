@@ -145,9 +145,20 @@ export const generateFeesSchema = z.object({
   confirm: z.boolean().optional(),
 });
 
+export const applyFeeCatalogSchema = z.object({
+  academicYearId: z.string().min(1),
+  campusId: z.string().nullable().optional(),
+  classNames: z.array(z.string().min(1)).min(1),
+});
+
+export const generateRemainingForStudentSchema = z.object({
+  academicYearId: z.string().min(1),
+});
+
 export const feeSettingsSchema = z.object({
   defaultDueDay: z.number().int().min(1).max(28).optional(),
   graceDays: z.number().int().min(0).max(31).optional(),
+  autoGenerateEnabled: z.boolean().optional(),
   lateFeeMode: z.enum(lateFeeModes).optional(),
   lateFeeAmountPkr: z.number().int().min(0).optional(),
   lateFeePercent: z.number().int().min(0).max(100).optional(),
@@ -563,11 +574,13 @@ export const studentBulkSchema = z.object({
   ids: z.array(z.string().min(1)).min(1),
   action: z.enum(["assign_class", "promote", "transfer", "deactivate", "export"]),
   classId: z.string().optional(),
+  feeStructureId: z.string().optional(),
   confirm: z.literal(true),
 });
 
 export const studentMoveSchema = z.object({
   classId: z.string().min(1),
+  feeStructureId: z.string().optional(),
 });
 
 export const studentDeactivateSchema = z.object({

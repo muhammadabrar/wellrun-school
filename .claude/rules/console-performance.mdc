@@ -1,0 +1,14 @@
+---
+description: Always apply Wellrun console performance rules on every change
+alwaysApply: true
+---
+
+# Console performance
+
+Before changing console pages, routes, API endpoints, or data fetching, follow `.cursor/skills/console-performance/SKILL.md`.
+
+- Lazy-load route pages. Do not statically import unused page components.
+- Fetch with TanStack Query (`useQuery` / `useMutation`), never `useEffect` + `api.*`.
+- One in-flight request per resource. Do not refetch setup on every navigation.
+- Endpoints must return only the fields the page needs. Admission must not load full setup.
+- GET requests must not send `Content-Type: application/json`.

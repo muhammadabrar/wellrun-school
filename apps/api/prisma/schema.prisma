@@ -613,6 +613,7 @@ model SchoolFeeSettings {
   school              School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   defaultDueDay       Int         @default(10)
   graceDays           Int         @default(0)
+  autoGenerateEnabled Boolean     @default(false)
   lateFeeMode         LateFeeMode @default(NONE)
   lateFeeAmountPkr    Int         @default(0)
   lateFeePercent      Int         @default(0)
@@ -772,6 +773,8 @@ model Receipt {
   receiptNumber String
   receiptDate   DateTime @default(now())
   amountPkr     Int
+  previousBalancePkr  Int @default(0)
+  remainingBalancePkr Int @default(0)
   generatedById String?
   generatedBy   User?    @relation("ReceiptGenerator", fields: [generatedById], references: [id], onDelete: SetNull)
   pdfPath       String   @default("")

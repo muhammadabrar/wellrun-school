@@ -36,6 +36,10 @@ export class FeeCatalogService {
   }
 
   async createHead(schoolId: string, actorId: string, input: FeeHeadInput) {
+    const duplicate = await this.prisma.feeHead.findFirst({
+      where: { schoolId, active: true, name: { equals: input.name.trim(), mode: "insensitive" } },
+    });
+    if (duplicate) throw new BadRequestException(`A fee head called "${duplicate.name}" already exists`);
     const count = await this.prisma.feeHead.count({ where: { schoolId } });
     const head = await this.prisma.feeHead.create({
       data: {
@@ -237,6 +241,94 @@ export class FeeCatalogService {
       summary: structure.name,
     });
     return structure;
+  }
+
+  /**
+   * Puts every active fee head, at its catalog amount, on each class's structure in one go.
+   * Classes without a structure get one; existing structures only gain the heads they're missing,
+   * so amounts a school already customised for a class are never overwritten.
+   */
+  async applyCatalogToClasses(
+    schoolId: string,
+    actorId: string,
+    input: { academicYearId: string; campusId?: string | null; classNames: string[] },
+  ) {
+    await this.assertYear(schoolId, input.academicYearId);
+    const campusId = input.campusId || null;
+    const heads = await this.prisma.feeHead.findMany({
+      where: {
+        schoolId,
+        active: true,
+        // One-time heads (e.g. admission fee) are charged at admission, never on a monthly structure.
+        frequency: { not: "ONE_TIME" },
+        ...(campusId ? { OR: [{ campusId }, { campusId: null }] } : {}),
+      },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    });
+    if (!heads.length) throw new BadRequestException("Add recurring fee heads (e.g. tuition) to the catalog first");
+    const classNames = [...new Set(input.classNames.map((name) => name.trim()).filter(Boolean))];
+    // One read for every class up front, then one small write per class. Each class's write is
+    // atomic on its own, and re-running only adds what's still missing — so no long transaction
+    // is needed (a single transaction across all classes timed out against a remote database).
+    const structures = await this.prisma.feeStructure.findMany({
+      where: {
+        schoolId,
+        academicYearId: input.academicYearId,
+        className: { in: classNames },
+        ...(campusId ? { OR: [{ campusId }, { campusId: null }] } : {}),
+      },
+      include: { items: { select: { feeHeadId: true } } },
+      orderBy: [{ status: "asc" }, { createdAt: "asc" }],
+    });
+    const byClass = new Map<string, (typeof structures)[number]>();
+    for (const row of structures) if (!byClass.has(row.className)) byClass.set(row.className, row);
+    let created = 0;
+    let updated = 0;
+    for (const className of classNames) {
+      const existing = byClass.get(className);
+      if (!existing) {
+        await this.prisma.feeStructure.create({
+          data: {
+            schoolId,
+            campusId,
+            academicYearId: input.academicYearId,
+            name: className,
+            className,
+            section: "",
+            frequency: "MONTHLY",
+            status: "ACTIVE",
+            effectiveFrom: new Date(),
+            items: { create: heads.map((head, index) => ({ feeHeadId: head.id, amountPkr: head.amountPkr, sortOrder: index })) },
+          },
+        });
+        created += 1;
+        continue;
+      }
+      const have = new Set(existing.items.map((item) => item.feeHeadId));
+      const missing = heads.filter((head) => !have.has(head.id));
+      if (!missing.length) continue;
+      await this.prisma.$transaction([
+        this.prisma.feeStructureItem.createMany({
+          data: missing.map((head, index) => ({
+            feeStructureId: existing.id,
+            feeHeadId: head.id,
+            amountPkr: head.amountPkr,
+            sortOrder: existing.items.length + index,
+          })),
+        }),
+        this.prisma.feeStructure.update({ where: { id: existing.id }, data: { status: "ACTIVE" } }),
+      ]);
+      updated += 1;
+    }
+    await audit(this.prisma, {
+      schoolId,
+      actorId,
+      action: "fee_catalog_applied",
+      entity: "fee_structure",
+      entityId: input.academicYearId,
+      summary: `${created} created, ${updated} updated`,
+    });
+    return { created, updated };
   }
 
   private async assertYear(schoolId: string, academicYearId: string) {

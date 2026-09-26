@@ -11,7 +11,9 @@ import {
 import { audit } from "../common/audit";
 import { invoiceLabel } from "../fees/billing";
 import { ensureStudentFeeAssignment } from "../fees/assignment.service";
+import { FeeGenerationService } from "../fees/generation.service";
 import { writeInvoiceSnapshot } from "../fees/invoice-writer";
+import { currentBillingPeriod } from "../fees/json";
 import { assertWritableSchool } from "../common/school";
 import type { SchoolScope } from "../common/school-scope";
 import { nextSchoolNumber } from "../common/sequence";
@@ -28,7 +30,10 @@ const DEFAULT_DOCS = [
 
 @Injectable()
 export class AdmissionsService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    private readonly feeGeneration: FeeGenerationService,
+  ) {}
 
   async summary(schoolId: string) {
     const groups = await this.prisma.admissionApplication.groupBy({
@@ -623,7 +628,7 @@ export class AdmissionsService {
     });
     await this.issueAdmissionInvoice(schoolId, id, result.studentId);
     if (application.yearId) {
-      await ensureStudentFeeAssignment(this.prisma, {
+      const assignment = await ensureStudentFeeAssignment(this.prisma, {
         schoolId,
         studentId: result.studentId,
         className: application.className || cls.name,
@@ -631,6 +636,15 @@ export class AdmissionsService {
         campusId: application.campusId ?? cls.campusId,
         academicYearId: application.yearId,
       });
+      if (assignment) {
+        // Best-effort: the student's admission fee invoice (above) already covers one-time
+        // admission charges; this is their first invoice against the regular fee structure, so
+        // a family doesn't wait for the next batch generation run to see it. Never block
+        // admission confirmation over this.
+        await this.feeGeneration
+          .generateForAssignment(schoolId, result.studentId, application.yearId, currentBillingPeriod())
+          .catch(() => null);
+      }
     }
     return this.byId(schoolId, id);
   }

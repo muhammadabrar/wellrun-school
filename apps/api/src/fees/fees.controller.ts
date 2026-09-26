@@ -15,6 +15,7 @@ import {
 import type { Response } from "express";
 import {
   applyCreditSchema,
+  applyFeeCatalogSchema,
   cancelInvoiceSchema,
   createPaymentSchema,
   discountSchema,
@@ -22,6 +23,7 @@ import {
   feeSettingsSchema,
   feeStructureSchema,
   generateFeesSchema,
+  generateRemainingForStudentSchema,
   studentDiscountSchema,
   studentFeeAssignmentSchema,
 } from "@wellrun/shared";
@@ -31,10 +33,12 @@ import type { SchoolScope } from "../common/school-scope";
 import { assertFeeAccess } from "./access";
 import { FeeAssignmentService } from "./assignment.service";
 import { FeeCatalogService } from "./catalog.service";
+import { ChallanService } from "./challan.service";
 import { FeeCreditService } from "./credit.service";
 import { FbrInvoiceService } from "./fbr.service";
 import { FeeGenerationService } from "./generation.service";
-import { FeePaymentService } from "./payment.service";
+import { currentBillingPeriod } from "./json";
+import { FeePaymentService, type InvoiceListQuery } from "./payment.service";
 import { FeeReceiptService } from "./receipt.service";
 import { FeeReportService } from "./report.service";
 import { FeeSettingsService } from "./settings.service";
@@ -49,6 +53,7 @@ export class FeesController {
     @Inject(FeePaymentService) private readonly payments: FeePaymentService,
     @Inject(FeeCreditService) private readonly credits: FeeCreditService,
     @Inject(FeeReceiptService) private readonly receipts: FeeReceiptService,
+    @Inject(ChallanService) private readonly challans: ChallanService,
     @Inject(FeeReportService) private readonly reports: FeeReportService,
     @Inject(FeeSettingsService) private readonly settings: FeeSettingsService,
     @Inject(FbrInvoiceService) private readonly fbr: FbrInvoiceService,
@@ -97,6 +102,11 @@ export class FeesController {
   @Get("fees/structures")
   structures(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }) {
     return this.catalog.structures(assertFeeAccess(req.user, "fees.view"), req.schoolScope);
+  }
+
+  @Post("fees/structures/apply-catalog")
+  applyCatalog(@Req() req: { user: CurrentUser }, @Body() body: unknown) {
+    return this.catalog.applyCatalogToClasses(assertFeeAccess(req.user, "fees.update"), req.user.id, applyFeeCatalogSchema.parse(body));
   }
 
   @Get("fees/structures/:id")
@@ -164,8 +174,21 @@ export class FeesController {
     return this.generation.generate(assertFeeAccess(req.user, "fees.generate"), req.user.id, generateFeesSchema.parse(body), req.schoolScope);
   }
 
+  @Post("fees/students/:studentId/generate-remaining")
+  generateRemainingForStudent(@Req() req: { user: CurrentUser }, @Param("studentId") studentId: string, @Body() body: unknown) {
+    const { academicYearId } = generateRemainingForStudentSchema.parse(body);
+    return this.generation.generateRemainingForStudent(assertFeeAccess(req.user, "fees.generate"), studentId, academicYearId);
+  }
+
+  @Post("fees/students/:studentId/generate-current")
+  generateCurrentForStudent(@Req() req: { user: CurrentUser }, @Param("studentId") studentId: string, @Body() body: unknown) {
+    const { academicYearId } = generateRemainingForStudentSchema.parse(body);
+    const schoolId = assertFeeAccess(req.user, "fees.generate");
+    return this.generation.generateForAssignment(schoolId, studentId, academicYearId, currentBillingPeriod());
+  }
+
   @Get("fees/invoices")
-  feeInvoices(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }, @Query() query: { status?: string; q?: string }) {
+  feeInvoices(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }, @Query() query: InvoiceListQuery) {
     return this.payments.invoices(assertFeeAccess(req.user, "fees.view"), req.schoolScope, query);
   }
 
@@ -180,8 +203,8 @@ export class FeesController {
   }
 
   @Get("fees/payments")
-  listPayments(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }) {
-    return this.payments.payments(assertFeeAccess(req.user, "fees.view"), req.schoolScope);
+  listPayments(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }, @Query() query: { studentId?: string; q?: string }) {
+    return this.payments.payments(assertFeeAccess(req.user, "fees.view"), req.schoolScope, query);
   }
 
   @Post("fees/payments")
@@ -212,6 +235,11 @@ export class FeesController {
   @Get("fees/receipts/:id/pdf")
   receiptPdf(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Res() res: Response) {
     return this.receipts.pdf(assertFeeAccess(req.user, "fees.receipt.print"), id, res);
+  }
+
+  @Get("fees/invoices/:id/challan")
+  challanPdf(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Res() res: Response) {
+    return this.challans.pdf(assertFeeAccess(req.user, "fees.receipt.print"), id, res);
   }
 
   @Get("fees/credits")

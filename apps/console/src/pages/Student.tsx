@@ -2,10 +2,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Dialog, EmptyState, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
 import { MessageCircle, Pencil, Phone, Wallet } from "lucide-react";
 import { FormEvent, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { FormSelect } from "@/components/form/form-select";
 import { AttendanceMeter } from "@/components/students/attendance-meter";
-import { SubmitFeeDialog } from "@/components/students/submit-fee-dialog";
+import { CollectPaymentDialog } from "@/components/fees/collect-payment-dialog";
+import { StudentFeesPanel } from "@/components/fees/student-fees-panel";
 import { TodayAttendance, todayAttendanceLabel, useTodayAttendance } from "@/components/students/today-attendance";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -33,7 +34,6 @@ const tabItems = [
 
 export function StudentPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") || "overview";
   const queryClient = useQueryClient();
@@ -48,11 +48,23 @@ export function StudentPage() {
   const tabQuery = useQuery({
     queryKey: queryKeys.studentTab(id ?? "", tab),
     queryFn: () => api.studentTab(id!, tab === "overview" ? "enrollments" : tab),
-    enabled: Boolean(id) && tab !== "overview",
+    enabled: Boolean(id) && tab !== "overview" && tab !== "fees",
   });
   const [toast, setToast] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"promote" | "deactivate" | null>(null);
   const [classId, setClassId] = useState("");
+  const [feeStructureId, setFeeStructureId] = useState("");
+  const [feeStructureTouched, setFeeStructureTouched] = useState(false);
+  const structuresQuery = useQuery({ queryKey: queryKeys.feeStructures, queryFn: api.feeStructures, enabled: dialog === "promote" });
+  const targetClass = classes.find((cls) => cls.id === classId) ?? null;
+  const matchingStructures = (structuresQuery.data ?? []).filter(
+    (structure) =>
+      structure.status === "ACTIVE" &&
+      structure.className === (targetClass?.name ?? "") &&
+      (!targetClass || structure.academicYearId === targetClass.yearId) &&
+      (structure.section === "" || structure.section === targetClass?.section),
+  );
+  const effectiveFeeStructureId = feeStructureTouched ? feeStructureId : (matchingStructures[0]?.id ?? "");
   const [pending, setPending] = useState(false);
   const [note, setNote] = useState({ type: "NOTE", body: "" });
   const [feeOpen, setFeeOpen] = useState(false);
@@ -82,14 +94,18 @@ export function StudentPage() {
     if (!id) return;
     setPending(true);
     try {
-      const next = action === "deactivate" ? await api.deactivateStudent(id) : await api.promoteStudent(id, classId);
+      const next =
+        action === "deactivate" ? await api.deactivateStudent(id) : await api.promoteStudent(id, classId, effectiveFeeStructureId || undefined);
       queryClient.setQueryData(queryKeys.student(id), next);
       await queryClient.invalidateQueries({ queryKey: queryKeys.studentTab(id, "enrollments") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.studentsRoot });
+      if (action === "promote") await queryClient.invalidateQueries({ queryKey: queryKeys.studentTab(id, "fees") });
       setToast(action === "deactivate" ? "Student marked inactive." : "Enrollment updated.");
     } finally {
       setPending(false);
       setDialog(null);
+      setFeeStructureTouched(false);
+      setFeeStructureId("");
     }
   }
 
@@ -145,7 +161,7 @@ export function StudentPage() {
                     <Pencil data-icon="inline-start" /> Edit profile
                   </Button>
                   <Button type="button" variant="outline" onClick={() => setFeeOpen(true)}>
-                    <Wallet data-icon="inline-start" /> Submit fee
+                    <Wallet data-icon="inline-start" /> Collect fee
                   </Button>
                   <Button type="button" variant="outline" onClick={() => setDialog("promote")}>Promote</Button>
                   <Button type="button" variant="destructive" onClick={() => setDialog("deactivate")}>Deactivate</Button>
@@ -186,14 +202,14 @@ export function StudentPage() {
               </div>
             ))}
           </dl>
+        ) : tab === "fees" ? (
+          <StudentFeesPanel studentId={student.id} studentName={`${student.firstName} ${student.lastName}`} canMutate={canMutate} />
         ) : tabQuery.isPending ? (
           <LoadingState variant="form" />
         ) : tab === "enrollments" ? (
           <EnrollmentList rows={tabQuery.data as never} />
         ) : tab === "attendance" ? (
           <AttendanceList rows={tabQuery.data as never} />
-        ) : tab === "fees" ? (
-          <FeesList data={tabQuery.data} canMutate={canMutate} onReceipt={(receiptId) => navigate(`/fees/receipt/${receiptId}`)} />
         ) : tab === "results" ? (
           <ResultsPanel id={student.id} rows={tabQuery.data as never} canMutate={canMutate} onSaved={() => void tabQuery.refetch()} />
         ) : tab === "family" ? (
@@ -268,12 +284,33 @@ export function StudentPage() {
             }))}
           />
         </Field>
+        {classId ? (
+          <Field className="mt-4">
+            <FieldLabel htmlFor="new-fee-structure">Also update fee structure to</FieldLabel>
+            <FormSelect
+              id="new-fee-structure"
+              value={effectiveFeeStructureId || "keep"}
+              onValueChange={(value) => {
+                setFeeStructureTouched(true);
+                setFeeStructureId(value === "keep" ? "" : (value ?? ""));
+              }}
+              placeholder="Keep current fee structure"
+              options={[
+                { value: "keep", label: "Keep current fee structure" },
+                ...matchingStructures.map((structure) => ({ value: structure.id, label: structure.name })),
+              ]}
+            />
+            {!matchingStructures.length ? (
+              <p className="mt-1 text-xs text-muted-foreground">No active fee structure found for this class yet.</p>
+            ) : null}
+          </Field>
+        ) : null}
       </Dialog>
       <Dialog open={dialog === "deactivate"} title="Deactivate this student?" description="The current enrollment is closed. History stays in place." confirmLabel="Deactivate" danger loading={pending} onClose={() => setDialog(null)} onConfirm={() => void move("deactivate")} />
-      <SubmitFeeDialog
+      <CollectPaymentDialog
+        open={feeOpen}
         studentId={student.id}
         studentName={`${student.firstName} ${student.lastName}`}
-        open={feeOpen}
         onClose={() => setFeeOpen(false)}
       />
       <Toast message={todayMark.toast ?? toast} />
@@ -315,81 +352,6 @@ function AttendanceList({ rows }: { rows: { id: string; date: string; status: st
     </div>
   );
 }
-
-function FeesList({
-  data,
-  canMutate,
-  onReceipt,
-}: {
-  data: unknown;
-  canMutate: boolean;
-  onReceipt: (id: string) => void;
-}) {
-  const payload = feeTabPayload(data);
-  if (!payload.invoices.length) return <EmptyState title="No invoices" description="Fee invoices appear after billing." />;
-  return (
-    <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">Balance {pkr(payload.balancePkr)}</p>
-      {canMutate && payload.credits.some((row) => row.remainingAmountPkr > 0) ? (
-        <p className="text-sm">This student has unused credit. Apply it from Student credits.</p>
-      ) : null}
-      <ul className="space-y-3">
-        {payload.invoices.map((invoice) => (
-          <li key={invoice.id} className="flex items-center justify-between rounded-2xl bg-paper px-4 py-3">
-            <div>
-              <p className="font-medium">{invoice.name}</p>
-              <p className="text-sm text-muted-foreground">Due {String(invoice.dueOn).slice(0, 10)}</p>
-            </div>
-            <div className="text-right">
-              <p>{pkr(invoice.amountPkr)}</p>
-              {invoice.receiptId ? (
-                <button type="button" className="text-sm text-indigo" onClick={() => onReceipt(invoice.receiptId!)}>
-                  Receipt
-                </button>
-              ) : (
-                <p className="text-sm text-orange">Due {pkr(invoice.amountPkr - invoice.paidPkr)}</p>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
-      {payload.ledger.length ? (
-        <div>
-          <h3 className="mb-2 text-sm font-medium">Ledger</h3>
-          <ul className="space-y-2 text-sm">
-            {payload.ledger.map((row) => (
-              <li key={`${row.kind}-${row.id}`} className="flex justify-between">
-                <span>{row.label}</span>
-                <span>{row.debitPkr ? pkr(row.debitPkr) : `−${pkr(row.creditPkr)}`}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function feeTabPayload(data: unknown) {
-  if (Array.isArray(data)) {
-    return { invoices: data as FeeInvoiceRow[], credits: [] as { remainingAmountPkr: number }[], ledger: [] as LedgerRow[], balancePkr: 0 };
-  }
-  const row = (data ?? {}) as {
-    invoices?: FeeInvoiceRow[];
-    credits?: { remainingAmountPkr: number }[];
-    ledger?: LedgerRow[];
-    balancePkr?: number;
-  };
-  return {
-    invoices: row.invoices ?? [],
-    credits: row.credits ?? [],
-    ledger: row.ledger ?? [],
-    balancePkr: row.balancePkr ?? 0,
-  };
-}
-
-type FeeInvoiceRow = { id: string; name: string; amountPkr: number; paidPkr: number; dueOn: string; receiptId: string | null; status: string };
-type LedgerRow = { id: string; kind: string; label: string; debitPkr: number; creditPkr: number };
 
 function ResultsPanel({
   id,

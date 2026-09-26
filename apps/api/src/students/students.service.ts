@@ -16,7 +16,9 @@ import {
 import { Prisma } from "@prisma/client";
 import { audit } from "../common/audit";
 import { invoiceLabel } from "../fees/billing";
-import { ensureStudentFeeAssignment } from "../fees/assignment.service";
+import { ensureStudentFeeAssignment, FeeAssignmentService } from "../fees/assignment.service";
+import { invoiceViewInclude, toInvoiceView } from "../fees/invoice-view";
+import { currentBillingPeriod } from "../fees/json";
 import { assertWritableSchool } from "../common/school";
 import type { SchoolScope } from "../common/school-scope";
 import { karachiToday } from "../common/date";
@@ -26,7 +28,10 @@ import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
 export class StudentsService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    private readonly feeAssignments: FeeAssignmentService,
+  ) {}
 
   async list(
     schoolId: string,
@@ -851,79 +856,53 @@ export class StudentsService {
 
   async feesTab(schoolId: string, id: string, classIds: string[] | null = null) {
     await this.byId(schoolId, id, classIds);
-    const [invoices, payments, credits, assignment, discounts] = await Promise.all([
+    const [invoices, payments, credits, assignment] = await Promise.all([
       this.prisma.invoice.findMany({
-        where: { schoolId, studentId: id },
-        include: {
-          payments: true,
-          feePlan: { include: { year: true } },
-          items: { take: 3, select: { description: true } },
-          allocations: { include: { payment: { select: { id: true, status: true } } } },
-        },
-        orderBy: { dueOn: "desc" },
+        where: { schoolId, studentId: id, status: { not: "DRAFT" } },
+        include: invoiceViewInclude,
+        orderBy: [{ dueOn: "desc" }, { createdAt: "desc" }],
       }),
       this.prisma.payment.findMany({
-        where: { schoolId, studentId: id },
+        where: { schoolId, studentId: id, method: { not: "credit" } },
         include: { receipt: { select: { id: true, receiptNumber: true } } },
         orderBy: { paidAt: "desc" },
       }),
-      this.prisma.studentCredit.findMany({ where: { schoolId, studentId: id }, orderBy: { createdAt: "desc" } }),
+      this.prisma.studentCredit.findMany({
+        where: { schoolId, studentId: id, remainingAmountPkr: { gt: 0 } },
+        select: { id: true, amountPkr: true, remainingAmountPkr: true, reason: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+      }),
       this.prisma.studentFeeAssignment.findFirst({
         where: { schoolId, studentId: id, status: "ACTIVE" },
-        include: { structure: { select: { id: true, name: true } }, overrides: true },
+        select: { academicYearId: true, structure: { select: { id: true, name: true } } },
       }),
-      this.prisma.studentDiscount.findMany({ where: { schoolId, studentId: id, active: true } }),
     ]);
-    const mapped = invoices.map((invoice) => {
-      const paid = invoice.paidAmountPkr || invoice.payments.reduce((sum, payment) => sum + payment.amountPkr, 0);
-      return {
-        id: invoice.id,
-        name: invoiceLabel(invoice),
-        amountPkr: invoice.amountPkr,
-        paidPkr: paid,
-        status: invoice.status,
-        dueOn: invoice.dueOn,
-        yearId: invoice.feePlan?.yearId ?? invoice.academicYearId ?? "",
-        receiptId: invoice.allocations.find((row) => row.payment.status === "COMPLETED")?.payment.id ?? invoice.payments[0]?.id ?? null,
-      };
-    });
-    const balancePkr = mapped
-      .filter((row) => row.status !== "CANCELLED" && row.status !== "DRAFT")
-      .reduce((sum, row) => sum + Math.max(row.amountPkr - row.paidPkr, 0), 0);
+    const views = invoices.map(toInvoiceView);
+    const open = views.filter((row) => ["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(row.status));
+    const period = currentBillingPeriod();
+    const currentInvoice =
+      views.find((row) => row.billingPeriod === period && row.status !== "CANCELLED") ??
+      views.find((row) => row.kind === "monthly" && row.status !== "CANCELLED") ??
+      null;
     return {
-      invoices: mapped,
+      outstandingPkr: open.reduce((sum, row) => sum + row.balancePkr, 0),
+      overduePkr: open.filter((row) => row.status === "OVERDUE").reduce((sum, row) => sum + row.balancePkr, 0),
+      creditPkr: credits.reduce((sum, row) => sum + row.remainingAmountPkr, 0),
+      currentInvoice,
+      invoices: views,
       payments: payments.map((row) => ({
         id: row.id,
+        paymentNumber: row.paymentNumber,
+        paymentDate: row.paymentDate,
         amountPkr: row.amountPkr,
         method: row.method,
+        referenceNumber: row.referenceNumber,
         status: row.status,
-        paymentDate: row.paymentDate,
-        receiptId: row.receipt?.id ?? row.id,
+        receiptId: row.receipt?.id ?? null,
+        receiptNumber: row.receipt?.receiptNumber ?? null,
       })),
       credits,
-      assignment,
-      discounts,
-      balancePkr,
-      ledger: [
-        ...invoices.map((row) => ({
-          id: row.id,
-          at: row.issueDate,
-          kind: "invoice",
-          label: invoiceLabel(row),
-          debitPkr: row.amountPkr,
-          creditPkr: 0,
-        })),
-        ...payments
-          .filter((row) => row.status === "COMPLETED")
-          .map((row) => ({
-            id: row.id,
-            at: row.paymentDate,
-            kind: "payment",
-            label: `Payment ${row.paymentNumber || row.receiptNo}`,
-            debitPkr: 0,
-            creditPkr: row.amountPkr,
-          })),
-      ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()),
+      assignment: assignment ? { academicYearId: assignment.academicYearId, structureName: assignment.structure.name } : null,
     };
   }
 
@@ -1067,7 +1046,8 @@ export class StudentsService {
     await assertWritableSchool(this.prisma, schoolId);
     const data = studentMoveSchema.parse(body);
     await this.byId(schoolId, id);
-    await this.moveEnrollment(schoolId, id, data.classId, "completed");
+    const cls = await this.moveEnrollment(schoolId, id, data.classId, "completed");
+    if (data.feeStructureId) await this.updateFeeStructureFor(schoolId, actorId, id, cls.yearId, data.feeStructureId);
     await audit(this.prisma, { schoolId, actorId, action: "student_promoted", entity: "student", entityId: id });
     return this.byId(schoolId, id);
   }
@@ -1076,7 +1056,8 @@ export class StudentsService {
     await assertWritableSchool(this.prisma, schoolId);
     const data = studentMoveSchema.parse(body);
     await this.byId(schoolId, id);
-    await this.moveEnrollment(schoolId, id, data.classId, "transferred");
+    const cls = await this.moveEnrollment(schoolId, id, data.classId, "transferred");
+    if (data.feeStructureId) await this.updateFeeStructureFor(schoolId, actorId, id, cls.yearId, data.feeStructureId);
     await audit(this.prisma, { schoolId, actorId, action: "student_transferred", entity: "student", entityId: id });
     return this.byId(schoolId, id);
   }
@@ -1102,9 +1083,11 @@ export class StudentsService {
       if (data.action === "deactivate") await this.deactivate(schoolId, actorId, id, {});
       else if (data.action === "assign_class" || data.action === "promote" || data.action === "transfer") {
         if (!data.classId) throw new BadRequestException("Choose a class");
-        if (data.action === "promote") await this.promote(schoolId, actorId, id, { classId: data.classId });
-        else if (data.action === "transfer") await this.transfer(schoolId, actorId, id, { classId: data.classId });
-        else await this.moveEnrollment(schoolId, id, data.classId, "active");
+        if (data.action === "promote") {
+          await this.promote(schoolId, actorId, id, { classId: data.classId, feeStructureId: data.feeStructureId });
+        } else if (data.action === "transfer") {
+          await this.transfer(schoolId, actorId, id, { classId: data.classId, feeStructureId: data.feeStructureId });
+        } else await this.moveEnrollment(schoolId, id, data.classId, "active");
       }
     }
     return { updated: data.ids.length, action: data.action };
@@ -1177,5 +1160,11 @@ export class StudentsService {
       where: { id: studentId },
       data: { rollNo, campusId: cls.campusId, status: "active" },
     });
+    return cls;
+  }
+
+  /** Re-points a student's active fee assignment to a new structure, e.g. after a promotion changes their class. Reuses FeeAssignmentService.assign(), which already ends the prior assignment. */
+  private async updateFeeStructureFor(schoolId: string, actorId: string, studentId: string, academicYearId: string, feeStructureId: string) {
+    await this.feeAssignments.assign(schoolId, actorId, { studentId, academicYearId, feeStructureId });
   }
 }

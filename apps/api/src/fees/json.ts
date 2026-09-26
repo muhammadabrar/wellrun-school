@@ -29,3 +29,24 @@ export function dueDateFromPeriod(billingPeriod: string, dueDay: number) {
 export function currentBillingPeriod(date = new Date()) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
+
+/** Every "YYYY-MM" billing period from `fromPeriod` through the month containing `throughDate`, inclusive. */
+export function periodsThrough(fromPeriod: string, throughDate: Date): string[] {
+  const match = /^(\d{4})-(\d{2})$/.exec(fromPeriod.trim());
+  if (!match) return [];
+  let year = Number(match[1]);
+  let month = Number(match[2]);
+  const endYear = throughDate.getUTCFullYear();
+  const endMonth = throughDate.getUTCMonth() + 1;
+  const periods: string[] = [];
+  while (year < endYear || (year === endYear && month <= endMonth)) {
+    periods.push(`${year}-${String(month).padStart(2, "0")}`);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+    if (periods.length > 24) break; // safety cap — an academic year is never this long
+  }
+  return periods;
+}

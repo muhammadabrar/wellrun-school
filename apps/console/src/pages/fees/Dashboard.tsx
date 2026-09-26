@@ -26,9 +26,14 @@ export function FeesDashboardPage() {
     <div className="space-y-8">
       <PageHeader
         title="Fees"
-        description="Collection, outstanding balances, and recent receipts for this campus and year."
+        description="What's been collected, what's still owed, and what needs chasing — this campus and year."
         actions={
-          <Button render={<Link to="/fees/payments/collect" />}>Collect payment</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button render={<Link to="/fees/generate" />}>Generate monthly fees</Button>
+            <Button variant="outline" render={<Link to="/fees/invoices" />}>
+              Unpaid invoices
+            </Button>
+          </div>
         }
       />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -90,10 +95,10 @@ export function FeesDashboardPage() {
               <ul className="space-y-3 text-sm">
                 {data.overdueInvoices.map((row) => (
                   <li key={row.id} className="flex justify-between gap-3">
-                    <span>
+                    <Link to={`/fees/invoices/${row.id}`} className="hover:text-indigo">
                       {row.student ? `${row.student.firstName} ${row.student.lastName}` : "Student"}
                       <span className="block text-muted-foreground">{row.name}</span>
-                    </span>
+                    </Link>
                     <span>{pkr(row.amountPkr)}</span>
                   </li>
                 ))}

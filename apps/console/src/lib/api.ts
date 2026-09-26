@@ -183,13 +183,13 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   studentTab: <T>(id: string, tab: string) => request<T>(`/console/students/${id}/${tab}`),
-  promoteStudent: (id: string, classId: string) =>
-    request<StudentProfile>(`/console/students/${id}/promote`, { method: "POST", body: JSON.stringify({ classId }) }),
-  transferStudent: (id: string, classId: string) =>
-    request<StudentProfile>(`/console/students/${id}/transfer`, { method: "POST", body: JSON.stringify({ classId }) }),
+  promoteStudent: (id: string, classId: string, feeStructureId?: string) =>
+    request<StudentProfile>(`/console/students/${id}/promote`, { method: "POST", body: JSON.stringify({ classId, feeStructureId }) }),
+  transferStudent: (id: string, classId: string, feeStructureId?: string) =>
+    request<StudentProfile>(`/console/students/${id}/transfer`, { method: "POST", body: JSON.stringify({ classId, feeStructureId }) }),
   deactivateStudent: (id: string) =>
     request<StudentProfile>(`/console/students/${id}/deactivate`, { method: "POST", body: JSON.stringify({}) }),
-  bulkStudents: (payload: { ids: string[]; action: string; classId?: string; confirm: true }) =>
+  bulkStudents: (payload: { ids: string[]; action: string; classId?: string; feeStructureId?: string; confirm: true }) =>
     request<{ updated?: number; ids?: string[]; action: string }>("/console/students/bulk", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -250,19 +250,6 @@ export const api = {
     records: { studentId: string; status: "PRESENT" | "ABSENT" | "LATE" | "LEAVE" | "EXCUSED" }[];
   }) => request("/console/attendance", { method: "POST", body: JSON.stringify(payload) }),
   absent: (date: string) => request<AbsentRow[]>(`/console/attendance/absent?date=${date}`),
-  invoices: () => request<Invoice[]>("/console/invoices"),
-  pay: (payload: {
-    invoiceId?: string;
-    invoiceIds?: string[];
-    allocations?: { invoiceId: string; amountPkr: number }[];
-    studentId?: string;
-    amountPkr: number;
-    method: string;
-    referenceNumber?: string;
-    notes?: string;
-    paymentDate?: string;
-  }) => request<Payment>("/console/payments", { method: "POST", body: JSON.stringify(payload) }),
-  receipt: (id: string) => request<ReceiptDetail>(`/console/payments/${id}`),
   feesDashboard: () => request<FeesDashboard>("/console/fees/dashboard"),
   feeHeads: () => request<FeeHead[]>("/console/fees/heads"),
   createFeeHead: (payload: Record<string, unknown>) =>
@@ -289,32 +276,43 @@ export const api = {
     request(`/console/fees/discounts/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   assignStudentDiscount: (payload: Record<string, unknown>) =>
     request("/console/fees/student-discounts", { method: "POST", body: JSON.stringify(payload) }),
-  previewFees: (payload: Record<string, unknown>) =>
+  applyFeeCatalog: (payload: { academicYearId: string; campusId?: string | null; classNames: string[] }) =>
+    request<{ created: number; updated: number }>("/console/fees/structures/apply-catalog", { method: "POST", body: JSON.stringify(payload) }),
+  previewFees: (payload: GenerateFeesPayload) =>
     request<FeePreview>("/console/fees/generate/preview", { method: "POST", body: JSON.stringify(payload) }),
-  generateFees: (payload: Record<string, unknown>) =>
-    request("/console/fees/generate", { method: "POST", body: JSON.stringify(payload) }),
-  feeInvoices: (status?: string) =>
-    request<Invoice[]>(`/console/fees/invoices${status ? `?status=${status}` : ""}`),
-  feeInvoice: (id: string) => request(`/console/fees/invoices/${id}`),
-  cancelFeeInvoice: (id: string, notes?: string) =>
-    request(`/console/fees/invoices/${id}/cancel`, { method: "POST", body: JSON.stringify({ notes }) }),
-  feePayments: () => request<FeePaymentRow[]>("/console/fees/payments"),
-  collectFeePayment: (payload: Record<string, unknown>) =>
-    request<Payment>("/console/fees/payments", { method: "POST", body: JSON.stringify(payload) }),
-  voidFeePayment: (id: string) => request(`/console/fees/payments/${id}/void`, { method: "POST", body: "{}" }),
-  refundFeePayment: (id: string) => request(`/console/fees/payments/${id}/refund`, { method: "POST", body: "{}" }),
-  feeReceipts: () => request<FeeReceiptRow[]>("/console/fees/receipts"),
-  feeReceipt: (id: string) => request<ReceiptDetail>(`/console/fees/receipts/${id}`),
-  feeCredits: (studentId?: string) =>
-    request<StudentCreditRow[]>(`/console/fees/credits${studentId ? `?studentId=${studentId}` : ""}`),
-  applyFeeCredit: (payload: Record<string, unknown>) =>
-    request("/console/fees/credits/apply", { method: "POST", body: JSON.stringify(payload) }),
-  feeOutstanding: (query: Record<string, string | undefined> = {}) => {
+  generateFees: (payload: GenerateFeesPayload & { confirm: true }) =>
+    request<FeeGenerateResult>("/console/fees/generate", { method: "POST", body: JSON.stringify(payload) }),
+  generateRemainingForStudent: (studentId: string, academicYearId: string) =>
+    request<{ createdInvoiceIds: string[]; totalPkr: number }>(`/console/fees/students/${studentId}/generate-remaining`, {
+      method: "POST",
+      body: JSON.stringify({ academicYearId }),
+    }),
+  generateCurrentForStudent: (studentId: string, academicYearId: string) =>
+    request<{ created: boolean; reason?: string; invoiceId?: string; totalPkr?: number }>(`/console/fees/students/${studentId}/generate-current`, {
+      method: "POST",
+      body: JSON.stringify({ academicYearId }),
+    }),
+  feeInvoices: (query: FeeInvoiceQuery = {}) => {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) if (value) params.set(key, value);
-    const suffix = params.toString();
-    return request<OutstandingRow[]>(`/console/fees/outstanding${suffix ? `?${suffix}` : ""}`);
+    const qs = params.toString();
+    return request<FeeInvoiceRow[]>(`/console/fees/invoices${qs ? `?${qs}` : ""}`);
   },
+  feeInvoice: (id: string) => request<FeeInvoiceDetail>(`/console/fees/invoices/${id}`),
+  cancelFeeInvoice: (id: string, notes?: string) =>
+    request(`/console/fees/invoices/${id}/cancel`, { method: "POST", body: JSON.stringify({ notes }) }),
+  studentFees: (studentId: string) => request<StudentFees>(`/console/students/${studentId}/fees`),
+  feePayments: (query: { studentId?: string; q?: string } = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value) params.set(key, value);
+    const qs = params.toString();
+    return request<FeePaymentRow[]>(`/console/fees/payments${qs ? `?${qs}` : ""}`);
+  },
+  collectFeePayment: (payload: CollectPaymentPayload) =>
+    request<PaymentResult>("/console/fees/payments", { method: "POST", body: JSON.stringify(payload) }),
+  voidFeePayment: (id: string) => request(`/console/fees/payments/${id}/void`, { method: "POST", body: "{}" }),
+  refundFeePayment: (id: string) => request(`/console/fees/payments/${id}/refund`, { method: "POST", body: "{}" }),
+  feeReceipt: (id: string) => request<FeeReceipt>(`/console/fees/receipts/${id}`),
   feeReports: (query: Record<string, string | undefined> = {}) => {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) if (value) params.set(key, value);
@@ -324,7 +322,6 @@ export const api = {
   feeSettings: () => request<FeeSettings>("/console/fees/settings"),
   saveFeeSettings: (payload: Record<string, unknown>) =>
     request<FeeSettings>("/console/fees/settings", { method: "PATCH", body: JSON.stringify(payload) }),
-  studentFeeLedger: (id: string) => request(`/console/fees/students/${id}/ledger`),
   async receiptPdf(id: string) {
     const headers: Record<string, string> = {};
     const auth = token();
@@ -335,6 +332,18 @@ export const api = {
     if (yearId) headers["X-Year-Id"] = yearId;
     const res = await fetch(`${API}/console/fees/receipts/${id}/pdf`, { headers, credentials: "include" });
     if (!res.ok) throw new ApiError("Could not download this PDF", res.status);
+    return URL.createObjectURL(await res.blob());
+  },
+  async challanPdf(invoiceId: string) {
+    const headers: Record<string, string> = {};
+    const auth = token();
+    if (auth) headers.Authorization = `Bearer ${auth}`;
+    const campusId = readCampusId();
+    if (campusId) headers["X-Campus-Id"] = campusId;
+    const yearId = readYearId();
+    if (yearId) headers["X-Year-Id"] = yearId;
+    const res = await fetch(`${API}/console/fees/invoices/${invoiceId}/challan`, { headers, credentials: "include" });
+    if (!res.ok) throw new ApiError("Could not download this challan", res.status);
     return URL.createObjectURL(await res.blob());
   },
   setup: () => request<Setup>("/console/setup"),
@@ -496,7 +505,7 @@ export type Student = {
   firstAdmissionDate?: string;
   extra?: Record<string, unknown>;
   enrollments: { class: { id: string; name: string; section: string } }[];
-  invoices: Invoice[];
+  invoices: { id: string; amountPkr: number; status: string; dueOn: string }[];
   guardians: { guardian: Guardian }[];
 };
 
@@ -538,22 +547,6 @@ export type StudentProfile = {
   years?: { id: string; name: string; current: boolean; startsOn: string; endsOn: string }[];
   classes?: { id: string; name: string; section: string; yearId: string; yearName: string; campusName?: string }[];
   canMutate?: boolean;
-};
-
-export type Invoice = {
-  id: string;
-  invoiceNumber?: string;
-  billingPeriod?: string;
-  amountPkr: number;
-  totalAmountPkr?: number;
-  paidAmountPkr?: number;
-  balanceAmountPkr?: number;
-  status: string;
-  dueOn: string;
-  student: { id: string; firstName: string; lastName: string; admissionNo: string } | null;
-  application?: { id: string; firstName: string; lastName: string; applicationNo: string } | null;
-  feePlan: { name: string };
-  payments: { id: string; amountPkr: number }[];
 };
 
 export type SchoolClass = {
@@ -698,42 +691,170 @@ export type DuplicateMatch = {
   application?: { id: string; applicationNo: string; firstName: string; lastName: string; status: string };
 };
 
-export type Payment = {
+export type FeeStudentSummary = { id: string; name: string; admissionNo: string; className: string; section: string };
+
+export type FeeInvoiceView = {
   id: string;
-  amountPkr: number;
-  receiptNo: string;
-  receiptNumber?: string;
-  method: string;
-  paidAt: string;
-  paymentDate?: string;
-  school?: { name: string; address?: string; taxNumber?: string; ntn?: string; strn?: string; primaryColor?: string };
-  invoice: Invoice;
-  student?: { id: string; firstName: string; lastName: string; admissionNo: string } | null;
-  lines?: { description: string; amountPkr: number }[];
-  logoUrl?: string;
-  header?: string;
-  footer?: string;
-  remainingPkr?: number;
+  invoiceNumber: string;
+  title: string;
+  billingPeriod: string;
+  periodLabel: string;
+  kind: "monthly" | "other";
+  issueDate: string;
+  dueOn: string;
+  status: string;
+  lines: { description: string; amountPkr: number }[];
+  subtotalPkr: number;
+  discountPkr: number;
+  lateFeePkr: number;
+  totalPkr: number;
+  creditAppliedPkr: number;
+  paidPkr: number;
+  balancePkr: number;
+  student: FeeStudentSummary | null;
+  payments: {
+    id: string;
+    paymentNumber: string;
+    appliedPkr: number;
+    amountPkr: number;
+    method: string;
+    status: string;
+    paymentDate: string;
+    referenceNumber: string;
+    receiptId: string | null;
+    receiptNumber: string | null;
+  }[];
 };
 
-export type ReceiptDetail = Payment & {
-  receiptNumber: string;
-  studentName: string;
-  admissionNo?: string;
-  referenceNumber?: string;
-  subtotalPkr: number;
-  discountAmountPkr: number;
-  lateFeeAmountPkr: number;
-  taxAmountPkr: number;
-  showTax: boolean;
+export type SchoolLetterhead = {
+  name: string;
+  address: string;
+  phone: string;
+  email: string;
+  website: string;
+  registrationNo: string;
+  primaryColor: string;
+  logoUrl: string;
+};
+
+export type FeeGuardian = { name: string; relation: string; phone: string } | null;
+
+export type FeeInvoiceDetail = FeeInvoiceView & { school: SchoolLetterhead; guardian: FeeGuardian };
+
+export type FeeInvoiceRow = {
+  id: string;
+  invoiceNumber: string;
+  title: string;
+  periodLabel: string;
+  dueOn: string;
+  status: string;
   totalPkr: number;
   paidPkr: number;
-  remainingPkr: number;
-  logoUrl: string;
+  balancePkr: number;
+  student: FeeStudentSummary | null;
+};
+
+export type FeeInvoiceQuery = {
+  status?: string;
+  q?: string;
+  studentId?: string;
+  billingPeriod?: string;
+  className?: string;
+  section?: string;
+};
+
+export type StudentFees = {
+  outstandingPkr: number;
+  overduePkr: number;
+  creditPkr: number;
+  currentInvoice: FeeInvoiceView | null;
+  invoices: FeeInvoiceView[];
+  payments: {
+    id: string;
+    paymentNumber: string;
+    paymentDate: string;
+    amountPkr: number;
+    method: string;
+    referenceNumber: string;
+    status: string;
+    receiptId: string | null;
+    receiptNumber: string | null;
+  }[];
+  credits: { id: string; amountPkr: number; remainingAmountPkr: number; reason: string; createdAt: string }[];
+  assignment: { academicYearId: string; structureName: string } | null;
+};
+
+export type GenerateFeesPayload = {
+  billingPeriod: string;
+  academicYearId: string;
+  campusId?: string;
+  className?: string;
+  section?: string;
+};
+
+export type FeePreview = {
+  billingPeriod: string;
+  dueOn: string;
+  eligible: number;
+  create: number;
+  skippedAlreadyBilled: number;
+  skippedZeroTotal: number;
+  missingAssignment: number;
+  totalPkr: number;
+};
+
+export type FeeGenerateResult = Omit<FeePreview, "eligible" | "create" | "dueOn"> & { created: number; invoices: FeeInvoiceView[] };
+
+export type CollectPaymentPayload = {
+  studentId: string;
+  invoiceId?: string;
+  invoiceIds?: string[];
+  amountPkr: number;
+  method: string;
+  paymentDate?: string;
+  referenceNumber?: string;
+  notes?: string;
+};
+
+export type PaymentResult = { id: string; paymentNumber: string; receiptId: string; receiptNumber: string; amountPkr: number; creditPkr: number };
+
+export type FeePaymentRow = {
+  id: string;
+  paymentNumber: string;
+  paymentDate: string;
+  amountPkr: number;
+  method: string;
+  referenceNumber: string;
+  status: string;
+  student: { id: string; firstName: string; lastName: string; admissionNo: string } | null;
+  receipt: { id: string; receiptNumber: string } | null;
+  invoices: { id: string; invoiceNumber: string; periodLabel: string; appliedPkr: number }[];
+};
+
+export type FeeReceipt = {
+  id: string;
+  paymentId: string;
+  receiptNumber: string;
+  paymentNumber: string;
+  receiptDate: string;
+  status: string;
+  school: SchoolLetterhead;
   header: string;
   footer: string;
-  lines: { description: string; amountPkr: number; invoiceNumber?: string }[];
-  fbr?: { number: string } | null;
+  student: FeeStudentSummary | null;
+  guardian: FeeGuardian;
+  invoices: { id: string; invoiceNumber: string; title: string; appliedPkr: number }[];
+  lines: { description: string; amountPkr: number }[];
+  discountPkr: number;
+  lateFeePkr: number;
+  totalPkr: number;
+  amountPaidPkr: number;
+  method: string;
+  referenceNumber: string;
+  notes: string;
+  previousBalancePkr: number;
+  remainingBalancePkr: number;
+  creditPkr: number;
 };
 
 export type FeesDashboard = {
@@ -785,57 +906,6 @@ export type FeeDiscount = {
   _count?: { students: number };
 };
 
-export type FeePreview = {
-  billingPeriod: string;
-  eligible: number;
-  create: number;
-  skipped: number;
-  totalPkr: number;
-  students: { id: string; name: string; admissionNo: string; amountPkr: number }[];
-};
-
-export type FeePaymentRow = {
-  id: string;
-  paymentNumber: string;
-  amountPkr: number;
-  method: string;
-  status: string;
-  paymentDate: string;
-  student: { firstName: string; lastName: string; admissionNo: string } | null;
-  receipt?: { id: string; receiptNumber: string } | null;
-};
-
-export type FeeReceiptRow = {
-  id: string;
-  receiptNumber: string;
-  amountPkr: number;
-  receiptDate: string;
-  student: { firstName: string; lastName: string } | null;
-  payment: { id: string; method: string; status: string };
-};
-
-export type StudentCreditRow = {
-  id: string;
-  amountPkr: number;
-  remainingAmountPkr: number;
-  status: string;
-  reason: string;
-  student: { id: string; firstName: string; lastName: string; admissionNo: string } | null;
-};
-
-export type OutstandingRow = {
-  id: string;
-  invoiceNumber: string;
-  name: string;
-  billingPeriod: string;
-  dueOn: string;
-  status: string;
-  amountPkr: number;
-  paidAmountPkr: number;
-  balanceAmountPkr: number;
-  student: { id: string; firstName: string; lastName: string; admissionNo: string } | null;
-};
-
 export type FeeReportResult = {
   from: string;
   to: string;
@@ -847,6 +917,7 @@ export type FeeReportResult = {
 export type FeeSettings = {
   defaultDueDay: number;
   graceDays: number;
+  autoGenerateEnabled: boolean;
   lateFeeMode: string;
   lateFeeAmountPkr: number;
   lateFeePercent: number;

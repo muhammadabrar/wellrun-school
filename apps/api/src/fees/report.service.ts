@@ -243,7 +243,11 @@ export class FeeReportService {
       }),
       this.prisma.studentDiscount.findMany({ where: { schoolId, studentId, active: true } }),
     ]);
-    const current = invoices.find((row) => row.status !== "CANCELLED" && row.status !== "PAID") ?? invoices[0] ?? null;
+    const OPEN_STATUSES = ["ISSUED", "PARTIALLY_PAID", "OVERDUE"];
+    const current =
+      [...invoices]
+        .filter((row) => OPEN_STATUSES.includes(row.status))
+        .sort((a, b) => new Date(a.dueOn).getTime() - new Date(b.dueOn).getTime())[0] ?? null;
     const balancePkr = addPkr(...invoices.filter((row) => row.status !== "CANCELLED").map((row) => row.balanceAmountPkr || 0));
     const ledger = [
       ...invoices.map((row) => ({

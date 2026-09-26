@@ -6,7 +6,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { DatePicker } from "@/components/form/date-picker";
 import { FormSelect } from "@/components/form/form-select";
 import { AttendanceMeter } from "@/components/students/attendance-meter";
-import { SubmitFeeDialog } from "@/components/students/submit-fee-dialog";
+import { CollectPaymentDialog } from "@/components/fees/collect-payment-dialog";
 import { TodayAttendance, todayAttendanceLabel, useTodayAttendance } from "@/components/students/today-attendance";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -28,11 +28,23 @@ export function StudentsPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [bulkAction, setBulkAction] = useState<"assign_class" | "promote" | "deactivate" | null>(null);
   const [bulkClassId, setBulkClassId] = useState("");
+  const [bulkFeeStructureId, setBulkFeeStructureId] = useState("");
+  const [bulkFeeStructureTouched, setBulkFeeStructureTouched] = useState(false);
+  const bulkStructuresQuery = useQuery({ queryKey: queryKeys.feeStructures, queryFn: api.feeStructures, enabled: bulkAction === "promote" });
   const [pending, setPending] = useState(false);
   const [quickView, setQuickView] = useState<StudentRow | null>(null);
   const [feeStudent, setFeeStudent] = useState<StudentRow | null>(null);
   const todayMark = useTodayAttendance();
   const { campusId, classes, active } = useCampus();
+  const bulkTargetClass = classes.find((cls) => cls.id === bulkClassId) ?? null;
+  const bulkMatchingStructures = (bulkStructuresQuery.data ?? []).filter(
+    (structure) =>
+      structure.status === "ACTIVE" &&
+      structure.className === (bulkTargetClass?.name ?? "") &&
+      (!bulkTargetClass || structure.academicYearId === bulkTargetClass.yearId) &&
+      (structure.section === "" || structure.section === bulkTargetClass?.section),
+  );
+  const effectiveBulkFeeStructureId = bulkFeeStructureTouched ? bulkFeeStructureId : (bulkMatchingStructures[0]?.id ?? "");
   const filters = {
     q: params.get("q") ?? "",
     guardian: params.get("guardian") ?? "",
@@ -106,10 +118,18 @@ export function StudentsPage() {
         await api.bulkStudents({ ids: selected, action: "deactivate", confirm: true });
       } else {
         if (!bulkClassId) return;
-        await api.bulkStudents({ ids: selected, action: bulkAction, classId: bulkClassId, confirm: true });
+        await api.bulkStudents({
+          ids: selected,
+          action: bulkAction,
+          classId: bulkClassId,
+          feeStructureId: bulkAction === "promote" ? effectiveBulkFeeStructureId || undefined : undefined,
+          confirm: true,
+        });
       }
       setSelected([]);
       setBulkAction(null);
+      setBulkFeeStructureId("");
+      setBulkFeeStructureTouched(false);
       await queryClient.invalidateQueries({ queryKey: queryKeys.studentsRoot });
     } finally {
       setPending(false);
@@ -372,7 +392,7 @@ export function StudentsPage() {
       />
 
       {feeStudent ? (
-        <SubmitFeeDialog
+        <CollectPaymentDialog
           studentId={feeStudent.id}
           studentName={`${feeStudent.firstName} ${feeStudent.lastName}`}
           open
@@ -400,6 +420,27 @@ export function StudentsPage() {
               placeholder="Select class"
               options={classes.map((cls) => ({ value: cls.id, label: `${cls.name} ${cls.section}` }))}
             />
+          </Field>
+        ) : null}
+        {bulkAction === "promote" && bulkClassId ? (
+          <Field className="mt-4">
+            <FieldLabel htmlFor="bulk-fee-structure">Also update fee structure to</FieldLabel>
+            <FormSelect
+              id="bulk-fee-structure"
+              value={effectiveBulkFeeStructureId || "keep"}
+              onValueChange={(value) => {
+                setBulkFeeStructureTouched(true);
+                setBulkFeeStructureId(value === "keep" ? "" : (value ?? ""));
+              }}
+              placeholder="Keep current fee structure"
+              options={[
+                { value: "keep", label: "Keep current fee structure" },
+                ...bulkMatchingStructures.map((structure) => ({ value: structure.id, label: structure.name })),
+              ]}
+            />
+            {!bulkMatchingStructures.length ? (
+              <p className="mt-1 text-xs text-muted-foreground">No active fee structure found for this class yet.</p>
+            ) : null}
           </Field>
         ) : null}
       </Dialog>

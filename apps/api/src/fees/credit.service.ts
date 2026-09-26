@@ -1,4 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import type { applyCreditSchema } from "@wellrun/shared";
 import type { z } from "zod";
 import { audit } from "../common/audit";
@@ -9,6 +10,55 @@ import { refreshInvoiceMoney, slimStudent } from "./invoice-writer";
 import { minPkr, toPkr } from "./money";
 
 type ApplyCreditInput = z.infer<typeof applyCreditSchema>;
+
+/**
+ * Uses a student's unused credit (e.g. an earlier overpayment) against a newly issued invoice, oldest credit first.
+ * Recorded as a "credit" payment so the invoice shows: Fee 5,200 · Credit −800 · Payable 4,400.
+ */
+export async function applyAvailableCredit(
+  tx: Prisma.TransactionClient,
+  input: { schoolId: string; studentId: string; invoiceId: string; actorId: string | null },
+) {
+  const credits = await tx.studentCredit.findMany({
+    where: { schoolId: input.schoolId, studentId: input.studentId, remainingAmountPkr: { gt: 0 }, status: { in: ["AVAILABLE", "PARTIALLY_USED"] } },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!credits.length) return 0;
+  const invoice = await tx.invoice.findUniqueOrThrow({ where: { id: input.invoiceId } });
+  let due = invoice.balanceAmountPkr;
+  let applied = 0;
+  for (const credit of credits) {
+    if (due <= 0) break;
+    const take = Math.min(credit.remainingAmountPkr, due);
+    const remaining = credit.remainingAmountPkr - take;
+    await tx.studentCredit.update({
+      where: { id: credit.id },
+      data: { remainingAmountPkr: remaining, status: remaining <= 0 ? "USED" : "PARTIALLY_USED" },
+    });
+    due -= take;
+    applied += take;
+  }
+  if (applied <= 0) return 0;
+  const paymentNumber = await nextSchoolNumber(tx, input.schoolId, "PAY");
+  await tx.payment.create({
+    data: {
+      schoolId: input.schoolId,
+      campusId: invoice.campusId,
+      studentId: input.studentId,
+      invoiceId: invoice.id,
+      paymentNumber,
+      amountPkr: applied,
+      method: "credit",
+      notes: "Credit carried forward from an earlier payment",
+      collectedById: input.actorId,
+      status: "COMPLETED",
+      receiptNo: paymentNumber,
+      allocations: { create: [{ invoiceId: invoice.id, amountPkr: applied }] },
+    },
+  });
+  await refreshInvoiceMoney(tx, invoice.id);
+  return applied;
+}
 
 @Injectable()
 export class FeeCreditService {
