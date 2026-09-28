@@ -9,8 +9,9 @@ import {
   documentUploadSchema,
 } from "@wellrun/shared";
 import { audit } from "../common/audit";
+import { titleCaseName } from "../common/text";
 import { invoiceLabel } from "../fees/billing";
-import { ensureStudentFeeAssignment } from "../fees/assignment.service";
+import { applyAdmissionQuotesToAssignment, ensureStudentFeeAssignment } from "../fees/assignment.service";
 import { FeeGenerationService } from "../fees/generation.service";
 import { writeInvoiceSnapshot } from "../fees/invoice-writer";
 import { currentBillingPeriod } from "../fees/json";
@@ -32,7 +33,7 @@ const DEFAULT_DOCS = [
 export class AdmissionsService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
-    private readonly feeGeneration: FeeGenerationService,
+    @Inject(FeeGenerationService) private readonly feeGeneration: FeeGenerationService,
   ) {}
 
   async summary(schoolId: string) {
@@ -143,6 +144,7 @@ export class AdmissionsService {
   async create(schoolId: string, actorId: string, body: unknown, scope: SchoolScope = {}) {
     await assertWritableSchool(this.prisma, schoolId);
     const data = admissionDraftSchema.parse(body ?? {});
+    normalizeApplicantNames(data);
     const firstName = data.firstName?.trim() ?? "";
     const lastName = data.lastName?.trim() ?? "";
     if (!firstName || !lastName) throw new BadRequestException("Applicant first and last name are required");
@@ -248,25 +250,9 @@ export class AdmissionsService {
       select: { id: true, guardianId: true, studentId: true, family: true },
     });
     if (!application) throw new NotFoundException("Application not found");
-    let guardianId = application.guardianId;
-    if (!guardianId) {
-      const family = this.familyRecord(application.family);
-      const phone = family.guardianPhone?.trim();
-      const cnic = family.guardianCnic?.trim();
-      if (phone || cnic) {
-        const guardian = await this.prisma.guardian.findFirst({
-          where: {
-            schoolId,
-            OR: [
-              ...(phone ? [{ phone }] : []),
-              ...(cnic ? [{ cnic }] : []),
-            ],
-          },
-          select: { id: true },
-        });
-        guardianId = guardian?.id ?? null;
-      }
-    }
+    // Only a guardian explicitly linked to this application counts. A "New guardian" whose phone
+    // happens to match another family must not pull in that family's children as siblings.
+    const guardianId = application.guardianId;
     if (!guardianId) return { siblings: [] as const };
 
     const links = await this.prisma.studentGuardian.findMany({
@@ -339,6 +325,7 @@ export class AdmissionsService {
       throw new BadRequestException("This application can no longer be edited");
     }
     const data = admissionDraftSchema.parse(body ?? {});
+    normalizeApplicantNames(data);
     const update: Prisma.AdmissionApplicationUpdateInput = {};
     const scalarKeys = [
       "firstName",
@@ -521,11 +508,13 @@ export class AdmissionsService {
       throw new BadRequestException("This application cannot be confirmed yet");
     }
     const family = this.familyRecord(application.family);
-    const guardianId =
-      application.guardianId ||
-      (family.guardianName && family.guardianPhone
-        ? await this.findOrCreateGuardian(schoolId, actorId, family)
-        : null);
+    // "New guardian" means a new record even if the phone/CNIC matches someone on file — the
+    // admin chose not to link an existing guardian. Saved right away so a retry doesn't duplicate.
+    let guardianId = application.guardianId;
+    if (!guardianId && family.guardianName && family.guardianPhone) {
+      guardianId = await this.createGuardian(schoolId, actorId, family);
+      await this.prisma.admissionApplication.update({ where: { id }, data: { guardianId } });
+    }
     if (!guardianId) throw new BadRequestException("Add a guardian before confirming");
     const classId = data.classId || application.targetClassId || (await this.resolveClassId(schoolId, application));
     if (!classId) throw new BadRequestException("Choose a class before confirming");
@@ -637,10 +626,13 @@ export class AdmissionsService {
         academicYearId: application.yearId,
       });
       if (assignment) {
-        // Best-effort: the student's admission fee invoice (above) already covers one-time
-        // admission charges; this is their first invoice against the regular fee structure, so
-        // a family doesn't wait for the next batch generation run to see it. Never block
-        // admission confirmation over this.
+        // Monthly invoices from here on use the fees agreed in the admission wizard.
+        await applyAdmissionQuotesToAssignment(this.prisma, {
+          assignmentId: assignment.id,
+          quotes: this.feeQuotes(application.feeQuotes),
+        });
+        // The admission invoice (above) holds only one-time fees; the admission month is a normal
+        // monthly invoice at the student's own amounts. Never block admission confirmation over it.
         await this.feeGeneration
           .generateForAssignment(schoolId, result.studentId, application.yearId, currentBillingPeriod())
           .catch(() => null);
@@ -856,7 +848,18 @@ export class AdmissionsService {
       where: { id: applicationId, schoolId },
       select: { feeQuotes: true, yearId: true, campusId: true, applicationNo: true },
     });
-    const quotes = this.feeQuotes(application?.feeQuotes);
+    const allQuotes = this.feeQuotes(application?.feeQuotes);
+    const heads = await this.prisma.feeHead.findMany({
+      where: { schoolId, id: { in: allQuotes.map((row) => row.feeItemId).filter(Boolean) } },
+      select: { id: true, frequency: true },
+    });
+    const frequencyByHead = new Map(heads.map((row) => [row.id, row.frequency]));
+    // Only one-time charges (admission, registration…) go on the admission invoice. Recurring fees
+    // are billed month by month at the student's agreed amounts, starting with the admission month.
+    const quotes = allQuotes.filter((quote) => {
+      const frequency = frequencyByHead.get(quote.feeItemId);
+      return !frequency || frequency === "ONE_TIME";
+    });
     const amount = quotes.reduce((sum, item) => sum + item.amountPkr, 0);
     if (!amount) return null;
     const yearId =
@@ -869,10 +872,6 @@ export class AdmissionsService {
         data: { schoolId, yearId, name: "Admission fee", amountPkr: amount },
       });
     }
-    const heads = await this.prisma.feeHead.findMany({
-      where: { schoolId, id: { in: quotes.map((row) => row.feeItemId).filter(Boolean) } },
-      select: { id: true },
-    });
     const headIds = new Set(heads.map((row) => row.id));
     return writeInvoiceSnapshot(this.prisma, {
       schoolId,
@@ -939,17 +938,13 @@ export class AdmissionsService {
     return String((used.length ? Math.max(...used) : 0) + 1);
   }
 
-  private async findOrCreateGuardian(
+  private async createGuardian(
     schoolId: string,
     actorId: string,
     family: Record<string, string>,
   ) {
     const phone = family.guardianPhone;
     const cnic = family.guardianCnic || "";
-    const existing = await this.prisma.guardian.findFirst({
-      where: { schoolId, OR: [{ phone }, ...(cnic ? [{ cnic }] : [])] },
-    });
-    if (existing) return existing.id;
     const guardian = await this.prisma.guardian.create({
       data: {
         schoolId,
@@ -1227,4 +1222,12 @@ export class AdmissionsService {
       nextAction: this.nextAction(application.status),
     };
   }
+}
+
+/** Names are stored capitalised ("muhammad ali" → "Muhammad Ali"), whatever the form or import sent. */
+function normalizeApplicantNames(data: { firstName?: string; lastName?: string; middleName?: string; family?: Record<string, unknown> }) {
+  if (data.firstName) data.firstName = titleCaseName(data.firstName);
+  if (data.lastName) data.lastName = titleCaseName(data.lastName);
+  if (data.middleName) data.middleName = titleCaseName(data.middleName);
+  if (data.family && typeof data.family.guardianName === "string") data.family.guardianName = titleCaseName(data.family.guardianName);
 }

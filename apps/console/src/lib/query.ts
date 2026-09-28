@@ -46,6 +46,7 @@ export const queryKeys = {
   feeStructures: ["fees", "structures"] as const,
   feeStructureDetail: (id: string) => ["fees", "structures", id] as const,
   feesDashboard: ["fees", "dashboard"] as const,
+  feeSetupStatus: ["fees", "setup-status"] as const,
   feeInvoices: (query: Record<string, string | undefined>) => ["fees", "invoices", query] as const,
   feeInvoice: (id: string) => ["fees", "invoice", id] as const,
   studentFees: (studentId: string) => ["fees", "student", studentId] as const,

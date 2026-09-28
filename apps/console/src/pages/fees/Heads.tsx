@@ -6,16 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { FeeTitleSelect, frequencyLabel } from "@/components/fees/fee-title-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { pkr } from "@/lib/format";
 import { queryKeys } from "@/lib/query";
 
 const frequencyOptions = [
-  { value: "MONTHLY", label: "Monthly" },
-  { value: "QUARTERLY", label: "Quarterly" },
-  { value: "ANNUAL", label: "Annual" },
-  { value: "ONE_TIME", label: "One time" },
+  { value: "MONTHLY", label: "Monthly — every month" },
+  { value: "QUARTERLY", label: "Quarterly — once every 3 months" },
+  { value: "ANNUAL", label: "Once a year" },
+  { value: "ONE_TIME", label: "One time — e.g. at admission" },
 ];
 
 export function FeeHeadsPage() {
@@ -25,11 +26,13 @@ export function FeeHeadsPage() {
   const [name, setName] = useState("");
   const [amountPkr, setAmountPkr] = useState("0");
   const [frequency, setFrequency] = useState("MONTHLY");
-  const [category, setCategory] = useState("tuition");
   const [tab, setTab] = useState("active");
   const create = useMutation({
     mutationFn: api.createFeeHead,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.feeHeads }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.feeSetupStatus });
+      return queryClient.invalidateQueries({ queryKey: queryKeys.feeHeads });
+    },
   });
   const update = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => api.updateFeeHead(id, payload),
@@ -45,17 +48,19 @@ export function FeeHeadsPage() {
   async function onCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    if (!name.trim()) {
+      setError("Choose or type a fee title.");
+      return;
+    }
     try {
       await create.mutateAsync({
         name,
         amountPkr: Number(amountPkr || 0),
         frequency,
-        category,
       });
       setName("");
       setAmountPkr("0");
       setFrequency("MONTHLY");
-      setCategory("tuition");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create this fee head");
     }
@@ -63,13 +68,24 @@ export function FeeHeadsPage() {
 
   return (
     <div className="flex max-w-3xl flex-col gap-8">
-      <PageHeader title="Fee heads" description="Catalog amounts used when you build a class fee structure." />
+      <PageHeader
+        title="Fee Heads"
+        description="Every type of fee your school charges — tuition, admission, exams — with its usual amount. Class fee structures are built from these."
+      />
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <form onSubmit={(event) => void onCreate(event)} className="rounded-3xl bg-surface p-6">
         <FieldGroup className="grid gap-4 sm:grid-cols-2">
           <Field>
-            <FieldLabel htmlFor="head-name">Name</FieldLabel>
-            <Input id="head-name" name="name" value={name} onChange={(event) => setName(event.target.value)} required />
+            <FieldLabel htmlFor="head-name">Fee title</FieldLabel>
+            <FeeTitleSelect
+              id="head-name"
+              value={name}
+              existingTitles={active.map((head) => head.name)}
+              onChange={(title, suggested) => {
+                setName(title);
+                if (suggested) setFrequency(suggested);
+              }}
+            />
           </Field>
           <Field>
             <FieldLabel htmlFor="head-amount">Default amount (Rs.)</FieldLabel>
@@ -84,7 +100,7 @@ export function FeeHeadsPage() {
             />
           </Field>
           <Field>
-            <FieldLabel htmlFor="head-frequency">Frequency</FieldLabel>
+            <FieldLabel htmlFor="head-frequency">How often it's charged</FieldLabel>
             <FormSelect
               id="head-frequency"
               value={frequency}
@@ -92,13 +108,9 @@ export function FeeHeadsPage() {
               options={frequencyOptions}
             />
           </Field>
-          <Field>
-            <FieldLabel htmlFor="head-category">Category</FieldLabel>
-            <Input id="head-category" name="category" value={category} onChange={(event) => setCategory(event.target.value)} />
-          </Field>
         </FieldGroup>
         <Button type="submit" className="mt-4" loading={create.isPending}>
-          Add fee head
+          Add fee
         </Button>
       </form>
       <Tabs value={tab} onValueChange={(value) => setTab(value || "active")}>
@@ -159,7 +171,7 @@ function HeadList({
             <div>
               <p className="font-medium">{head.name}</p>
               <p className="text-sm text-muted-foreground">
-                {head.code} · {head.frequency.toLowerCase().replace("_", " ")} · {pkr(head.amountPkr)}
+                {frequencyLabel(head.frequency)} · {pkr(head.amountPkr)}
               </p>
             </div>
             <Button type="button" variant="outline" loading={pending} onClick={() => onToggle(head.id)}>

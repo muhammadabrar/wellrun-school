@@ -270,7 +270,7 @@ export function AdmissionPage() {
                   <FieldGroup className="grid grid-cols-1 md:grid-cols-2">
                     <Field>
                       <FieldLabel htmlFor="guardianName">Guardian name</FieldLabel>
-                      <Input id="guardianName" name="guardianName" required />
+                      <Input capitalize="words" id="guardianName" name="guardianName" required />
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="guardianPhone">Guardian phone</FieldLabel>
@@ -309,11 +309,11 @@ export function AdmissionPage() {
                 <FieldGroup className="grid grid-cols-1 md:grid-cols-2">
                   <Field>
                     <FieldLabel htmlFor="firstName">First name</FieldLabel>
-                    <Input id="firstName" name="firstName" required />
+                    <Input capitalize="words" id="firstName" name="firstName" required />
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="lastName">Last name</FieldLabel>
-                    <Input id="lastName" name="lastName" required />
+                    <Input capitalize="words" id="lastName" name="lastName" required />
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="dateOfBirth">Date of birth</FieldLabel>

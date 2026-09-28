@@ -24,6 +24,7 @@ import {
   feeStructureSchema,
   generateFeesSchema,
   generateRemainingForStudentSchema,
+  generateYearForStudentSchema,
   studentDiscountSchema,
   studentFeeAssignmentSchema,
 } from "@wellrun/shared";
@@ -77,6 +78,11 @@ export class FeesController {
   @Get("fees/dashboard")
   dashboard(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }) {
     return this.reports.dashboard(assertFeeAccess(req.user, "fees.view"), req.schoolScope);
+  }
+
+  @Get("fees/setup-status")
+  feeSetupStatus(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }) {
+    return this.catalog.setupStatus(assertFeeAccess(req.user, "fees.view"), req.schoolScope);
   }
 
   @Get("fees/heads")
@@ -139,6 +145,11 @@ export class FeesController {
     return this.assignments.updateOverrides(assertFeeAccess(req.user, "fees.update"), req.user.id, id, studentFeeAssignmentSchema.partial().parse(body));
   }
 
+  @Post("fees/assignments/sync-from-admission")
+  syncAssignmentsFromAdmission(@Req() req: { user: CurrentUser }) {
+    return this.assignments.syncFromAdmissions(assertFeeAccess(req.user, "fees.update"), req.user.id);
+  }
+
   @Get("fees/discounts")
   discounts(@Req() req: { user: CurrentUser }) {
     return this.assignments.discounts(assertFeeAccess(req.user, "fees.view"));
@@ -174,10 +185,10 @@ export class FeesController {
     return this.generation.generate(assertFeeAccess(req.user, "fees.generate"), req.user.id, generateFeesSchema.parse(body), req.schoolScope);
   }
 
-  @Post("fees/students/:studentId/generate-remaining")
-  generateRemainingForStudent(@Req() req: { user: CurrentUser }, @Param("studentId") studentId: string, @Body() body: unknown) {
-    const { academicYearId } = generateRemainingForStudentSchema.parse(body);
-    return this.generation.generateRemainingForStudent(assertFeeAccess(req.user, "fees.generate"), studentId, academicYearId);
+  @Post("fees/students/:studentId/generate-year")
+  generateYearForStudent(@Req() req: { user: CurrentUser }, @Param("studentId") studentId: string, @Body() body: unknown) {
+    const { academicYearId, from } = generateYearForStudentSchema.parse(body);
+    return this.generation.generateYearForStudent(assertFeeAccess(req.user, "fees.generate"), studentId, academicYearId, from);
   }
 
   @Post("fees/students/:studentId/generate-current")

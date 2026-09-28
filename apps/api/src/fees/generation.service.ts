@@ -176,9 +176,10 @@ export class FeeGenerationService {
    * one lump-sum payment rather than needing credit/advance-payment bookkeeping. Safe to call
    * repeatedly — periods already billed are reported as skipped, never duplicated.
    */
-  async generateRemainingForStudent(schoolId: string, studentId: string, academicYearId: string) {
+  async generateYearForStudent(schoolId: string, studentId: string, academicYearId: string, from: "year_start" | "this_month") {
     const year = await this.prisma.academicYear.findFirstOrThrow({ where: { id: academicYearId, schoolId } });
-    const periods = periodsThrough(currentBillingPeriod(), year.endsOn);
+    // "year_start" also bills months before the student joined, when the school charges the full year.
+    const periods = periodsThrough(from === "year_start" ? currentBillingPeriod(year.startsOn) : currentBillingPeriod(), year.endsOn);
     const results = [];
     for (const billingPeriod of periods) {
       const result = await this.generateForAssignment(schoolId, studentId, academicYearId, billingPeriod);

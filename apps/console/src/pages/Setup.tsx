@@ -4,12 +4,11 @@ import {
   INSTITUTE_TYPES,
   PROVINCES,
   SUBJECT_TEMPLATES,
-  normalizeAdmissionFields,
   type ClassTemplateId,
 } from "@wellrun/shared";
 import { BrandLogo, ErrorState, LoadingState } from "@wellrun/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { UserPlus } from "lucide-react";
+import { Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { FileUpload } from "../components/FileUpload";
@@ -18,22 +17,32 @@ import { FormSelect } from "@/components/form/form-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError } from "../lib/query";
-import { api, currentUser, setSession, type AdmissionField, type Setup } from "../lib/api";
+import { api, currentUser, setSession, type Setup } from "../lib/api";
 import { queryKeys } from "../lib/query";
 import { refreshSchoolContext } from "../lib/school-context";
-import { fileToDataUrl, nextSection, parseImportFile } from "../lib/setup-helpers";
+import { fileToDataUrl, nextSection } from "../lib/setup-helpers";
 
+// Step ids keep the numbers the API stores in school.setupStep, so a half-finished setup resumes
+// in the right place. Staff, admission form, student import and fees moved out of first-time setup.
 const STEPS = [
-  "Organization",
-  "Campus",
-  "Academic year",
-  "Classes",
-  "Staff",
-  "Subjects",
-  "Admission",
-  "Import students",
-  "Fee structure",
-];
+  { id: 1, label: "Organization", hint: "Name, contact, logo" },
+  { id: 2, label: "Campus", hint: "Main campus details" },
+  { id: 3, label: "Academic year", hint: "Session dates" },
+  { id: 4, label: "Classes", hint: "Grades and sections" },
+  { id: 6, label: "Subjects", hint: "Subject library" },
+] as const;
+
+type StepId = (typeof STEPS)[number]["id"];
+
+/** Where to resume from the API's saved step (it also records the retired steps 5, 7, 8, 9). */
+function resumeStep(saved: number): StepId {
+  if (saved >= 5) return 6;
+  return Math.max(1, saved) as StepId;
+}
+
+function stepIndex(id: StepId) {
+  return STEPS.findIndex((row) => row.id === id);
+}
 
 type GradePick = { name: string; selected: boolean; sections: string[] };
 
@@ -45,30 +54,23 @@ export function SetupPage() {
     queryKey: queryKeys.setup,
     queryFn: api.setup,
   });
-  const [step, setStep] = useState(1);
+  const [step, setStepState] = useState<StepId>(1);
+  // Furthest step reached — earlier steps can be revisited, later ones only by finishing this one.
+  const [reached, setReached] = useState<StepId>(1);
+  function setStep(next: StepId) {
+    setStepState(next);
+    setReached((current) => (stepIndex(next) > stepIndex(current) ? next : current));
+  }
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [template, setTemplate] = useState<ClassTemplateId>("pakistan_school");
   const [subjectTemplate, setSubjectTemplate] = useState<ClassTemplateId | "">("");
   const [grades, setGrades] = useState<GradePick[]>([]);
-  const [fields, setFields] = useState<AdmissionField[]>([]);
-  const [feeItems, setFeeItems] = useState<{ name: string; amountPkr: number; enabled: boolean }[]>([]);
-  const [importHeaders, setImportHeaders] = useState<string[]>([]);
-  const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
-  const [mapping, setMapping] = useState<Record<string, string>>({});
-  const [importFileName, setImportFileName] = useState("");
   const [saving, setSaving] = useState(false);
 
   function applySetup(next: Setup, syncStep = false) {
     if (!next.school) return;
-    if (syncStep && !next.school.setupCompleted) setStep(Math.min(next.school.setupStep || 1, 9));
-    const form = next.admissionForms[0];
-    setFields(normalizeAdmissionFields(form?.fields?.length ? form.fields : next.templates.admissionFields));
-    setFeeItems(
-      next.feeItems.length
-        ? next.feeItems
-        : next.templates.feeItems.map((name) => ({ name, amountPkr: 0, enabled: true })),
-    );
+    if (syncStep && !next.school.setupCompleted) setStep(resumeStep(next.school.setupStep || 1));
     setGrades((current) =>
       current.length
         ? current
@@ -151,6 +153,15 @@ export function SetupPage() {
   }
   if (data.school.setupCompleted) return <Navigate to="/" replace />;
 
+  async function finish() {
+    await run(async () => {
+      await api.completeSetup();
+      await refreshSchoolContext();
+      queryClient.setQueryData(queryKeys.setupStatus, { setupCompleted: true, setupStep: 10 });
+      navigate("/");
+    });
+  }
+
   const logo = data.school.media.find((m) => m.kind === "LOGO")?.url;
   const cover = data.school.media.find((m) => m.kind === "COVER")?.url;
   const yearId = data.years[0]?.id;
@@ -161,19 +172,48 @@ export function SetupPage() {
         <BrandLogo size="md" />
         <h1 className="mt-2 font-display text-4xl">Set up your school</h1>
         <p className="mt-2 text-sm text-muted-foreground">Finish these steps once. After that you manage everything from the dashboard.</p>
-        <ol className="mt-6 flex flex-wrap gap-2">
-          {STEPS.map((label, index) => (
-            <li key={label}>
-              <button
-                type="button"
-                onClick={() => setStep(index + 1)}
-                className={`rounded-full px-3 py-1.5 text-sm ${step === index + 1 ? "bg-indigo text-white" : "bg-surface"}`}
-              >
-                {index + 1}. {label}
-              </button>
-            </li>
-          ))}
-        </ol>
+        <nav aria-label="Setup progress" className="mt-8">
+          <p className="text-sm text-muted-foreground">
+            Step {stepIndex(step) + 1} of {STEPS.length}
+          </p>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
+            <div className="h-full rounded-full bg-indigo transition-all" style={{ width: `${((stepIndex(step) + 1) / STEPS.length) * 100}%` }} />
+          </div>
+          <ol className="mt-5 grid grid-cols-5 gap-2">
+            {STEPS.map((row, index) => {
+              const done = index < stepIndex(reached) || (index < stepIndex(step));
+              const current = row.id === step;
+              const reachable = index <= stepIndex(reached);
+              return (
+                <li key={row.id}>
+                  <button
+                    type="button"
+                    disabled={!reachable || current}
+                    aria-current={current ? "step" : undefined}
+                    onClick={() => setStep(row.id)}
+                    className="group flex w-full flex-col items-center gap-2 text-center disabled:cursor-default"
+                  >
+                    <span
+                      className={`flex size-9 items-center justify-center rounded-full border-2 text-sm font-semibold transition-colors ${
+                        current
+                          ? "border-indigo bg-indigo text-white"
+                          : done
+                            ? "border-indigo bg-indigo/10 text-indigo group-hover:bg-indigo/20"
+                            : "border-line bg-surface text-muted-foreground"
+                      }`}
+                    >
+                      {done && !current ? <Check className="size-4" aria-hidden /> : index + 1}
+                    </span>
+                    <span className={`text-xs sm:text-sm ${current ? "font-semibold text-foreground" : reachable ? "text-foreground" : "text-muted-foreground"}`}>
+                      {row.label}
+                    </span>
+                    <span className="hidden text-xs text-muted-foreground sm:block">{row.hint}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
         {error ? <p className="mt-4 text-sm text-danger">{error}</p> : null}
         {message ? <p className="mt-4 text-sm text-indigo">{message}</p> : null}
 
@@ -421,58 +461,19 @@ export function SetupPage() {
                     await api.applyClasses({ yearId, campusId: data.campus?.id, template, grades });
                     await refreshSchoolContext();
                     await load();
-                    setStep(5);
+                    setStep(6);
                   })
                 }
               >
-                Create selected classes
+                Save classes & continue
               </Button>
-              <Button type="button" variant="outline" onClick={() => setStep(5)}>
-                Skip
-              </Button>
+              {data.classes.length ? (
+                <Button type="button" variant="outline" onClick={() => setStep(6)}>
+                  Continue with {data.classes.length} existing classes
+                </Button>
+              ) : null}
             </div>
             {data.classes.length ? <p className="mt-4 text-sm text-muted-foreground">{data.classes.length} classes already created.</p> : null}
-          </section>
-        ) : null}
-
-        {step === 5 ? (
-          <section className="mt-8 rounded-3xl bg-surface p-6">
-            <h2 className="font-display text-xl">Create staff / teacher</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Add one or two people now. Full staff records live on the Staff page after setup.</p>
-            <form
-              className="mt-4 grid grid-cols-2 gap-3"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const formEl = event.currentTarget;
-                const form = new FormData(formEl);
-                void run(async () => {
-                  await api.createStaff({
-                    name: String(form.get("name")),
-                    title: String(form.get("title") || "Teacher"),
-                    email: String(form.get("email") || ""),
-                    phone: String(form.get("phone") || ""),
-                  });
-                  formEl.reset();
-                  setMessage("Staff saved.");
-                });
-              }}
-            >
-              <Field name="name" label="Name" required />
-              <Field name="title" label="Title" defaultValue="Teacher" />
-              <Field name="email" label="Email" />
-              <Field name="phone" label="Phone" />
-              <Button type="submit" loading={saving} className="col-span-2" icon={<UserPlus size={18} />}>
-                Add staff
-              </Button>
-            </form>
-            <div className="mt-4 flex gap-2">
-              <Button type="button" onClick={() => setStep(6)}>
-                Continue
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setStep(6)}>
-                Skip
-              </Button>
-            </div>
           </section>
         ) : null}
 
@@ -530,174 +531,23 @@ export function SetupPage() {
                 <li className="px-4 py-3 text-sm text-muted-foreground">No subjects yet. Choose a template or add one.</li>
               )}
             </ul>
-            <div className="mt-6 flex gap-2">
-              <Button type="button" onClick={() => setStep(7)}>
-                Continue
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <Button type="button" loading={saving} onClick={() => void finish()}>
+                Finish setup
               </Button>
-              <Button type="button" variant="outline" onClick={() => setStep(7)}>
-                Skip
-              </Button>
+              <p className="text-sm text-muted-foreground">
+                {data.subjects.length ? `${data.subjects.length} subjects ready.` : "You can add subjects later from Classes & subjects."} Next, the dashboard helps you set up fees.
+              </p>
             </div>
           </section>
         ) : null}
 
-        {step === 7 ? (
-          <section className="mt-8 rounded-3xl bg-surface p-6">
-            <h2 className="font-display text-xl">Admission</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Applications already include applicant, family, class, documents, and fees. You can continue without editing a custom form.
-            </p>
-            <div className="mt-6 flex gap-2">
-              <Button type="button" onClick={() => setStep(8)}>
-                Continue
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setStep(8)}>
-                Skip
-              </Button>
-            </div>
-          </section>
-        ) : null}
-
-        {step === 8 ? (
-          <section className="mt-8 rounded-3xl bg-surface p-6">
-            <h2 className="font-display text-xl">Import existing students</h2>
-            <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-              <p>Use this if the school already has a student list. You can skip and add students later from the Students page.</p>
-              <p>1. Export or save the list as CSV, Excel, or JSON.</p>
-              <p>2. Upload the file. We read the first sheet or the column headers.</p>
-              <p>3. Match each admission form field to a column. Leave a field on Skip if that column is not in the file.</p>
-              <p>4. Import. Students with the same admission number are ignored so you can retry safely.</p>
-            </div>
-            <div className="mt-5">
-              <FileUpload
-                label="Student file"
-                accept=".csv,.json,.xlsx,.xls"
-                hint="CSV, Excel, or JSON"
-                fileName={importFileName}
-                onFile={async (file) => {
-                  setImportFileName(file.name);
-                  const parsed = await parseImportFile(file);
-                  setImportHeaders(parsed.headers);
-                  setImportRows(parsed.rows);
-                  const auto: Record<string, string> = {};
-                  for (const field of fields) {
-                    const hit = parsed.headers.find(
-                      (h) => h.toLowerCase().replace(/\s+/g, "") === field.key.toLowerCase() || h.toLowerCase() === field.label.toLowerCase(),
-                    );
-                    if (hit) auto[field.key] = hit;
-                  }
-                  setMapping(auto);
-                }}
-              />
-            </div>
-            {importHeaders.length ? (
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                {fields.map((field) => (
-                  <label key={field.key} className="text-sm font-medium">
-                    {field.label}
-                    <FormSelect
-                      value={mapping[field.key] || "skip"}
-                      onValueChange={(value) => setMapping((m) => ({ ...m, [field.key]: value === "skip" || !value ? "" : value }))}
-                      options={[
-                        { value: "skip", label: "Skip" },
-                        ...importHeaders.map((header) => ({ value: header, label: header })),
-                      ]}
-                    />
-                  </label>
-                ))}
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="col-span-2"
-                  loading={saving}
-                  onClick={() =>
-                    void run(async () => {
-                      const result = await api.importStudents({ rows: importRows, mapping });
-                      setMessage(`Imported ${result.count} students.`);
-                    })
-                  }
-                >
-                  Import {importRows.length} rows
-                </Button>
-              </div>
-            ) : null}
-            <div className="mt-6 flex gap-2">
-              <Button type="button" onClick={() => setStep(9)}>
-                Continue
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setStep(9)}>
-                Skip
-              </Button>
-            </div>
-          </section>
-        ) : null}
-
-        {step === 9 ? (
-          <section className="mt-8 rounded-3xl bg-surface p-6">
-            <h2 className="font-display text-xl">Fee structure</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Edit amounts, remove a fee, or add picnic / event fees. You can finish this later from Fee structure.</p>
-            <ul className="mt-4 space-y-2">
-              {feeItems.map((item, index) => (
-                <li key={`${item.name}-${index}`} className="flex items-center gap-2">
-                  <input
-                    value={item.name}
-                    onChange={(e) => setFeeItems((rows) => rows.map((row, i) => (i === index ? { ...row, name: e.target.value } : row)))}
-                    className="h-11 flex-1 rounded-xl border border-line px-3"
-                  />
-                  <input
-                    type="number"
-                    value={item.amountPkr}
-                    onChange={(e) =>
-                      setFeeItems((rows) => rows.map((row, i) => (i === index ? { ...row, amountPkr: Number(e.target.value) } : row)))
-                    }
-                    className="h-11 w-32 rounded-xl border border-line px-3"
-                  />
-                  <button type="button" className="text-sm text-danger" onClick={() => setFeeItems((rows) => rows.filter((_, i) => i !== index))}>
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <button
-              type="button"
-              className="mt-3 text-sm text-indigo"
-              onClick={() => setFeeItems((rows) => [...rows, { name: "New fee", amountPkr: 0, enabled: true }])}
-            >
-              Add fee
-            </button>
-            <div className="mt-6 flex gap-2">
-              <Button
-                type="button"
-                loading={saving}
-                onClick={() =>
-                  void run(async () => {
-                    await api.saveFees({ items: feeItems });
-                    await api.completeSetup();
-                    await refreshSchoolContext();
-                    queryClient.setQueryData(queryKeys.setupStatus, { setupCompleted: true, setupStep: 9 });
-                    navigate("/");
-                  })
-                }
-              >
-                Save and finish
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                loading={saving}
-                onClick={() =>
-                  void run(async () => {
-                    await api.completeSetup();
-                    await refreshSchoolContext();
-                    queryClient.setQueryData(queryKeys.setupStatus, { setupCompleted: true, setupStep: 9 });
-                    navigate("/");
-                  })
-                }
-              >
-                Skip and finish
-              </Button>
-            </div>
-          </section>
+        {step > 1 ? (
+          <div className="mt-4">
+            <Button type="button" variant="ghost" onClick={() => setStep(STEPS[stepIndex(step) - 1].id)}>
+              ← Back to {STEPS[stepIndex(step) - 1].label}
+            </Button>
+          </div>
         ) : null}
       </div>
     </main>

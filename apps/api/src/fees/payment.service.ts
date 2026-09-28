@@ -1,11 +1,12 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type { CreatePaymentInput } from "@wellrun/shared";
 import { audit } from "../common/audit";
 import type { SchoolScope } from "../common/school-scope";
 import { nextSchoolNumber } from "../common/sequence";
 import { PrismaService } from "../prisma/prisma.service";
 import { allocateOldestFirst } from "./billing";
+import { applyCreditToInvoices } from "./credit.service";
 import { refreshInvoiceMoney, slimStudent } from "./invoice-writer";
 import { invoiceViewInclude, periodLabel, toInvoiceView } from "./invoice-view";
 import { clampPkr, toPkr } from "./money";
@@ -201,9 +202,46 @@ export class FeePaymentService {
     return rows.reduce((sum, row) => sum + Math.max(row.balanceAmountPkr, 0), 0);
   }
 
+  /** The same answer for a repeated submit (double click / retry) carrying the same requestId. */
+  private async existingPaymentResult(schoolId: string, requestId: string) {
+    const existing = await this.prisma.payment.findFirst({
+      where: { schoolId, requestId },
+      include: { receipt: { select: { id: true, receiptNumber: true } }, credits: { select: { amountPkr: true } } },
+    });
+    if (!existing) return null;
+    return {
+      creditOnly: false as const,
+      id: existing.id,
+      paymentNumber: existing.paymentNumber,
+      receiptId: existing.receipt?.id ?? "",
+      receiptNumber: existing.receipt?.receiptNumber ?? existing.receiptNo,
+      amountPkr: existing.amountPkr,
+      creditPkr: existing.credits.reduce((sum, row) => sum + row.amountPkr, 0),
+      creditAppliedPkr: 0,
+    };
+  }
+
   async pay(schoolId: string, actorId: string, input: CreatePaymentInput) {
+    if (input.requestId) {
+      const repeat = await this.existingPaymentResult(schoolId, input.requestId);
+      if (repeat) return repeat;
+    }
+    try {
+      return await this.recordPayment(schoolId, actorId, input);
+    } catch (error) {
+      // Two identical submits racing: the loser returns the winner's payment.
+      if (input.requestId && error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const repeat = await this.existingPaymentResult(schoolId, input.requestId);
+        if (repeat) return repeat;
+      }
+      throw error;
+    }
+  }
+
+  private async recordPayment(schoolId: string, actorId: string, input: CreatePaymentInput) {
     const amount = toPkr(input.amountPkr);
-    if (amount <= 0) throw new BadRequestException("Enter a payment amount");
+    const useCredit = toPkr(input.useCreditPkr ?? 0);
+    if (amount <= 0 && useCredit <= 0) throw new BadRequestException("Enter a payment amount");
     const specified = input.allocations?.length
       ? input.allocations
       : input.invoiceId
@@ -227,9 +265,19 @@ export class FeePaymentService {
       }
       const asOf = input.paymentDate ? new Date(input.paymentDate) : new Date();
       const previousBalancePkr = await this.outstandingFor(tx, schoolId, studentId);
-      const withLate = open;
-      const balances = open
-        .filter((row) => row.balanceAmountPkr > 0)
+      // Credit first, then cash for whatever is still due on the chosen invoices.
+      const creditAppliedPkr = useCredit
+        ? await applyCreditToInvoices(tx, { schoolId, studentId, invoiceIds: open.map((row) => row.id), maxPkr: useCredit, actorId })
+        : 0;
+      if (amount <= 0) {
+        if (!creditAppliedPkr) throw new BadRequestException("No credit could be applied to these invoices");
+        return { creditOnly: true as const, creditAppliedPkr };
+      }
+      const withLate = creditAppliedPkr
+        ? await tx.invoice.findMany({ where: { id: { in: open.map((row) => row.id) } }, orderBy: { dueOn: "asc" } })
+        : open;
+      const balances = withLate
+        .filter((row) => row.balanceAmountPkr > 0 && PAYABLE.includes(row.status as (typeof PAYABLE)[number]))
         .map((row) => ({ id: row.id, balancePkr: row.balanceAmountPkr }));
       let allocations: { invoiceId: string; amountPkr: number }[];
       let leftoverPkr = 0;
@@ -270,6 +318,7 @@ export class FeePaymentService {
           collectedById: actorId,
           status: "COMPLETED",
           receiptNo: receiptNumber,
+          requestId: input.requestId || null,
           paidAt: asOf,
           allocations: { create: allocations },
         },
@@ -323,8 +372,21 @@ export class FeePaymentService {
           }
         }
       }
-      return { id: created.id, paymentNumber, receiptId: receipt.id, receiptNumber, amountPkr: amount, creditPkr: leftoverPkr };
+      return {
+        creditOnly: false as const,
+        id: created.id,
+        paymentNumber,
+        receiptId: receipt.id,
+        receiptNumber,
+        amountPkr: amount,
+        creditPkr: leftoverPkr,
+        creditAppliedPkr,
+      };
     });
+    if (payment.creditOnly) {
+      await audit(this.prisma, { schoolId, actorId, action: "credit_applied", entity: "student", entityId: input.studentId ?? "", summary: `${payment.creditAppliedPkr}` });
+      return payment;
+    }
     await audit(this.prisma, {
       schoolId,
       actorId,

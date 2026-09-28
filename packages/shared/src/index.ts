@@ -55,7 +55,9 @@ export const createPaymentSchema = z.object({
     .array(z.object({ invoiceId: z.string(), amountPkr: z.number().int().positive() }))
     .optional(),
   studentId: z.string().optional(),
-  amountPkr: z.number().int().positive(),
+  amountPkr: z.number().int().min(0),
+  useCreditPkr: z.number().int().min(0).optional(),
+  requestId: z.string().max(64).optional(),
   method: z.string().default("cash"),
   referenceNumber: z.string().optional(),
   notes: z.string().optional(),
@@ -153,6 +155,11 @@ export const applyFeeCatalogSchema = z.object({
 
 export const generateRemainingForStudentSchema = z.object({
   academicYearId: z.string().min(1),
+});
+
+export const generateYearForStudentSchema = z.object({
+  academicYearId: z.string().min(1),
+  from: z.enum(["year_start", "this_month"]).default("this_month"),
 });
 
 export const feeSettingsSchema = z.object({

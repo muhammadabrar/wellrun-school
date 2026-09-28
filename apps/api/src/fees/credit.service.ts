@@ -12,52 +12,69 @@ import { minPkr, toPkr } from "./money";
 type ApplyCreditInput = z.infer<typeof applyCreditSchema>;
 
 /**
- * Uses a student's unused credit (e.g. an earlier overpayment) against a newly issued invoice, oldest credit first.
- * Recorded as a "credit" payment so the invoice shows: Fee 5,200 · Credit −800 · Payable 4,400.
+ * Spends a student's unused credit (e.g. an earlier overpayment) on the given invoices, oldest due
+ * first and oldest credit first, up to `maxPkr`. Recorded as one "credit" payment so each invoice
+ * reads: Fee 5,200 · Credit −800 · Payable 4,400. Returns the amount applied.
  */
-export async function applyAvailableCredit(
+export async function applyCreditToInvoices(
   tx: Prisma.TransactionClient,
-  input: { schoolId: string; studentId: string; invoiceId: string; actorId: string | null },
+  input: { schoolId: string; studentId: string; invoiceIds: string[]; maxPkr?: number; actorId: string | null },
 ) {
   const credits = await tx.studentCredit.findMany({
     where: { schoolId: input.schoolId, studentId: input.studentId, remainingAmountPkr: { gt: 0 }, status: { in: ["AVAILABLE", "PARTIALLY_USED"] } },
     orderBy: { createdAt: "asc" },
   });
-  if (!credits.length) return 0;
-  const invoice = await tx.invoice.findUniqueOrThrow({ where: { id: input.invoiceId } });
-  let due = invoice.balanceAmountPkr;
-  let applied = 0;
+  const available = credits.reduce((sum, row) => sum + row.remainingAmountPkr, 0);
+  const budget = Math.min(available, input.maxPkr ?? available);
+  if (budget <= 0 || !input.invoiceIds.length) return 0;
+  const invoices = await tx.invoice.findMany({
+    where: { id: { in: input.invoiceIds }, schoolId: input.schoolId, status: { in: ["ISSUED", "PARTIALLY_PAID", "OVERDUE"] } },
+    orderBy: { dueOn: "asc" },
+  });
+  const { allocations } = allocateOldestFirst(
+    invoices.map((row) => ({ id: row.id, balancePkr: row.balanceAmountPkr })),
+    budget,
+  );
+  const applied = allocations.reduce((sum, row) => sum + row.amountPkr, 0);
+  if (applied <= 0) return 0;
+  let toTake = applied;
   for (const credit of credits) {
-    if (due <= 0) break;
-    const take = Math.min(credit.remainingAmountPkr, due);
+    if (toTake <= 0) break;
+    const take = Math.min(credit.remainingAmountPkr, toTake);
     const remaining = credit.remainingAmountPkr - take;
     await tx.studentCredit.update({
       where: { id: credit.id },
       data: { remainingAmountPkr: remaining, status: remaining <= 0 ? "USED" : "PARTIALLY_USED" },
     });
-    due -= take;
-    applied += take;
+    toTake -= take;
   }
-  if (applied <= 0) return 0;
   const paymentNumber = await nextSchoolNumber(tx, input.schoolId, "PAY");
   await tx.payment.create({
     data: {
       schoolId: input.schoolId,
-      campusId: invoice.campusId,
+      campusId: invoices[0].campusId,
       studentId: input.studentId,
-      invoiceId: invoice.id,
+      invoiceId: allocations[0].invoiceId,
       paymentNumber,
       amountPkr: applied,
       method: "credit",
-      notes: "Credit carried forward from an earlier payment",
+      notes: "Paid from the student's credit balance",
       collectedById: input.actorId,
       status: "COMPLETED",
       receiptNo: paymentNumber,
-      allocations: { create: [{ invoiceId: invoice.id, amountPkr: applied }] },
+      allocations: { create: allocations },
     },
   });
-  await refreshInvoiceMoney(tx, invoice.id);
+  for (const allocation of allocations) await refreshInvoiceMoney(tx, allocation.invoiceId);
   return applied;
+}
+
+/** Credit carried onto a freshly generated invoice. */
+export function applyAvailableCredit(
+  tx: Prisma.TransactionClient,
+  input: { schoolId: string; studentId: string; invoiceId: string; actorId: string | null },
+) {
+  return applyCreditToInvoices(tx, { ...input, invoiceIds: [input.invoiceId] });
 }
 
 @Injectable()

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EmptyState, ErrorState, LoadingState } from "@wellrun/ui";
-import { ChevronDownIcon } from "lucide-react";
+import { CheckCircle2, ChevronDownIcon } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DatePicker } from "@/components/form/date-picker";
@@ -72,12 +72,25 @@ function CollectPaymentForm({
   const amountDue = chosen.reduce((sum, row) => sum + row.balancePkr, 0);
   const allSelected = selection === ALL || chosen.length === open.length;
 
+  const creditAvailable = fees.data?.creditPkr ?? 0;
+  const [useCredit, setUseCredit] = useState(true);
+  const creditUsed = useCredit ? Math.min(creditAvailable, amountDue) : 0;
+  const toCollect = amountDue - creditUsed;
+
   const [amount, setAmount] = useState<string | null>(null);
   const [method, setMethod] = useState("cash");
   const [paymentDate, setPaymentDate] = useState(todayIso());
   const [error, setError] = useState<string | null>(null);
-  const amountValue = amount ?? String(amountDue || "");
+  // One id per dialog: if Confirm is pressed twice (or the request is retried), the server returns
+  // the first payment instead of recording a second one.
+  const [requestId] = useState(() => crypto.randomUUID());
+  // "saving" covers the whole hand-off, not just the HTTP call, so the button never looks idle
+  // between the payment being recorded and the receipt opening.
+  const [phase, setPhase] = useState<"form" | "saving" | "done">("form");
+  const [doneMessage, setDoneMessage] = useState("");
+  const amountValue = amount ?? String(toCollect || "");
   const paid = Number(amountValue) || 0;
+  const busy = phase !== "form";
 
   const collect = useMutation({ mutationFn: api.collectFeePayment });
 
@@ -85,53 +98,84 @@ function CollectPaymentForm({
     const onKey = (event: KeyboardEvent) => {
       // Escape inside the invoice dropdown should only close the dropdown, not the whole dialog.
       if (document.querySelector('[data-slot="popover-content"]')) return;
-      if (event.key === "Escape" && !collect.isPending) onClose();
+      if (event.key === "Escape" && phase !== "saving") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [collect.isPending, onClose]);
+  }, [phase, onClose]);
+
+  function refreshCaches() {
+    void queryClient.invalidateQueries({ queryKey: ["fees"] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.student(studentId) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.studentsRoot });
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
     const form = new FormData(event.currentTarget);
     setError(null);
     if (!chosen.length) {
       setError("Choose at least one invoice.");
       return;
     }
-    if (paid <= 0) {
+    if (paid <= 0 && creditUsed <= 0) {
       setError("Enter the amount received.");
       return;
     }
+    setPhase("saving");
     try {
       const result = await collect.mutateAsync({
         studentId,
         ...(chosen.length === 1 ? { invoiceId: chosen[0].id } : { invoiceIds: chosen.map((row) => row.id) }),
         amountPkr: paid,
+        useCreditPkr: creditUsed || undefined,
+        requestId,
         method,
         paymentDate,
         referenceNumber: String(form.get("referenceNumber") || ""),
         notes: String(form.get("notes") || ""),
       });
-      await queryClient.invalidateQueries({ queryKey: ["fees"] });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.student(studentId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.studentsRoot });
-      onClose();
-      if (onPaid) onPaid(result);
-      else navigate(`/fees/receipt/${result.receiptId}?new=1`);
+      refreshCaches();
+      if (result.creditOnly) {
+        setDoneMessage(`${pkr(result.creditAppliedPkr)} paid from ${studentName}'s credit. No cash was collected, so there's no receipt.`);
+        setPhase("done");
+        return;
+      }
+      if (onPaid) {
+        onClose();
+        onPaid(result);
+        return;
+      }
+      setDoneMessage(`Payment recorded · receipt ${result.receiptNumber}. Opening receipt…`);
+      setPhase("done");
+      navigate(`/fees/receipt/${result.receiptId}?new=1`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not record this payment.");
+      setPhase("form");
+      setError(err instanceof Error ? err.message : "Could not record this payment. Nothing was charged — try again.");
     }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="collect-title">
-      <button type="button" className="fixed inset-0 bg-ink/40" aria-label="Close" onClick={() => !collect.isPending && onClose()} />
+      <button type="button" className="fixed inset-0 bg-ink/40" aria-label="Close" onClick={() => phase !== "saving" && onClose()} />
       <div className="relative my-8 w-full max-w-lg rounded-3xl bg-surface p-6 shadow-lg">
         <h2 id="collect-title" className="font-display text-2xl">
           Collect payment
         </h2>
-        {fees.isPending ? (
+        {phase === "done" ? (
+          <div className="mt-5 space-y-4" role="status">
+            <div className="flex items-start gap-3 rounded-2xl bg-success/10 p-4">
+              <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden />
+              <p className="text-sm">{doneMessage}</p>
+            </div>
+            <div className="flex justify-end">
+              <Button type="button" onClick={onClose}>
+                Close
+              </Button>
+            </div>
+          </div>
+        ) : fees.isPending ? (
           <div className="mt-4">
             <LoadingState variant="form" />
           </div>
@@ -149,15 +193,21 @@ function CollectPaymentForm({
             </div>
           </div>
         ) : (
-          <form onSubmit={(event) => void onSubmit(event)} className="mt-5 space-y-5">
+          <form onSubmit={(event) => void onSubmit(event)} className="mt-5">
+            <fieldset disabled={busy} className="space-y-5">
             <dl className="grid grid-cols-2 gap-4 rounded-2xl bg-paper p-4 text-sm">
               <div>
                 <dt className="text-muted-foreground">Student</dt>
                 <dd className="font-medium">{studentName}</dd>
               </div>
               <div>
-                <dt className="text-muted-foreground">Amount due</dt>
-                <dd className="font-display text-xl tabular-nums">{pkr(amountDue)}</dd>
+                <dt className="text-muted-foreground">{creditUsed ? "To collect" : "Amount due"}</dt>
+                <dd className="font-display text-xl tabular-nums">{pkr(toCollect)}</dd>
+                {creditUsed ? (
+                  <dd className="text-xs text-muted-foreground">
+                    {pkr(amountDue)} due − {pkr(creditUsed)} credit
+                  </dd>
+                ) : null}
               </div>
             </dl>
 
@@ -175,24 +225,42 @@ function CollectPaymentForm({
               />
             </Field>
 
+            {creditAvailable > 0 ? (
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-success/40 bg-success/5 px-3 py-2.5 text-sm">
+                <Checkbox
+                  checked={useCredit}
+                  onCheckedChange={(checked) => {
+                    setUseCredit(checked === true);
+                    setAmount(null);
+                  }}
+                />
+                <span className="flex-1">
+                  Use credit balance <span className="text-muted-foreground">({pkr(creditAvailable)} available)</span>
+                </span>
+                {useCredit ? <span className="font-medium tabular-nums text-success">−{pkr(creditUsed)}</span> : null}
+              </label>
+            ) : null}
+
             <Field>
-              <FieldLabel htmlFor="collect-amount">Amount paid (Rs.)</FieldLabel>
+              <FieldLabel htmlFor="collect-amount">Amount received (Rs.)</FieldLabel>
               <Input
                 id="collect-amount"
                 type="number"
-                min={1}
+                min={0}
                 step={1}
-                required
+                required={!creditUsed}
                 autoFocus
                 value={amountValue}
                 onChange={(event) => setAmount(event.target.value)}
               />
-              {paid > 0 && paid < amountDue ? (
+              {paid > 0 && paid < toCollect ? (
                 <FieldDescription>
-                  Partial payment — {pkr(amountDue - paid)} will stay due{chosen.length === 1 ? " on this invoice" : ". Oldest invoices are cleared first"}.
+                  Partial payment — {pkr(toCollect - paid)} will stay due{chosen.length === 1 ? " on this invoice" : ". Oldest invoices are cleared first"}.
                 </FieldDescription>
-              ) : paid > amountDue ? (
-                <FieldDescription>{pkr(paid - amountDue)} extra will be saved as credit and taken off the next invoice.</FieldDescription>
+              ) : paid > toCollect ? (
+                <FieldDescription>{pkr(paid - toCollect)} extra will be saved as credit and used on the next invoice.</FieldDescription>
+              ) : !paid && creditUsed ? (
+                <FieldDescription>Fully covered by credit — no cash to collect.</FieldDescription>
               ) : null}
             </Field>
 
@@ -229,12 +297,13 @@ function CollectPaymentForm({
                 {error}
               </p>
             ) : null}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={onClose} disabled={collect.isPending}>
+            </fieldset>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
                 Cancel
               </Button>
-              <Button type="submit" loading={collect.isPending} disabled={!chosen.length}>
-                Confirm payment · {pkr(paid)}
+              <Button type="submit" loading={busy} disabled={busy || !chosen.length}>
+                {busy ? "Recording payment…" : paid ? `Confirm payment · ${pkr(paid)}` : `Pay ${pkr(creditUsed)} from credit`}
               </Button>
             </div>
           </form>

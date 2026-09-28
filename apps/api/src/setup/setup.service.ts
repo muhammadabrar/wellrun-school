@@ -667,7 +667,8 @@ export class SetupService {
   async complete(schoolId: string, actorId: string) {
     await this.writable(schoolId);
     await this.seedAdmissionForm(schoolId);
-    await this.seedFees(schoolId);
+    // Fees aren't seeded with Rs. 0 placeholders any more — the dashboard's "Set up fees" checklist
+    // walks the school through adding real fee heads and class fee structures.
     const school = await this.prisma.school.update({
       where: { id: schoolId },
       data: { setupCompleted: true, setupStep: 10, l2Active: true },

@@ -716,6 +716,7 @@ model Payment {
   collectedBy     User?           @relation("PaymentCollector", fields: [collectedById], references: [id], onDelete: SetNull)
   status          PaymentStatus   @default(COMPLETED)
   receiptNo       String
+  requestId       String?
   paidAt          DateTime        @default(now())
   allocations     PaymentAllocation[]
   receipt         Receipt?
@@ -723,6 +724,7 @@ model Payment {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
+  @@unique([schoolId, requestId])
   @@unique([schoolId, receiptNo])
   @@index([schoolId])
   @@index([studentId])

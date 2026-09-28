@@ -168,11 +168,11 @@ function StudentEditForm({ student }: { student: StudentProfile }) {
           <FieldGroup className="grid grid-cols-1 md:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="student-first-name">First name</FieldLabel>
-              <Input id="student-first-name" value={firstName} onChange={(event) => setFirstName(event.target.value)} required />
+              <Input capitalize="words" id="student-first-name" value={firstName} onChange={(event) => setFirstName(event.target.value)} required />
             </Field>
             <Field>
               <FieldLabel htmlFor="student-last-name">Last name</FieldLabel>
-              <Input id="student-last-name" value={lastName} onChange={(event) => setLastName(event.target.value)} required />
+              <Input capitalize="words" id="student-last-name" value={lastName} onChange={(event) => setLastName(event.target.value)} required />
             </Field>
             <Field>
               <FieldLabel htmlFor="student-dob">Date of birth</FieldLabel>

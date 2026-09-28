@@ -133,7 +133,7 @@ export class FeeCatalogService {
         notes: true,
         year: { select: { id: true, name: true } },
         items: {
-          select: { id: true, feeHeadId: true, amountPkr: true, isOptional: true, taxable: true, sortOrder: true, feeHead: { select: { name: true, code: true } } },
+          select: { id: true, feeHeadId: true, amountPkr: true, isOptional: true, taxable: true, sortOrder: true, feeHead: { select: { name: true, code: true, frequency: true } } },
           orderBy: { sortOrder: "asc" },
         },
       },
@@ -329,6 +329,33 @@ export class FeeCatalogService {
       summary: `${created} created, ${updated} updated`,
     });
     return { created, updated };
+  }
+
+  /** What's still missing before a school can bill: fee heads, and classes with no fee structure. */
+  async setupStatus(schoolId: string, scope: SchoolScope = {}) {
+    const year = scope.yearId
+      ? { id: scope.yearId }
+      : await this.prisma.academicYear.findFirst({ where: { schoolId, current: true }, select: { id: true } });
+    const [feeHeads, classes, structures] = await Promise.all([
+      this.prisma.feeHead.count({ where: { schoolId, active: true } }),
+      this.prisma.class.findMany({
+        where: { schoolId, ...(year ? { yearId: year.id } : {}), ...(scope.campusId ? { campusId: scope.campusId } : {}) },
+        select: { name: true },
+      }),
+      this.prisma.feeStructure.findMany({
+        where: {
+          schoolId,
+          status: "ACTIVE",
+          items: { some: {} },
+          ...(year ? { academicYearId: year.id } : {}),
+          ...(scope.campusId ? { OR: [{ campusId: scope.campusId }, { campusId: null }] } : {}),
+        },
+        select: { className: true },
+      }),
+    ]);
+    const classNames = [...new Set(classes.map((row) => row.name))];
+    const withStructure = new Set(structures.map((row) => row.className));
+    return { feeHeads, classes: classNames.length, classesWithoutStructure: classNames.filter((name) => !withStructure.has(name)) };
   }
 
   private async assertYear(schoolId: string, academicYearId: string) {

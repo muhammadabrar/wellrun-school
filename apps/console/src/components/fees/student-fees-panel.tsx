@@ -3,11 +3,15 @@ import { Dialog, EmptyState, ErrorState, LoadingState } from "@wellrun/ui";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { api, type FeeInvoiceView } from "@/lib/api";
 import { pkr } from "@/lib/format";
 import { queryKeys } from "@/lib/query";
 import { readYearId } from "@/lib/school-context";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { useCampus } from "@/hooks/use-campus";
 import { CollectPaymentDialog } from "./collect-payment-dialog";
 import { FeeStatusBadge, InvoiceBreakdown, PdfButton, formatDate, isPayable, methodLabel } from "./fee-ui";
 
@@ -15,17 +19,22 @@ export function StudentFeesPanel({ studentId, studentName, canMutate }: { studen
   const queryClient = useQueryClient();
   const { data, isPending, isError, refetch } = useQuery({ queryKey: queryKeys.studentFees(studentId), queryFn: () => api.studentFees(studentId) });
   const [collectFor, setCollectFor] = useState<{ invoiceId: string | null } | null>(null);
-  const [generate, setGenerate] = useState<"current" | "remaining" | null>(null);
+  const [generate, setGenerate] = useState<"current" | "year" | null>(null);
+  const [yearFrom, setYearFrom] = useState<"year_start" | "this_month">("year_start");
   const [message, setMessage] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const { years } = useCampus();
   const yearId = data?.assignment?.academicYearId || readYearId();
+  const year = years.find((row) => row.id === yearId) ?? null;
+  const yearRange = year ? `${monthYear(year.startsOn)} – ${monthYear(year.endsOn)}` : "the academic year";
 
   const generateMut = useMutation({
-    mutationFn: async (kind: "current" | "remaining") => {
-      if (kind === "remaining") {
-        const result = await api.generateRemainingForStudent(studentId, yearId);
+    mutationFn: async (kind: "current" | "year") => {
+      if (kind === "year") {
+        const result = await api.generateYearForStudent(studentId, yearId, yearFrom);
         return result.createdInvoiceIds.length
-          ? `Created ${result.createdInvoiceIds.length} invoice(s) for the rest of the year, ${pkr(result.totalPkr)} in total.`
-          : "Every month this year is already invoiced.";
+          ? `Created ${result.createdInvoiceIds.length} invoice(s), ${pkr(result.totalPkr)} in total.`
+          : "Every month in that range is already invoiced.";
       }
       const result = await api.generateCurrentForStudent(studentId, yearId);
       if (result.created) return `This month's invoice was created: ${pkr(result.totalPkr ?? 0)}.`;
@@ -45,50 +54,63 @@ export function StudentFeesPanel({ studentId, studentName, canMutate }: { studen
     return <ErrorState title="Could not load fees" description="We couldn't load this student's invoices. Try again." onRetry={() => void refetch()} />;
   }
 
-  const current = data.currentInvoice;
-  const others = data.invoices.filter((row) => row.id !== current?.id);
-  const hasOpen = data.invoices.some((row) => isPayable(row.status) && row.balancePkr > 0);
-  const lastReceipt = data.payments.find((row) => row.status === "COMPLETED" && row.receiptId);
+  const unpaid = data.invoices
+    .filter((row) => isPayable(row.status) && row.balancePkr > 0)
+    .sort((x, y) => new Date(x.dueOn).getTime() - new Date(y.dueOn).getTime());
+  const oldest = unpaid[0];
+  const hasOpen = unpaid.length > 0;
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
+        <Card className={data.overduePkr ? "ring-1 ring-danger/30" : undefined}>
           <CardHeader>
-            <CardDescription>Outstanding</CardDescription>
+            <CardDescription>Total due now</CardDescription>
             <CardTitle className="font-display text-3xl tabular-nums">{pkr(data.outstandingPkr)}</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {data.overduePkr ? `${pkr(data.overduePkr)} is overdue` : data.outstandingPkr ? "Nothing overdue yet" : "All paid up"}
+            <p className={`text-sm ${data.overduePkr ? "text-danger" : "text-muted-foreground"}`}>
+              {!hasOpen
+                ? "All paid up"
+                : `${unpaid.length} unpaid invoice${unpaid.length === 1 ? "" : "s"} · oldest ${oldest.periodLabel || oldest.title}${oldest.status === "OVERDUE" ? ", overdue" : ""}`}
             </p>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
-            <CardDescription>Credit balance</CardDescription>
-            <CardTitle className="font-display text-3xl tabular-nums">{pkr(data.creditPkr)}</CardTitle>
-            <p className="text-sm text-muted-foreground">{data.creditPkr ? "Taken off the next invoice automatically" : "No advance or extra payment"}</p>
+            <CardDescription>Credit available</CardDescription>
+            <CardTitle className={`font-display text-3xl tabular-nums ${data.creditPkr ? "text-success" : ""}`}>{pkr(data.creditPkr)}</CardTitle>
+            <p className="text-sm text-muted-foreground">{data.creditPkr ? "Extra paid earlier — used on the next payment" : "Nothing paid in advance"}</p>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
-            <CardDescription>Fee structure</CardDescription>
+            <CardDescription>Fee plan</CardDescription>
             <CardTitle className="text-xl">{data.assignment?.structureName ?? "Not assigned"}</CardTitle>
-            <p className="text-sm text-muted-foreground">{data.assignment ? "Used for monthly invoices" : "Assign one to bill this student"}</p>
+            <p className="text-sm text-muted-foreground">
+              {!data.assignment
+                ? "Assign a class fee structure to bill this student"
+                : data.assignment.hasCustomFees
+                  ? "Custom amounts agreed at admission"
+                  : "Class fee amounts"}
+            </p>
           </CardHeader>
         </Card>
       </div>
 
       {canMutate ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button type="button" disabled={!hasOpen} onClick={() => setCollectFor({ invoiceId: null })}>
             Collect payment
           </Button>
-          <Button type="button" variant="outline" disabled={!data.assignment} onClick={() => setGenerate("current")}>
-            Generate this month's fee
-          </Button>
-          <Button type="button" variant="outline" disabled={!data.assignment} onClick={() => setGenerate("remaining")}>
-            Invoice rest of the year
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button type="button" variant="outline" disabled={!data.assignment} />}>
+              Create invoices <ChevronDownIcon data-icon="inline-end" aria-hidden />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={() => setGenerate("current")}>This month's invoice</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setGenerate("year")}>Academic year…</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {!data.assignment ? <p className="text-sm text-muted-foreground">No fee plan assigned yet.</p> : null}
         </div>
       ) : null}
       {message ? (
@@ -97,86 +119,42 @@ export function StudentFeesPanel({ studentId, studentName, canMutate }: { studen
         </p>
       ) : null}
 
-      <Card>
-        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
-          <div>
-            <CardTitle>{current ? current.title : "Current month"}</CardTitle>
-            <CardDescription>
-              {current ? `${current.invoiceNumber} · due ${formatDate(current.dueOn)}` : "No monthly invoice yet for this student."}
-            </CardDescription>
-          </div>
-          {current ? <FeeStatusBadge status={current.status} /> : null}
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {current ? (
-            <>
-              <div className="max-w-md">
-                <InvoiceBreakdown invoice={current} />
-              </div>
-              <InvoiceActions invoice={current} canMutate={canMutate} onCollect={() => setCollectFor({ invoiceId: current.id })} />
-            </>
-          ) : (
-            <EmptyState
-              title="No invoice this month"
-              description={
-                data.assignment
-                  ? "Generate this month's fee above, or run Generate monthly fees for the whole class."
-                  : "Assign a fee structure to this student first, then generate the month's fee."
-              }
-            />
-          )}
-          {lastReceipt?.receiptId ? (
-            <p className="text-sm text-muted-foreground">
-              Last payment {pkr(lastReceipt.amountPkr)} on {formatDate(lastReceipt.paymentDate)} ·{" "}
-              <Link to={`/fees/receipt/${lastReceipt.receiptId}`} className="text-indigo">
-                View receipt {lastReceipt.receiptNumber}
-              </Link>
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
-
       <section className="space-y-3">
-        <h3 className="text-base font-medium">Other invoices</h3>
-        {!others.length ? (
-          <p className="text-sm text-muted-foreground">No earlier invoices or admission fees for this student.</p>
+        <div>
+          <h3 className="text-base font-medium">Fee statement</h3>
+          <p className="text-sm text-muted-foreground">Every invoice for this student, newest first. Click a row to see what it's for.</p>
+        </div>
+        {!data.invoices.length ? (
+          <EmptyState
+            title="No invoices yet"
+            description={data.assignment ? "Use Create invoices to bill this month or the whole year." : "Assign a fee plan first, then create invoices."}
+          />
         ) : (
           <div className="overflow-x-auto rounded-3xl bg-surface">
-            <table className="w-full min-w-[40rem] text-left text-sm whitespace-nowrap">
+            <table className="w-full min-w-[46rem] text-left text-sm whitespace-nowrap">
               <thead className="text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Invoice</th>
                   <th className="px-4 py-3 font-medium">For</th>
                   <th className="px-4 py-3 font-medium">Due</th>
                   <th className="px-4 py-3 text-right font-medium">Total</th>
+                  <th className="px-4 py-3 text-right font-medium">Paid</th>
                   <th className="px-4 py-3 text-right font-medium">Balance</th>
                   <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3" />
+                  <th className="px-4 py-3">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {others.map((row) => (
-                  <tr key={row.id} className="border-t border-line">
-                    <td className="px-4 py-3">
-                      <Link to={`/fees/invoices/${row.id}`} className="text-indigo">
-                        {row.invoiceNumber}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">{row.title}</td>
-                    <td className="px-4 py-3">{formatDate(row.dueOn)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{pkr(row.totalPkr)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{pkr(row.balancePkr)}</td>
-                    <td className="px-4 py-3">
-                      <FeeStatusBadge status={row.status} />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {canMutate && isPayable(row.status) && row.balancePkr > 0 ? (
-                        <Button type="button" size="sm" onClick={() => setCollectFor({ invoiceId: row.id })}>
-                          Collect
-                        </Button>
-                      ) : null}
-                    </td>
-                  </tr>
+                {data.invoices.map((row) => (
+                  <StatementRow
+                    key={row.id}
+                    invoice={row}
+                    canMutate={canMutate}
+                    expanded={expanded === row.id}
+                    onToggle={() => setExpanded((current) => (current === row.id ? null : row.id))}
+                    onCollect={() => setCollectFor({ invoiceId: row.id })}
+                  />
                 ))}
               </tbody>
             </table>
@@ -185,9 +163,12 @@ export function StudentFeesPanel({ studentId, studentName, canMutate }: { studen
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-base font-medium">Payments</h3>
+        <div>
+          <h3 className="text-base font-medium">Payments</h3>
+          <p className="text-sm text-muted-foreground">Money received, with the receipt for each payment.</p>
+        </div>
         {!data.payments.length ? (
-          <p className="text-sm text-muted-foreground">No payments recorded yet. Receipts appear here after you collect a payment.</p>
+          <p className="text-sm text-muted-foreground">No payments yet.</p>
         ) : (
           <div className="overflow-x-auto rounded-3xl bg-surface">
             <table className="w-full min-w-[36rem] text-left text-sm whitespace-nowrap">
@@ -238,11 +219,11 @@ export function StudentFeesPanel({ studentId, studentName, canMutate }: { studen
       />
       <Dialog
         open={Boolean(generate)}
-        title={generate === "current" ? "Generate this month's fee?" : "Invoice the rest of the year?"}
+        title={generate === "current" ? "Generate this month's fee?" : "Invoice academic year"}
         description={
           generate === "current"
-            ? `Creates this month's invoice for ${studentName} from their fee structure. Any credit balance is taken off automatically.`
-            : `Creates one invoice for every remaining month this academic year — useful when a family pays the whole year upfront. Months already invoiced are skipped.`
+            ? `Creates this month's invoice for ${studentName} at their assigned fees. Any credit balance is taken off automatically.`
+            : `Creates one invoice per month for ${studentName} at their assigned fees. Months already invoiced are skipped.`
         }
         confirmLabel="Generate"
         loading={generateMut.isPending}
@@ -252,29 +233,98 @@ export function StudentFeesPanel({ studentId, studentName, canMutate }: { studen
           setMessage(null);
           void generateMut.mutateAsync(generate).finally(() => setGenerate(null));
         }}
-      />
+      >
+        {generate === "year" ? (
+          <fieldset className="space-y-2">
+            <legend className="sr-only">Which months</legend>
+            <RadioGroup value={yearFrom} onValueChange={(value) => setYearFrom(value as "year_start" | "this_month")} className="gap-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line px-3 py-2.5 text-sm has-data-checked:border-primary">
+                <RadioGroupItem value="year_start" className="mt-0.5" />
+                <span>
+                  <span className="block font-medium">Whole year ({yearRange})</span>
+                  <span className="block text-muted-foreground">Includes months before admission. Past months are due right away and show as overdue.</span>
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line px-3 py-2.5 text-sm has-data-checked:border-primary">
+                <RadioGroupItem value="this_month" className="mt-0.5" />
+                <span>
+                  <span className="block font-medium">From this month to year end</span>
+                  <span className="block text-muted-foreground">For families paying the rest of the year upfront.</span>
+                </span>
+              </label>
+            </RadioGroup>
+          </fieldset>
+        ) : null}
+      </Dialog>
     </div>
   );
 }
 
-function InvoiceActions({ invoice, canMutate, onCollect }: { invoice: FeeInvoiceView; canMutate: boolean; onCollect: () => void }) {
+function StatementRow({
+  invoice,
+  canMutate,
+  expanded,
+  onToggle,
+  onCollect,
+}: {
+  invoice: FeeInvoiceView;
+  canMutate: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+  onCollect: () => void;
+}) {
   const receipt = invoice.payments.find((row) => row.status === "COMPLETED" && row.receiptId);
   return (
-    <div className="flex flex-wrap gap-2">
-      {canMutate && isPayable(invoice.status) && invoice.balancePkr > 0 ? (
-        <Button type="button" onClick={onCollect}>
-          Collect payment
-        </Button>
+    <>
+      <tr className="cursor-pointer border-t border-line hover:bg-paper" onClick={onToggle}>
+        <td className="px-4 py-3">
+          <button type="button" className="flex items-center gap-2 text-left" aria-expanded={expanded} onClick={(event) => { event.stopPropagation(); onToggle(); }}>
+            <ChevronRightIcon className={`size-4 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`} aria-hidden />
+            <span>
+              <span className="block font-medium">{invoice.periodLabel || invoice.title}</span>
+              <span className="block text-xs text-muted-foreground">{invoice.invoiceNumber}</span>
+            </span>
+          </button>
+        </td>
+        <td className="px-4 py-3">{formatDate(invoice.dueOn)}</td>
+        <td className="px-4 py-3 text-right tabular-nums">{pkr(invoice.totalPkr)}</td>
+        <td className="px-4 py-3 text-right tabular-nums">{pkr(invoice.paidPkr + invoice.creditAppliedPkr)}</td>
+        <td className="px-4 py-3 text-right font-medium tabular-nums">{pkr(invoice.balancePkr)}</td>
+        <td className="px-4 py-3">
+          <FeeStatusBadge status={invoice.status} />
+        </td>
+        <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+          <div className="flex justify-end gap-1">
+            {canMutate && isPayable(invoice.status) && invoice.balancePkr > 0 ? (
+              <Button type="button" size="sm" onClick={onCollect}>
+                Collect
+              </Button>
+            ) : null}
+            {invoice.status !== "CANCELLED" ? <PdfButton kind="challan" id={invoice.id} label="Challan" variant="ghost" /> : null}
+            {receipt?.receiptId ? (
+              <Button size="sm" variant="ghost" render={<Link to={`/fees/receipt/${receipt.receiptId}`} />}>
+                Receipt
+              </Button>
+            ) : null}
+            <Button size="sm" variant="ghost" render={<Link to={`/fees/invoices/${invoice.id}`} />}>
+              View
+            </Button>
+          </div>
+        </td>
+      </tr>
+      {expanded ? (
+        <tr className="bg-paper/60">
+          <td colSpan={7} className="px-4 pb-4 pl-10">
+            <div className="max-w-md whitespace-normal">
+              <InvoiceBreakdown invoice={invoice} />
+            </div>
+          </td>
+        </tr>
       ) : null}
-      <Button variant="outline" render={<Link to={`/fees/invoices/${invoice.id}`} />}>
-        View invoice
-      </Button>
-      {invoice.status !== "CANCELLED" ? <PdfButton kind="challan" id={invoice.id} label="Download challan" size="default" /> : null}
-      {receipt?.receiptId ? (
-        <Button variant="outline" render={<Link to={`/fees/receipt/${receipt.receiptId}`} />}>
-          View receipt
-        </Button>
-      ) : null}
-    </div>
+    </>
   );
+}
+
+function monthYear(value: string) {
+  return new Date(value).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
 }

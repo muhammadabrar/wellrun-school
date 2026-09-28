@@ -17,7 +17,7 @@ export class FeeGenerationCronService {
 
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
-    private readonly generation: FeeGenerationService,
+    @Inject(FeeGenerationService) private readonly generation: FeeGenerationService,
   ) {}
 
   @Cron("0 3 * * *")

@@ -1,13 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Dialog, EmptyState, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
-import { ChevronDownIcon } from "lucide-react";
+import { Badge, Dialog, EmptyState, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
+import { useSearchParams } from "react-router-dom";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { classSortIndex } from "@wellrun/shared";
 import { FormSelect } from "@/components/form/form-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { FeeTitleSelect, frequencyLabel, type FeeFrequency } from "@/components/fees/fee-title-select";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useCampus } from "@/hooks/use-campus";
@@ -16,7 +15,7 @@ import { pkr } from "@/lib/format";
 import { queryKeys } from "@/lib/query";
 import { readYearId } from "@/lib/school-context";
 
-type DraftItem = { feeHeadId: string; name: string; amountPkr: number; isOptional: boolean };
+type DraftItem = { feeHeadId: string; name: string; frequency: string; amountPkr: number; isOptional: boolean };
 
 export function FeeStructuresPage() {
   const { classes, campusId, currentYear } = useCampus();
@@ -25,7 +24,22 @@ export function FeeStructuresPage() {
   const heads = useQuery({ queryKey: queryKeys.feeHeads, queryFn: api.feeHeads });
   const queryClient = useQueryClient();
   const [copyOpen, setCopyOpen] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
+  const syncFees = useMutation({
+    mutationFn: api.syncFeesFromAdmission,
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["fees"] });
+      setCopyMessage(
+        result.updated
+          ? `Admission fees applied to ${result.updated} student(s): ${result.students.join(", ")}. Invoices already issued are unchanged — cancel and regenerate any that used the class amounts.`
+          : "Every admitted student already uses their admission fees.",
+      );
+    },
+    onError: (err) => setCopyMessage(err instanceof Error ? err.message : "Could not apply admission fees."),
+  });
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  const [classSearch, setClassSearch] = useState("");
   const [catalogVersion, setCatalogVersion] = useState(0);
   const activeHeads = (heads.data ?? []).filter((head) => head.active);
   const copyableHeads = activeHeads.filter((head) => head.frequency !== "ONE_TIME");
@@ -65,6 +79,18 @@ export function FeeStructuresPage() {
     return map;
   }, [structures.data]);
 
+  // Selected class lives in the URL; default to the first class still missing fees.
+  const selectedClass =
+    (params.get("class") && classNames.includes(params.get("class")!) ? params.get("class") : null) ??
+    classNames.find((name) => !byClass.get(name)?.items.length) ??
+    classNames[0] ??
+    null;
+  function selectClass(name: string) {
+    const next = new URLSearchParams(params);
+    next.set("class", name);
+    setParams(next, { replace: true });
+  }
+
   if (structures.isPending && !structures.data) return <LoadingState variant="table" />;
   if (structures.isError) {
     return (
@@ -78,9 +104,14 @@ export function FeeStructuresPage() {
         title="Fee structures"
         description="The monthly fee for each class on this campus and year. Open a class to change amounts — edits save as you type and never change invoices already issued."
         actions={
-          <Button type="button" disabled={!classNames.length || !copyableHeads.length || !yearId} onClick={() => setCopyOpen(true)}>
-            Copy fee heads to all classes
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" disabled={!classNames.length || !copyableHeads.length || !yearId} onClick={() => setCopyOpen(true)}>
+              Copy fee heads to all classes
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setSyncOpen(true)}>
+              Apply admission fees to existing students
+            </Button>
+          </div>
         }
       />
       {copyMessage ? (
@@ -88,6 +119,18 @@ export function FeeStructuresPage() {
           {copyMessage}
         </p>
       ) : null}
+      <Dialog
+        open={syncOpen}
+        title="Apply admission fees to existing students?"
+        description="Students admitted through a new application will be billed monthly at the fees agreed in their admission (custom amounts, discounts, optional fees) instead of the class list price. Only students without custom fees are changed. Invoices already issued are not changed."
+        confirmLabel="Apply"
+        loading={syncFees.isPending}
+        onClose={() => setSyncOpen(false)}
+        onConfirm={() => {
+          setCopyMessage(null);
+          void syncFees.mutateAsync().finally(() => setSyncOpen(false));
+        }}
+      />
       <Dialog
         open={copyOpen}
         title="Copy all fee heads to every class?"
@@ -101,26 +144,70 @@ export function FeeStructuresPage() {
         }}
       />
       {!classNames.length ? (
-        <EmptyState title="No classes yet" description="Add classes in Academics, then set the monthly fee for each class here." />
+        <EmptyState title="No classes yet" description="Add classes in Classes & subjects, then set the monthly fee for each class here." />
       ) : (
-        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {classNames.map((className) => (
-            <ClassStructureCard
-              key={`${className}-${catalogVersion}`}
-              className={className}
+        <div className="grid items-start gap-6 lg:grid-cols-[18rem_1fr]">
+          <nav aria-label="Classes" className="rounded-3xl bg-surface p-2 lg:sticky lg:top-4">
+            <Input
+              value={classSearch}
+              onChange={(event) => setClassSearch(event.target.value)}
+              placeholder="Find a class"
+              aria-label="Find a class"
+              className="mb-2"
+            />
+            <ul className="flex max-h-[70vh] flex-col gap-1 overflow-y-auto">
+              {classNames
+                .filter((name) => name.toLowerCase().includes(classSearch.trim().toLowerCase()))
+                .map((name) => {
+                  const structure = byClass.get(name);
+                  const count = structure?.items.length ?? 0;
+                  const isSelected = name === selectedClass;
+                  return (
+                    <li key={name}>
+                      <button
+                        type="button"
+                        aria-current={isSelected ? "page" : undefined}
+                        onClick={() => selectClass(name)}
+                        className={`flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left text-sm transition-colors ${
+                          isSelected ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                        }`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{name}</span>
+                          <span className={`block text-xs ${isSelected ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                            {count ? `${count} fee${count === 1 ? "" : "s"}` : "No fees yet"}
+                          </span>
+                        </span>
+                        {count ? (
+                          <span className="shrink-0 tabular-nums">{pkr(structure?.subtotalPkr ?? 0)}</span>
+                        ) : (
+                          <Badge tone="warning" className={isSelected ? "bg-white text-orange" : undefined}>
+                            Not set
+                          </Badge>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+            </ul>
+          </nav>
+          {selectedClass ? (
+            <ClassStructurePanel
+              key={`${selectedClass}-${catalogVersion}`}
+              className={selectedClass}
               yearId={yearId}
               campusId={campusId}
-              structure={byClass.get(className) ?? null}
+              structure={byClass.get(selectedClass) ?? null}
               heads={activeHeads}
             />
-          ))}
+          ) : null}
         </div>
       )}
     </div>
   );
 }
 
-function ClassStructureCard({
+function ClassStructurePanel({
   className,
   yearId,
   campusId,
@@ -135,10 +222,11 @@ function ClassStructureCard({
 }) {
   const queryClient = useQueryClient();
   const [items, setItems] = useState<DraftItem[]>(() => toDraft(structure));
-  const [openInitially] = useState(() => !toDraft(structure).length);
   const [addHeadId, setAddHeadId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newAmount, setNewAmount] = useState("");
+  const [newFrequency, setNewFrequency] = useState<FeeFrequency>("MONTHLY");
+  const [savedOnce, setSavedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const itemsRef = useRef(items);
@@ -179,6 +267,8 @@ function ClassStructureCard({
         await api.updateFeeStructure(structureIdRef.current, payload);
       }
       await queryClient.invalidateQueries({ queryKey: queryKeys.feeStructures });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.feeSetupStatus });
+      setSavedOnce(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save this class fee");
     } finally {
@@ -192,23 +282,11 @@ function ClassStructureCard({
     persist();
   }
 
-  async function rename(feeHeadId: string, name: string) {
-    const next = items.map((item) => (item.feeHeadId === feeHeadId ? { ...item, name } : item));
-    itemsRef.current = next;
-    setItems(next);
-    try {
-      await api.updateFeeHead(feeHeadId, { name });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.feeHeads });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not rename this fee");
-    }
-  }
-
-  async function addExisting() {
+  function addExisting() {
     const head = heads.find((row) => row.id === addHeadId);
     if (!head) return;
     setAddHeadId(null);
-    replace([...items, { feeHeadId: head.id, name: head.name, amountPkr: head.amountPkr, isOptional: false }]);
+    replace([...items, { feeHeadId: head.id, name: head.name, frequency: head.frequency, amountPkr: head.amountPkr, isOptional: false }]);
   }
 
   async function addNew() {
@@ -216,166 +294,150 @@ function ClassStructureCard({
     if (!name) return;
     setError(null);
     try {
-      const head = await createHead.mutateAsync({
-        name,
-        amountPkr: Number(newAmount || 0),
-        frequency: "MONTHLY",
-        category: "tuition",
-      });
+      const head = await createHead.mutateAsync({ name, amountPkr: Number(newAmount || 0), frequency: newFrequency });
       await queryClient.invalidateQueries({ queryKey: queryKeys.feeHeads });
       setNewName("");
       setNewAmount("");
-      replace([...items, { feeHeadId: head.id, name: head.name, amountPkr: head.amountPkr, isOptional: false }]);
+      setNewFrequency("MONTHLY");
+      replace([...items, { feeHeadId: head.id, name: head.name, frequency: head.frequency, amountPkr: head.amountPkr, isOptional: false }]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add this fee");
     }
   }
 
   const unusedHeads = heads.filter((head) => !items.some((item) => item.feeHeadId === head.id));
-  const total = items.reduce((sum, item) => sum + item.amountPkr, 0);
-  const summary = saving
-    ? "Saving…"
-    : items.length
-      ? `${items.length} fees · ${pkr(total)}`
-      : "Add the fees charged for this class.";
+  const monthlyTotal = items.filter((item) => item.frequency !== "ONE_TIME").reduce((sum, item) => sum + item.amountPkr, 0);
+  const oneTimeTotal = items.filter((item) => item.frequency === "ONE_TIME").reduce((sum, item) => sum + item.amountPkr, 0);
 
   return (
-    <Collapsible defaultOpen={openInitially} className="group/class-card h-fit">
-      <Card className="h-fit overflow-hidden">
-        <CollapsibleTrigger className="w-full cursor-pointer border-0 bg-transparent p-0 text-left text-inherit outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-          <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
-            <div className="min-w-0">
-              <CardTitle>{className}</CardTitle>
-              <CardDescription>{summary}</CardDescription>
-            </div>
-            <div className="flex shrink-0 items-center gap-2 pt-0.5">
-              <p className="font-display text-xl tabular-nums">{pkr(total)}</p>
-              <ChevronDownIcon
-                aria-hidden
-                className="size-5 text-muted-foreground transition-transform duration-200 group-data-open/class-card:rotate-180 motion-reduce:transition-none"
-              />
-            </div>
-          </CardHeader>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <CardContent className="flex flex-col gap-4 border-t border-line pt-(--card-spacing)">
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            {!items.length ? (
-              <EmptyState title={`No fees for ${className}`} description="Add a catalog fee or create a new one for this class." />
-            ) : (
-              <ul className="flex flex-col gap-2">
+    <Card className="h-fit">
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+        <div className="min-w-0">
+          <CardTitle className="text-2xl">{className}</CardTitle>
+          <CardDescription>Fees charged to every student in {className}. Changes save automatically and never alter invoices already issued.</CardDescription>
+        </div>
+        <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+          {saving ? "Saving…" : savedOnce ? "Saved ✓" : ""}
+        </p>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-5">
+        {error ? (
+          <p className="text-sm text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {!items.length ? (
+          <EmptyState title={`No fees for ${className} yet`} description="Add fees from your Fee Heads below, or create a new fee title." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-muted-foreground">
+                <tr>
+                  <th className="pb-2 font-medium">Fee</th>
+                  <th className="pb-2 font-medium">Charged</th>
+                  <th className="pb-2 font-medium">Amount (Rs.)</th>
+                  <th className="pb-2 font-medium">Optional</th>
+                  <th className="pb-2">
+                    <span className="sr-only">Remove</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
                 {items.map((item) => (
-                  <li key={item.feeHeadId} className="flex flex-col gap-3 rounded-2xl bg-paper px-4 py-3">
-                    <Field>
-                      <FieldLabel htmlFor={`name-${className}-${item.feeHeadId}`}>Fee</FieldLabel>
+                  <tr key={item.feeHeadId} className="border-t border-line">
+                    <td className="py-2 pr-3 font-medium">{item.name}</td>
+                    <td className="py-2 pr-3 text-muted-foreground">{frequencyLabel(item.frequency)}</td>
+                    <td className="w-40 py-2 pr-3">
                       <Input
-                        id={`name-${className}-${item.feeHeadId}`}
-                        value={item.name}
-                        onChange={(event) => {
-                          const name = event.target.value;
-                          setItems((current) => current.map((row) => (row.feeHeadId === item.feeHeadId ? { ...row, name } : row)));
-                        }}
-                        onBlur={(event) => {
-                          const name = event.target.value.trim();
-                          if (!name) return;
-                          void rename(item.feeHeadId, name);
-                        }}
+                        aria-label={`${item.name} amount`}
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={item.amountPkr}
+                        onChange={(event) =>
+                          replace(items.map((row) => (row.feeHeadId === item.feeHeadId ? { ...row, amountPkr: Number(event.target.value) || 0 } : row)))
+                        }
                       />
-                    </Field>
-                    <div className="grid grid-cols-[1fr_auto_auto] items-end gap-3">
-                      <Field>
-                        <FieldLabel htmlFor={`amount-${className}-${item.feeHeadId}`}>Amount (Rs.)</FieldLabel>
-                        <Input
-                          id={`amount-${className}-${item.feeHeadId}`}
-                          type="number"
-                          min={0}
-                          step={1}
-                          value={item.amountPkr}
-                          onChange={(event) =>
-                            replace(
-                              items.map((row) =>
-                                row.feeHeadId === item.feeHeadId ? { ...row, amountPkr: Number(event.target.value) || 0 } : row,
-                              ),
-                            )
-                          }
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor={`optional-${className}-${item.feeHeadId}`}>Optional</FieldLabel>
-                        <div className="flex h-10 items-center">
-                          <Switch
-                            id={`optional-${className}-${item.feeHeadId}`}
-                            aria-label={`Optional ${item.name}`}
-                            checked={item.isOptional}
-                            onCheckedChange={(checked) =>
-                              replace(items.map((row) => (row.feeHeadId === item.feeHeadId ? { ...row, isOptional: checked } : row)))
-                            }
-                          />
-                        </div>
-                      </Field>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="mb-0.5"
-                        onClick={() => replace(items.filter((row) => row.feeHeadId !== item.feeHeadId))}
-                      >
+                    </td>
+                    <td className="py-2 pr-3">
+                      <Switch
+                        aria-label={`${item.name} is optional`}
+                        checked={item.isOptional}
+                        onCheckedChange={(checked) => replace(items.map((row) => (row.feeHeadId === item.feeHeadId ? { ...row, isOptional: checked } : row)))}
+                      />
+                    </td>
+                    <td className="py-2 text-right">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => replace(items.filter((row) => row.feeHeadId !== item.feeHeadId))}>
                         Remove
                       </Button>
-                    </div>
-                  </li>
+                    </td>
+                  </tr>
                 ))}
-              </ul>
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-line font-medium">
+                  <td className="pt-3" colSpan={2}>
+                    Monthly total
+                  </td>
+                  <td className="pt-3 tabular-nums" colSpan={3}>
+                    {pkr(monthlyTotal)}
+                    {oneTimeTotal ? <span className="ml-2 text-xs font-normal text-muted-foreground">+ {pkr(oneTimeTotal)} one-time at admission</span> : null}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+
+        <div className="grid gap-4 rounded-2xl border border-line p-4 md:grid-cols-2">
+          <div className="flex flex-col gap-3">
+            <p className="text-sm font-medium">Add from Fee Heads</p>
+            {unusedHeads.length ? (
+              <>
+                <FormSelect
+                  id={`add-existing-${className}`}
+                  value={addHeadId}
+                  onValueChange={setAddHeadId}
+                  placeholder="Choose a fee"
+                  options={unusedHeads.map((head) => ({ value: head.id, label: `${head.name} · ${pkr(head.amountPkr)}` }))}
+                />
+                <Button type="button" variant="outline" disabled={!addHeadId} onClick={addExisting}>
+                  Add to {className}
+                </Button>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Every fee head is already on this class.</p>
             )}
-            <div className="grid gap-3 rounded-2xl border border-line p-4">
-              {unusedHeads.length ? (
-                <>
-                  <Field>
-                    <FieldLabel htmlFor={`add-existing-${className}`}>Add from catalog</FieldLabel>
-                    <FormSelect
-                      id={`add-existing-${className}`}
-                      value={addHeadId}
-                      onValueChange={setAddHeadId}
-                      placeholder="Choose a fee head"
-                      options={unusedHeads.map((head) => ({ value: head.id, label: `${head.name} (${pkr(head.amountPkr)})` }))}
-                    />
-                  </Field>
-                  <Button type="button" variant="outline" disabled={!addHeadId} onClick={() => void addExisting()}>
-                    Add fee
-                  </Button>
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">All catalog fees are already on this class. Add a new fee below.</p>
-              )}
-            </div>
-            <div className="grid gap-3 rounded-2xl border border-line p-4">
-              <Field>
-                <FieldLabel htmlFor={`new-name-${className}`}>New fee name</FieldLabel>
-                <Input
-                  id={`new-name-${className}`}
-                  value={newName}
-                  onChange={(event) => setNewName(event.target.value)}
-                  placeholder="Computer"
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor={`new-amount-${className}`}>Amount (Rs.)</FieldLabel>
-                <Input
-                  id={`new-amount-${className}`}
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={newAmount}
-                  onChange={(event) => setNewAmount(event.target.value)}
-                />
-              </Field>
+          </div>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm font-medium">Or a new fee</p>
+            <FeeTitleSelect
+              value={newName}
+              existingTitles={heads.map((head) => head.name)}
+              onChange={(title, suggested) => {
+                setNewName(title);
+                if (suggested) setNewFrequency(suggested);
+              }}
+            />
+            <div className="flex gap-2">
+              <Input
+                aria-label="New fee amount"
+                type="number"
+                min={0}
+                step={1}
+                placeholder="Amount (Rs.)"
+                value={newAmount}
+                onChange={(event) => setNewAmount(event.target.value)}
+              />
               <Button type="button" loading={createHead.isPending} disabled={!newName.trim() || !yearId} onClick={() => void addNew()}>
-                Add new fee
+                Add
               </Button>
             </div>
-          </CardContent>
-        </CollapsibleContent>
-      </Card>
-    </Collapsible>
+            {newName ? <p className="text-xs text-muted-foreground">Charged: {frequencyLabel(newFrequency)}. Also added to Fee Heads.</p> : null}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -383,6 +445,7 @@ function toDraft(structure: FeeStructureRow | null): DraftItem[] {
   return (structure?.items ?? []).map((item) => ({
     feeHeadId: item.feeHeadId,
     name: item.feeHead?.name ?? "Fee",
+    frequency: item.feeHead?.frequency ?? "MONTHLY",
     amountPkr: item.amountPkr,
     isOptional: item.isOptional,
   }));

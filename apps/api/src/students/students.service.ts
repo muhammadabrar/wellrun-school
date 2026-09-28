@@ -15,6 +15,7 @@ import {
 } from "@wellrun/shared";
 import { Prisma } from "@prisma/client";
 import { audit } from "../common/audit";
+import { titleCaseName } from "../common/text";
 import { invoiceLabel } from "../fees/billing";
 import { ensureStudentFeeAssignment, FeeAssignmentService } from "../fees/assignment.service";
 import { invoiceViewInclude, toInvoiceView } from "../fees/invoice-view";
@@ -30,7 +31,7 @@ import { PrismaService } from "../prisma/prisma.service";
 export class StudentsService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
-    private readonly feeAssignments: FeeAssignmentService,
+    @Inject(FeeAssignmentService) private readonly feeAssignments: FeeAssignmentService,
   ) {}
 
   async list(
@@ -263,6 +264,9 @@ export class StudentsService {
   async admit(schoolId: string, actorId: string, body: unknown) {
     await assertWritableSchool(this.prisma, schoolId);
     const data = admitStudentSchema.parse(body);
+    if (data.firstName) data.firstName = titleCaseName(data.firstName);
+    if (data.lastName) data.lastName = titleCaseName(data.lastName);
+    if (data.guardian?.name) data.guardian.name = titleCaseName(data.guardian.name);
     if (data.studentId) {
       const cls = await this.resolveClass(schoolId, data.classId, data.className, data.section);
       await this.moveEnrollment(schoolId, data.studentId, cls.id, "returning");
@@ -328,9 +332,10 @@ export class StudentsService {
       });
       return created;
     });
+    // No guardianId means the admin chose "New guardian": always a new record, never a phone match.
     const guardianId = data.guardianId
       ? data.guardianId
-      : await this.findOrCreateGuardian(schoolId, actorId, {
+      : await this.createGuardian(schoolId, actorId, {
           ...data.guardian!,
           extra: data.guardianExtra ?? data.guardian?.extra,
         });
@@ -359,6 +364,8 @@ export class StudentsService {
   async create(schoolId: string, actorId: string, body: unknown) {
     await assertWritableSchool(this.prisma, schoolId);
     const data = studentSchema.parse(body);
+    data.firstName = titleCaseName(data.firstName);
+    data.lastName = titleCaseName(data.lastName);
     const admissionNo = data.admissionNo || (await this.prisma.$transaction((tx) => nextSchoolNumber(tx, schoolId, "ADM")));
     const existing = await this.prisma.student.findFirst({ where: { schoolId, admissionNo } });
     if (existing) throw new BadRequestException("Admission number already exists");
@@ -411,6 +418,7 @@ export class StudentsService {
     await assertWritableSchool(this.prisma, schoolId);
     await this.byId(schoolId, studentId);
     const data = guardianSchema.parse(body);
+    data.name = titleCaseName(data.name);
     const guardianId = await this.findOrCreateGuardian(schoolId, actorId, data);
     await this.prisma.studentGuardian.upsert({
       where: { studentId_guardianId: { studentId, guardianId } },
@@ -455,6 +463,8 @@ export class StudentsService {
     if (!current) throw new NotFoundException("Student not found");
     const raw = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
     const data = studentSchema.partial().parse(body);
+    if (data.firstName) data.firstName = titleCaseName(data.firstName);
+    if (data.lastName) data.lastName = titleCaseName(data.lastName);
     const extra = { ...this.extraRecord(current.extra), ...(data.extra ?? {}) };
     if (data.phone !== undefined) extra.phone = data.phone;
     if (data.address !== undefined) extra.address = data.address;
@@ -510,6 +520,15 @@ export class StudentsService {
       });
       return existing.id;
     }
+    return this.createGuardian(schoolId, actorId, data);
+  }
+
+  private async createGuardian(
+    schoolId: string,
+    actorId: string,
+    data: { name: string; phone: string; relation: string; cnic?: string; email?: string; extra?: Record<string, unknown> },
+  ) {
+    const cnic = data.cnic?.trim() || "";
     const guardian = await this.prisma.guardian.create({
       data: {
         schoolId,
@@ -874,7 +893,7 @@ export class StudentsService {
       }),
       this.prisma.studentFeeAssignment.findFirst({
         where: { schoolId, studentId: id, status: "ACTIVE" },
-        select: { academicYearId: true, structure: { select: { id: true, name: true } } },
+        select: { academicYearId: true, structure: { select: { id: true, name: true } }, _count: { select: { overrides: true } } },
       }),
     ]);
     const views = invoices.map(toInvoiceView);
@@ -902,7 +921,9 @@ export class StudentsService {
         receiptNumber: row.receipt?.receiptNumber ?? null,
       })),
       credits,
-      assignment: assignment ? { academicYearId: assignment.academicYearId, structureName: assignment.structure.name } : null,
+      assignment: assignment
+        ? { academicYearId: assignment.academicYearId, structureName: assignment.structure.name, hasCustomFees: assignment._count.overrides > 0 }
+        : null,
     };
   }
 

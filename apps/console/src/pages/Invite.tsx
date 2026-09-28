@@ -46,7 +46,7 @@ export function InvitePage() {
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="name">Full name</FieldLabel>
-                <Input id="name" name="name" />
+                <Input capitalize="words" id="name" name="name" />
               </Field>
               <Field>
                 <FieldLabel htmlFor="password">Password</FieldLabel>

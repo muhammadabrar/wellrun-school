@@ -53,6 +53,49 @@ export async function ensureStudentFeeAssignment(
   });
 }
 
+export type AdmissionFeeQuote = { feeItemId: string; amountPkr: number };
+
+/**
+ * Makes a student's monthly invoices use the fees agreed at admission instead of the class
+ * structure's list prices. Quote amounts already include any admission discount.
+ * - quoted with an amount → that amount
+ * - not quoted (optional fee left off, or 0) → switched off for this student
+ * - one-time heads → switched off here; they're billed on the admission invoice
+ * Replaces any overrides already on the assignment. Returns false when there's nothing to apply.
+ */
+export async function applyAdmissionQuotesToAssignment(
+  prisma: PrismaService,
+  input: { assignmentId: string; quotes: AdmissionFeeQuote[] },
+) {
+  if (!input.quotes.length) return false;
+  const assignment = await prisma.studentFeeAssignment.findUnique({
+    where: { id: input.assignmentId },
+    include: { structure: { include: { items: { include: { feeHead: { select: { frequency: true } } } } } } },
+  });
+  if (!assignment) return false;
+  const byHead = new Map(input.quotes.map((quote) => [quote.feeItemId, quote]));
+  const overrides = assignment.structure.items.map((item) => {
+    const quote = byHead.get(item.feeHeadId);
+    const billedMonthly = item.feeHead.frequency !== "ONE_TIME" && quote && quote.amountPkr > 0;
+    return billedMonthly
+      ? { assignmentId: assignment.id, feeHeadId: item.feeHeadId, amountPkr: toPkr(quote.amountPkr), enabled: true }
+      : { assignmentId: assignment.id, feeHeadId: item.feeHeadId, amountPkr: null, enabled: false };
+  });
+  await prisma.$transaction([
+    prisma.studentFeeOverride.deleteMany({ where: { assignmentId: assignment.id } }),
+    prisma.studentFeeOverride.createMany({ data: overrides }),
+  ]);
+  return true;
+}
+
+function asQuotes(value: unknown): AdmissionFeeQuote[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((row) => row as { feeItemId?: unknown; amountPkr?: unknown })
+    .filter((row) => typeof row.feeItemId === "string" && row.feeItemId)
+    .map((row) => ({ feeItemId: String(row.feeItemId), amountPkr: Number(row.amountPkr) || 0 }));
+}
+
 @Injectable()
 export class FeeAssignmentService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
@@ -147,6 +190,48 @@ export class FeeAssignmentService {
       entityId: assignment.id,
     });
     return assignment;
+  }
+
+  /**
+   * One-off repair for students admitted before admission fees were carried into their fee
+   * assignment: copies each confirmed application's agreed fees onto the student's active
+   * assignment, if that assignment has no overrides yet. Issued invoices are not touched.
+   */
+  async syncFromAdmissions(schoolId: string, actorId: string) {
+    const applications = await this.prisma.admissionApplication.findMany({
+      where: { schoolId, status: "ADMISSION_CONFIRMED", studentId: { not: null } },
+      select: { studentId: true, yearId: true, feeQuotes: true, firstName: true, lastName: true },
+    });
+    const updated: string[] = [];
+    for (const application of applications) {
+      const quotes = asQuotes(application.feeQuotes);
+      if (!quotes.length || !application.studentId) continue;
+      const assignment = await this.prisma.studentFeeAssignment.findFirst({
+        where: {
+          schoolId,
+          studentId: application.studentId,
+          status: "ACTIVE",
+          ...(application.yearId ? { academicYearId: application.yearId } : {}),
+          overrides: { none: {} },
+        },
+        select: { id: true },
+      });
+      if (!assignment) continue;
+      if (await applyAdmissionQuotesToAssignment(this.prisma, { assignmentId: assignment.id, quotes })) {
+        updated.push(`${application.firstName} ${application.lastName}`);
+      }
+    }
+    if (updated.length) {
+      await audit(this.prisma, {
+        schoolId,
+        actorId,
+        action: "fee_assignments_synced_from_admission",
+        entity: "student_fee_assignment",
+        entityId: schoolId,
+        summary: `${updated.length} students`,
+      });
+    }
+    return { updated: updated.length, students: updated };
   }
 
   discounts(schoolId: string) {

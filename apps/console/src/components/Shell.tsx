@@ -21,7 +21,7 @@ const titles: [string, string][] = [
   ["/admissions/new", "New application"],
   ["/fees/receipt", "Receipt"],
   ["/fees/structures", "Fee structures"],
-  ["/fees/heads", "Fee heads"],
+  ["/fees/heads", "Fee Heads"],
   ["/fees/generate", "Generate monthly fees"],
   ["/fees/invoices/", "Invoice"],
   ["/fees/invoices", "Invoices"],

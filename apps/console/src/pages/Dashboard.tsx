@@ -3,6 +3,7 @@ import { type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { t } from "@wellrun/i18n";
 import { ErrorState, FetchingIndicator, LoadingState } from "@wellrun/ui";
+import { FeeSetupChecklist } from "@/components/fees/fee-setup-checklist";
 import { NumberPop } from "../components/motion";
 import { api, currentUser } from "../lib/api";
 import { queryKeys } from "../lib/query";
@@ -34,6 +35,11 @@ export function DashboardPage() {
       <p className="text-sm text-muted-foreground">{data.schoolName}</p>
       <h1 className="mt-1 font-display text-4xl">{copy.console.dashboard}</h1>
       <FetchingIndicator show={isFetching && !isPending} label="Updating totals" />
+      {user?.role === "SCHOOL_ADMIN" ? (
+        <div className="mt-6">
+          <FeeSetupChecklist />
+        </div>
+      ) : null}
       <div className="mt-8 grid grid-cols-3 gap-4">
         <Card label={copy.console.absences}>
           <NumberPop value={data.absentToday} />

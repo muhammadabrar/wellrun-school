@@ -276,17 +276,21 @@ export const api = {
     request(`/console/fees/discounts/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   assignStudentDiscount: (payload: Record<string, unknown>) =>
     request("/console/fees/student-discounts", { method: "POST", body: JSON.stringify(payload) }),
+  feeSetupStatus: () =>
+    request<{ feeHeads: number; classes: number; classesWithoutStructure: string[] }>("/console/fees/setup-status"),
   applyFeeCatalog: (payload: { academicYearId: string; campusId?: string | null; classNames: string[] }) =>
     request<{ created: number; updated: number }>("/console/fees/structures/apply-catalog", { method: "POST", body: JSON.stringify(payload) }),
   previewFees: (payload: GenerateFeesPayload) =>
     request<FeePreview>("/console/fees/generate/preview", { method: "POST", body: JSON.stringify(payload) }),
   generateFees: (payload: GenerateFeesPayload & { confirm: true }) =>
     request<FeeGenerateResult>("/console/fees/generate", { method: "POST", body: JSON.stringify(payload) }),
-  generateRemainingForStudent: (studentId: string, academicYearId: string) =>
-    request<{ createdInvoiceIds: string[]; totalPkr: number }>(`/console/fees/students/${studentId}/generate-remaining`, {
+  generateYearForStudent: (studentId: string, academicYearId: string, from: "year_start" | "this_month") =>
+    request<{ createdInvoiceIds: string[]; totalPkr: number }>(`/console/fees/students/${studentId}/generate-year`, {
       method: "POST",
-      body: JSON.stringify({ academicYearId }),
+      body: JSON.stringify({ academicYearId, from }),
     }),
+  syncFeesFromAdmission: () =>
+    request<{ updated: number; students: string[] }>("/console/fees/assignments/sync-from-admission", { method: "POST", body: "{}" }),
   generateCurrentForStudent: (studentId: string, academicYearId: string) =>
     request<{ created: boolean; reason?: string; invoiceId?: string; totalPkr?: number }>(`/console/fees/students/${studentId}/generate-current`, {
       method: "POST",
@@ -781,7 +785,7 @@ export type StudentFees = {
     receiptNumber: string | null;
   }[];
   credits: { id: string; amountPkr: number; remainingAmountPkr: number; reason: string; createdAt: string }[];
-  assignment: { academicYearId: string; structureName: string } | null;
+  assignment: { academicYearId: string; structureName: string; hasCustomFees: boolean } | null;
 };
 
 export type GenerateFeesPayload = {
@@ -810,13 +814,26 @@ export type CollectPaymentPayload = {
   invoiceId?: string;
   invoiceIds?: string[];
   amountPkr: number;
+  useCreditPkr?: number;
+  requestId?: string;
   method: string;
   paymentDate?: string;
   referenceNumber?: string;
   notes?: string;
 };
 
-export type PaymentResult = { id: string; paymentNumber: string; receiptId: string; receiptNumber: string; amountPkr: number; creditPkr: number };
+export type PaymentResult =
+  | { creditOnly: true; creditAppliedPkr: number }
+  | {
+      creditOnly: false;
+      id: string;
+      paymentNumber: string;
+      receiptId: string;
+      receiptNumber: string;
+      amountPkr: number;
+      creditPkr: number;
+      creditAppliedPkr: number;
+    };
 
 export type FeePaymentRow = {
   id: string;
@@ -894,7 +911,7 @@ export type FeeStructureRow = {
   subtotalPkr: number;
   notes?: string;
   year?: { id: string; name: string };
-  items: { id?: string; feeHeadId: string; amountPkr: number; isOptional: boolean; taxable: boolean; sortOrder: number; feeHead?: { name: string; code: string } }[];
+  items: { id?: string; feeHeadId: string; amountPkr: number; isOptional: boolean; taxable: boolean; sortOrder: number; feeHead?: { name: string; code: string; frequency?: string } }[];
 };
 
 export type FeeDiscount = {

@@ -1,5 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Dialog, EmptyState, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
+import { Dialog, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
+import { InlineClassFeeSetup } from "@/components/fees/inline-class-fee-setup";
+import { readYearId } from "@/lib/school-context";
 import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -516,11 +518,11 @@ function ApplicantFamilyFields({
           <FieldGroup className="grid grid-cols-1 md:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="firstName">First name</FieldLabel>
-              <Input id="firstName" name="firstName" defaultValue={application?.firstName ?? ""} required />
+              <Input capitalize="words" id="firstName" name="firstName" defaultValue={application?.firstName ?? ""} required />
             </Field>
             <Field>
               <FieldLabel htmlFor="lastName">Last name</FieldLabel>
-              <Input id="lastName" name="lastName" defaultValue={application?.lastName ?? ""} required />
+              <Input capitalize="words" id="lastName" name="lastName" defaultValue={application?.lastName ?? ""} required />
             </Field>
             <Field className="md:col-span-2">
               <FieldLabel>Gender</FieldLabel>
@@ -652,6 +654,7 @@ function NewGuardianFields({
         <Input
           id="guardianName"
           name="guardianName"
+          capitalize="words"
           required
           defaultValue={family.guardianName || (application && "guardian" in application ? application.guardian?.name : "") || ""}
         />
@@ -826,9 +829,10 @@ function FeesStep({
         {!application.className ? (
           <p className="text-sm text-muted-foreground">Go back to Applying for and select a grade.</p>
         ) : !structure || !catalogRows.length ? (
-          <EmptyState
-            title={`No fee structure for ${application.className}`}
-            description="Add monthly fees for this class on Fee structures, then return here."
+          <InlineClassFeeSetup
+            className={application.className}
+            academicYearId={application.yearId || readYearId()}
+            campusId={application.campusId}
           />
         ) : (
           <>

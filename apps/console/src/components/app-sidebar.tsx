@@ -55,7 +55,7 @@ const schoolItems: NavItem[] = [
       { title: "Invoices", url: "/fees/invoices" },
       { title: "Payments", url: "/fees/payments" },
       { title: "Fee structures", url: "/fees/structures" },
-      { title: "Fee heads", url: "/fees/heads" },
+      { title: "Fee Heads", url: "/fees/heads" },
       { title: "Discounts", url: "/fees/discounts" },
       { title: "Reports", url: "/fees/reports" },
       { title: "Settings", url: "/fees/settings" },

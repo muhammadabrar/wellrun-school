@@ -92,7 +92,7 @@ export function TeachersPage() {
           <FieldGroup className="mt-4">
             <Field>
               <FieldLabel htmlFor="staff-name">Name</FieldLabel>
-              <Input id="staff-name" name="name" required />
+              <Input capitalize="words" id="staff-name" name="name" required />
             </Field>
             <Field>
               <FieldLabel htmlFor="staff-title">Title</FieldLabel>
@@ -125,7 +125,7 @@ export function TeachersPage() {
           <FieldGroup className="mt-4">
             <Field>
               <FieldLabel htmlFor="invite-name">Name</FieldLabel>
-              <Input id="invite-name" name="name" />
+              <Input capitalize="words" id="invite-name" name="name" />
             </Field>
             <Field>
               <FieldLabel htmlFor="invite-email">Email</FieldLabel>
