@@ -37,7 +37,6 @@ export const queryKeys = {
   admissionSiblingFees: (id: string) => ["admissions", "detail", id, "sibling-fees"] as const,
   guardianSearch: (q: string) => ["guardians", "search", q] as const,
   admissionDuplicates: (query: Record<string, string | undefined>) => ["admissions", "duplicates", query] as const,
-  exams: ["exams"] as const,
   guardians: ["guardians"] as const,
   campuses: ["campuses"] as const,
   academics: ["academics"] as const,

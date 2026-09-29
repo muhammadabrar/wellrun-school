@@ -4,8 +4,6 @@ import {
   classSortIndex,
   communicationCreateSchema,
   documentUploadSchema,
-  examCreateSchema,
-  examResultWriteSchema,
   guardianSchema,
   studentBulkSchema,
   studentDeactivateSchema,
@@ -187,7 +185,7 @@ export class StudentsService {
         guardians: { include: { guardian: true } },
         invoices: { include: { payments: true } },
         attendance: true,
-        examResults: { include: { exam: true }, orderBy: { exam: { heldOn: "desc" } } },
+        results: { where: { scope: "EXAM", exam: { kind: "EXAM" } }, orderBy: { computedAt: "desc" }, take: 1, select: { percentage: true, grade: true, rank: true } },
       },
     });
     if (!student) throw new NotFoundException("Student not found");
@@ -208,7 +206,7 @@ export class StudentsService {
       const paid = invoice.paidAmountPkr || invoice.payments.filter((payment) => payment.status !== "VOIDED" && payment.status !== "REFUNDED").reduce((sum, payment) => sum + payment.amountPkr, 0);
       feesDue += invoice.balanceAmountPkr || Math.max(invoice.amountPkr - paid, 0);
     }
-    const latest = student.examResults[0];
+    const latest = student.results[0];
     const enrollmentYears = new Set(student.enrollments.map((row) => row.class.yearId)).size;
     return {
       id: student.id,
@@ -254,7 +252,9 @@ export class StudentsService {
         attendancePct: marked ? Math.round((presentLike / marked) * 100) : null,
         attendanceMarked: marked > 0,
         feesDue,
-        latestExamPct: latest && latest.totalMarks ? Math.round((latest.obtainedMarks / latest.totalMarks) * 100) : null,
+        latestExamPct: latest ? Math.round(latest.percentage) : null,
+        latestGrade: latest?.grade ?? null,
+        latestRank: latest?.rank ?? null,
         enrollmentYears,
       },
       canMutate: classIds === null,
@@ -572,18 +572,14 @@ export class StudentsService {
     return String((used.length ? Math.max(...used) : 0) + 1);
   }
 
+  /** Students scoring 80%+ in the latest exam that has results. */
   private async topScorerIds(schoolId: string) {
     const exam = await this.prisma.exam.findFirst({
-      where: { schoolId },
-      orderBy: { heldOn: "desc" },
-      include: { results: true },
+      where: { schoolId, kind: "EXAM", results: { some: {} } },
+      orderBy: { startsOn: "desc" },
+      select: { results: { where: { scope: "EXAM", percentage: { gte: 80 } }, select: { studentId: true } } },
     });
-    if (!exam) return new Set<string>();
-    return new Set(
-      exam.results
-        .filter((row) => row.totalMarks > 0 && row.obtainedMarks / row.totalMarks >= 0.8)
-        .map((row) => row.studentId),
-    );
+    return new Set((exam?.results ?? []).map((row) => row.studentId));
   }
 
   private extraRecord(extra: unknown): Record<string, string> {
@@ -652,12 +648,6 @@ export class StudentsService {
         payments: { id: string; amountPkr: number; status?: string }[];
       }[];
       attendance: { id: string; date: Date; status: string; class: { name: string; section: string } }[];
-      examResults: {
-        id: string;
-        totalMarks: number;
-        obtainedMarks: number;
-        exam: { id: string; name: string; heldOn: Date; yearId: string | null; year: { id: string; name: string } | null };
-      }[];
     },
     years: { id: string; name: string; startsOn: Date; endsOn: Date; current: boolean }[],
     classes: { id: string; name: string; section: string; yearId: string; year: { name: string } }[],
@@ -736,15 +726,6 @@ export class StudentsService {
       classes: classes
         .sort((a, b) => classSortIndex(a.name) - classSortIndex(b.name) || a.section.localeCompare(b.section))
         .map((cls) => ({ id: cls.id, name: cls.name, section: cls.section, yearId: cls.yearId, yearName: cls.year.name })),
-      exams: student.examResults.map((row) => ({
-        id: row.id,
-        name: row.exam.name,
-        heldOn: row.exam.heldOn,
-        yearId: row.exam.yearId || row.exam.year?.id || "",
-        totalMarks: row.totalMarks,
-        obtainedMarks: row.obtainedMarks,
-        pct: row.totalMarks > 0 ? Math.round((row.obtainedMarks / row.totalMarks) * 100) : 0,
-      })),
       attendance: student.attendance.map((row) => ({
         id: row.id,
         date: row.date,
@@ -927,26 +908,6 @@ export class StudentsService {
     };
   }
 
-  async resultsTab(schoolId: string, id: string, classIds: string[] | null = null) {
-    await this.byId(schoolId, id, classIds);
-    const rows = await this.prisma.examResult.findMany({
-      where: { studentId: id },
-      include: { exam: { include: { year: true } } },
-      orderBy: { exam: { heldOn: "desc" } },
-    });
-    return rows.map((row) => ({
-      id: row.id,
-      examId: row.examId,
-      name: row.exam.name,
-      subject: row.subject,
-      heldOn: row.exam.heldOn,
-      yearId: row.exam.yearId || row.exam.year?.id || "",
-      totalMarks: row.totalMarks,
-      obtainedMarks: row.obtainedMarks,
-      pct: row.totalMarks > 0 ? Math.round((row.obtainedMarks / row.totalMarks) * 100) : 0,
-    }));
-  }
-
   async documentsTab(schoolId: string, id: string, classIds: string[] | null = null) {
     await this.byId(schoolId, id, classIds);
     return this.prisma.schoolDocument.findMany({
@@ -1112,50 +1073,6 @@ export class StudentsService {
       }
     }
     return { updated: data.ids.length, action: data.action };
-  }
-
-  async createExam(schoolId: string, actorId: string, body: unknown) {
-    await assertWritableSchool(this.prisma, schoolId);
-    const data = examCreateSchema.parse(body);
-    const exam = await this.prisma.exam.create({
-      data: {
-        schoolId,
-        name: data.name,
-        heldOn: new Date(data.heldOn),
-        yearId: data.yearId,
-      },
-    });
-    await audit(this.prisma, { schoolId, actorId, action: "exam_created", entity: "exam", entityId: exam.id });
-    return exam;
-  }
-
-  async writeExamResult(schoolId: string, actorId: string, examId: string, body: unknown) {
-    await assertWritableSchool(this.prisma, schoolId);
-    const data = examResultWriteSchema.parse(body);
-    const exam = await this.prisma.exam.findFirst({ where: { id: examId, schoolId } });
-    if (!exam) throw new NotFoundException("Exam not found");
-    await this.byId(schoolId, data.studentId);
-    const result = await this.prisma.examResult.upsert({
-      where: { examId_studentId_subject: { examId, studentId: data.studentId, subject: data.subject || "" } },
-      update: { totalMarks: data.totalMarks, obtainedMarks: data.obtainedMarks },
-      create: {
-        examId,
-        studentId: data.studentId,
-        subject: data.subject || "",
-        totalMarks: data.totalMarks,
-        obtainedMarks: data.obtainedMarks,
-      },
-    });
-    await audit(this.prisma, { schoolId, actorId, action: "exam_result_saved", entity: "student", entityId: data.studentId });
-    return result;
-  }
-
-  async exams(schoolId: string) {
-    return this.prisma.exam.findMany({
-      where: { schoolId },
-      orderBy: { heldOn: "desc" },
-      include: { _count: { select: { results: true } } },
-    });
   }
 
   private async moveEnrollment(schoolId: string, studentId: string, classId: string, previousStatus: string) {

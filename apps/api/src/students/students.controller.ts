@@ -101,12 +101,6 @@ export class StudentsController {
     return this.students.feesTab(schoolId, id, classIds);
   }
 
-  @Get(":id/results")
-  async results(@Req() req: { user: CurrentUser }, @Param("id") id: string) {
-    const { schoolId, classIds } = await teacherClassIds(this.prisma, req.user);
-    return this.students.resultsTab(schoolId, id, classIds);
-  }
-
   @Get(":id/documents")
   async studentDocuments(@Req() req: { user: CurrentUser }, @Param("id") id: string) {
     const { schoolId, classIds } = await teacherClassIds(this.prisma, req.user);
@@ -140,26 +134,5 @@ export class StudentsController {
   @Patch(":id")
   update(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Body() body: unknown) {
     return this.students.update(requireSchoolAdmin(req.user), req.user.id, id, body);
-  }
-}
-
-@Controller("console/exams")
-@UseGuards(AuthGuard)
-export class ExamsController {
-  constructor(@Inject(StudentsService) private readonly students: StudentsService) {}
-
-  @Get()
-  list(@Req() req: { user: CurrentUser }) {
-    return this.students.exams(requireSchoolId(req.user));
-  }
-
-  @Post()
-  create(@Req() req: { user: CurrentUser }, @Body() body: unknown) {
-    return this.students.createExam(requireSchoolAdmin(req.user), req.user.id, body);
-  }
-
-  @Post(":id/results")
-  results(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Body() body: unknown) {
-    return this.students.writeExamResult(requireSchoolAdmin(req.user), req.user.id, id, body);
   }
 }

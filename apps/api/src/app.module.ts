@@ -10,6 +10,7 @@ import { AttendanceModule } from "./attendance/attendance.module";
 import { AuthModule } from "./auth/auth.module";
 import { ClaimsModule } from "./claims/claims.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { ExamsModule } from "./exams/exams.module";
 import { FeesModule } from "./fees/fees.module";
 import { HealthController } from "./health.controller";
 import { PayrollModule } from "./payroll/payroll.module";
@@ -43,6 +44,7 @@ import { TraceMiddleware } from "./trace/trace.middleware";
     DashboardModule,
     SetupModule,
     StaffModule,
+    ExamsModule,
     PayrollModule,
     ClaimsModule,
     AdminModule,

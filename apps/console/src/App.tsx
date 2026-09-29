@@ -46,6 +46,29 @@ const FeePaymentsPage = lazyPage(() => import("./pages/fees/Payments"), "FeePaym
 const FeeDiscountsPage = lazyPage(() => import("./pages/fees/Discounts"), "FeeDiscountsPage");
 const FeeReportsPage = lazyPage(() => import("./pages/fees/Reports"), "FeeReportsPage");
 const FeeSettingsPage = lazyPage(() => import("./pages/fees/Settings"), "FeeSettingsPage");
+const ExamsDashboardPage = lazyPage(() => import("./pages/exams/Dashboard"), "ExamsDashboardPage");
+const ExamsListPage = lazyPage(() => import("./pages/exams/List"), "ExamsListPage");
+const ExamCreatePage = lazyPage(() => import("./pages/exams/New"), "ExamCreatePage");
+const ExamDetailPage = lazyPage(() => import("./pages/exams/Detail"), "ExamDetailPage");
+const ExamCalendarPage = lazyPage(() => import("./pages/exams/Calendar"), "ExamCalendarPage");
+const AssessmentsPage = lazyPage(() => import("./pages/exams/Assessments"), "AssessmentsPage");
+const MarksPapersPage = lazyPage(() => import("./pages/exams/Marks"), "MarksPapersPage");
+const PendingVerificationPage = lazyPage(() => import("./pages/exams/Marks"), "PendingVerificationPage");
+const ApprovedMarksPage = lazyPage(() => import("./pages/exams/Marks"), "ApprovedMarksPage");
+const MarksEntryPage = lazyPage(() => import("./pages/exams/MarksEntry"), "MarksEntryPage");
+const CorrectionsPage = lazyPage(() => import("./pages/exams/Corrections"), "CorrectionsPage");
+const ClassResultsPage = lazyPage(() => import("./pages/exams/Results"), "ClassResultsPage");
+const StudentResultsPage = lazyPage(() => import("./pages/exams/Results"), "StudentResultsPage");
+const ResultSheetsPage = lazyPage(() => import("./pages/exams/Results"), "ResultSheetsPage");
+const ReportCardsPage = lazyPage(() => import("./pages/exams/Results"), "ReportCardsPage");
+const ClassPerformancePage = lazyPage(() => import("./pages/exams/Analytics"), "ClassPerformancePage");
+const SubjectPerformancePage = lazyPage(() => import("./pages/exams/Analytics"), "SubjectPerformancePage");
+const StudentPerformancePage = lazyPage(() => import("./pages/exams/Analytics"), "StudentPerformancePage");
+const ExamTermsPage = lazyPage(() => import("./pages/exams/Settings"), "ExamTermsPage");
+const GradingScalesPage = lazyPage(() => import("./pages/exams/Settings"), "GradingScalesPage");
+const ResultRulesPage = lazyPage(() => import("./pages/exams/Settings"), "ResultRulesPage");
+const RankingRulesPage = lazyPage(() => import("./pages/exams/Settings"), "RankingRulesPage");
+const ReportTemplatesPage = lazyPage(() => import("./pages/exams/Settings"), "ReportTemplatesPage");
 const ReceiptPage = lazyPage(() => import("./pages/Receipt"), "ReceiptPage");
 const AdminPage = lazyPage(() => import("./pages/Admin"), "AdminPage");
 
@@ -112,6 +135,33 @@ export function App() {
         <Route path="/academics" element={<AcademicsPage />} />
         <Route path="/fee-structure" element={<FeeStructurePage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/exams" element={<ExamsDashboardPage />} />
+        <Route path="/exams/list" element={<ExamsListPage />} />
+        <Route path="/exams/new" element={<ExamCreatePage />} />
+        <Route path="/exams/calendar" element={<ExamCalendarPage />} />
+        <Route path="/exams/assessments" element={<Navigate to="/exams/assessments/quizzes" replace />} />
+        <Route path="/exams/assessments/:kind" element={<AssessmentsPage />} />
+        <Route path="/exams/marks" element={<MarksPapersPage />} />
+        <Route path="/exams/marks/pending" element={<PendingVerificationPage />} />
+        <Route path="/exams/marks/approved" element={<ApprovedMarksPage />} />
+        <Route path="/exams/marks/corrections" element={<CorrectionsPage />} />
+        <Route path="/exams/marks/:paperId" element={<MarksEntryPage />} />
+        <Route path="/exams/results" element={<Navigate to="/exams/results/class" replace />} />
+        <Route path="/exams/results/class" element={<ClassResultsPage />} />
+        <Route path="/exams/results/student" element={<StudentResultsPage />} />
+        <Route path="/exams/results/sheets" element={<ResultSheetsPage />} />
+        <Route path="/exams/results/report-cards" element={<ReportCardsPage />} />
+        <Route path="/exams/analytics" element={<Navigate to="/exams/analytics/class" replace />} />
+        <Route path="/exams/analytics/class" element={<ClassPerformancePage />} />
+        <Route path="/exams/analytics/subject" element={<SubjectPerformancePage />} />
+        <Route path="/exams/analytics/student" element={<StudentPerformancePage />} />
+        <Route path="/exams/settings" element={<Navigate to="/exams/settings/terms" replace />} />
+        <Route path="/exams/settings/terms" element={<ExamTermsPage />} />
+        <Route path="/exams/settings/grading" element={<GradingScalesPage />} />
+        <Route path="/exams/settings/result-rules" element={<ResultRulesPage />} />
+        <Route path="/exams/settings/ranking" element={<RankingRulesPage />} />
+        <Route path="/exams/settings/report-cards" element={<ReportTemplatesPage />} />
+        <Route path="/exams/:id" element={<ExamDetailPage />} />
         <Route path="/fees" element={<FeesPage />} />
         <Route path="/fees/heads" element={<FeeHeadsPage />} />
         <Route path="/fees/structures/:id" element={<FeeStructureEditPage />} />

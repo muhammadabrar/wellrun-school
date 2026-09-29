@@ -729,19 +729,6 @@ export const studentDeactivateSchema = z.object({
   reason: z.string().optional(),
 });
 
-export const examCreateSchema = z.object({
-  name: z.string().min(1),
-  heldOn: z.string().min(1),
-  yearId: z.string().optional(),
-});
-
-export const examResultWriteSchema = z.object({
-  studentId: z.string().min(1),
-  subject: z.string().default(""),
-  totalMarks: z.coerce.number().int().positive(),
-  obtainedMarks: z.coerce.number().int().min(0),
-});
-
 export const communicationCreateSchema = z.object({
   type: z.enum(["NOTE", "MEETING"]),
   subject: z.string().optional(),
@@ -765,3 +752,4 @@ export type GenerateFeesInput = z.infer<typeof generateFeesSchema>;
 export type FeeSettingsInput = z.infer<typeof feeSettingsSchema>;
 
 export * from "./templates";
+export * from "./exams";

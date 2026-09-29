@@ -1,8 +1,15 @@
 import { BrandLogo } from "@wellrun/ui";
 import type { ComponentProps } from "react";
 import {
+  BarChart3Icon,
   BookOpenIcon,
   BriefcaseIcon,
+  FilePenLineIcon,
+  LayoutDashboardIcon,
+  ListChecksIcon,
+  NotebookPenIcon,
+  SettingsIcon,
+  TrophyIcon,
   Building2Icon,
   CalendarClockIcon,
   CalendarDaysIcon,
@@ -17,6 +24,7 @@ import {
 } from "lucide-react";
 import { currentUser } from "@/lib/api";
 import { CampusSwitcher } from "@/components/campus-switcher";
+import { YearSwitcher } from "@/components/year-switcher";
 import { NavMain, type NavItem } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } from "@/components/ui/sidebar";
@@ -41,6 +49,87 @@ const dayItems: NavItem[] = [
   { title: "Absent list", url: "/absent", icon: <UserXIcon /> },
   { title: "Timetable", url: "/timetable", icon: <CalendarClockIcon /> },
 ];
+
+const examItems: NavItem[] = [
+  { title: "Dashboard", url: "/exams", icon: <LayoutDashboardIcon />, end: true },
+  {
+    title: "Examinations",
+    url: "/exams/list",
+    icon: <NotebookPenIcon />,
+    items: [
+      { title: "All exams", url: "/exams/list" },
+      { title: "Create exam", url: "/exams/new", end: true },
+      { title: "Exam calendar", url: "/exams/calendar" },
+    ],
+  },
+  {
+    title: "Assessments",
+    url: "/exams/assessments",
+    icon: <ListChecksIcon />,
+    items: [
+      { title: "Quizzes", url: "/exams/assessments/quizzes" },
+      { title: "Assignments", url: "/exams/assessments/assignments" },
+      { title: "Practicals", url: "/exams/assessments/practicals" },
+      { title: "Viva", url: "/exams/assessments/viva" },
+    ],
+  },
+  {
+    title: "Marks",
+    url: "/exams/marks",
+    icon: <FilePenLineIcon />,
+    items: [
+      { title: "Enter marks", url: "/exams/marks", end: true },
+      { title: "Pending verification", url: "/exams/marks/pending" },
+      { title: "Approved", url: "/exams/marks/approved" },
+      { title: "Corrections", url: "/exams/marks/corrections" },
+    ],
+  },
+  {
+    title: "Results",
+    url: "/exams/results",
+    icon: <TrophyIcon />,
+    items: [
+      { title: "Class results", url: "/exams/results/class" },
+      { title: "Student results", url: "/exams/results/student" },
+      { title: "Result sheets", url: "/exams/results/sheets" },
+      { title: "Report cards", url: "/exams/results/report-cards" },
+    ],
+  },
+  {
+    title: "Analytics",
+    url: "/exams/analytics",
+    icon: <BarChart3Icon />,
+    items: [
+      { title: "Class performance", url: "/exams/analytics/class" },
+      { title: "Subject performance", url: "/exams/analytics/subject" },
+      { title: "Student performance", url: "/exams/analytics/student" },
+    ],
+  },
+  {
+    title: "Settings",
+    url: "/exams/settings",
+    icon: <SettingsIcon />,
+    items: [
+      { title: "Terms", url: "/exams/settings/terms" },
+      { title: "Grading systems", url: "/exams/settings/grading" },
+      { title: "Result rules", url: "/exams/settings/result-rules" },
+      { title: "Ranking rules", url: "/exams/settings/ranking" },
+      { title: "Report card templates", url: "/exams/settings/report-cards" },
+    ],
+  },
+];
+
+/** Teachers mark their own subjects: no verification queue, exam creation or settings. */
+const teacherExamItems: NavItem[] = examItems
+  .filter((item) => item.title !== "Settings")
+  .map((item) =>
+    item.items
+      ? {
+          ...item,
+          items: item.items.filter((sub) => !["/exams/new", "/exams/marks/pending", "/exams/results/sheets"].includes(sub.url)),
+        }
+      : item,
+  );
 
 const schoolItems: NavItem[] = [
   {
@@ -89,10 +178,12 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
             { label: "Me", items: [{ title: "My portal", url: "/me", icon: <SunIcon /> }] },
             { label: "People", items: [{ title: "Students", url: "/students", icon: <UsersIcon /> }] },
             { label: "Day", items: dayItems.filter((item) => item.url !== "/") },
+            { label: "Exams", items: teacherExamItems },
           ]
         : [
             { label: "People", items: peopleItems },
             { label: "Day", items: dayItems },
+            { label: "Exams", items: examItems },
             { label: "School", items: schoolItems },
           ];
 
@@ -102,7 +193,12 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
         <div className="flex items-center gap-2 px-2 py-1 group-data-[collapsible=icon]:hidden">
           <BrandLogo />
         </div>
-        {user?.role === "SCHOOL_ADMIN" || user?.role === "TEACHER" ? <CampusSwitcher /> : null}
+        {user?.role === "SCHOOL_ADMIN" || user?.role === "TEACHER" ? (
+          <>
+            <CampusSwitcher />
+            <YearSwitcher />
+          </>
+        ) : null}
       </SidebarHeader>
       <SidebarContent>
         <NavMain groups={groups} />

@@ -7,6 +7,7 @@ import { FormSelect } from "@/components/form/form-select";
 import { AttendanceMeter } from "@/components/students/attendance-meter";
 import { CollectPaymentDialog } from "@/components/fees/collect-payment-dialog";
 import { StudentFeesPanel } from "@/components/fees/student-fees-panel";
+import { StudentResultsPanel } from "@/components/students/student-results-panel";
 import { TodayAttendance, todayAttendanceLabel, useTodayAttendance } from "@/components/students/today-attendance";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -48,7 +49,7 @@ export function StudentPage() {
   const tabQuery = useQuery({
     queryKey: queryKeys.studentTab(id ?? "", tab),
     queryFn: () => api.studentTab(id!, tab === "overview" ? "enrollments" : tab),
-    enabled: Boolean(id) && tab !== "overview" && tab !== "fees",
+    enabled: Boolean(id) && tab !== "overview" && tab !== "fees" && tab !== "results",
   });
   const [toast, setToast] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"promote" | "deactivate" | null>(null);
@@ -86,7 +87,12 @@ export function StudentPage() {
   const metrics = [
     student.metrics.attendancePct != null ? { label: "Attendance", value: `${student.metrics.attendancePct}%` } : null,
     student.metrics.feesDue ? { label: "Fees due", value: pkr(student.metrics.feesDue) } : null,
-    student.metrics.latestExamPct != null ? { label: "Latest exam", value: `${student.metrics.latestExamPct}%` } : null,
+    student.metrics.latestExamPct != null
+      ? {
+          label: "Latest exam",
+          value: `${student.metrics.latestExamPct}%${student.metrics.latestGrade ? ` · ${student.metrics.latestGrade}` : ""}`,
+        }
+      : null,
     student.metrics.enrollmentYears ? { label: "Years enrolled", value: String(student.metrics.enrollmentYears) } : null,
   ].filter(Boolean) as { label: string; value: string }[];
 
@@ -204,14 +210,14 @@ export function StudentPage() {
           </dl>
         ) : tab === "fees" ? (
           <StudentFeesPanel studentId={student.id} studentName={`${student.firstName} ${student.lastName}`} canMutate={canMutate} />
+        ) : tab === "results" ? (
+          <StudentResultsPanel studentId={student.id} />
         ) : tabQuery.isPending ? (
           <LoadingState variant="form" />
         ) : tab === "enrollments" ? (
           <EnrollmentList rows={tabQuery.data as never} />
         ) : tab === "attendance" ? (
           <AttendanceList rows={tabQuery.data as never} />
-        ) : tab === "results" ? (
-          <ResultsPanel id={student.id} rows={tabQuery.data as never} canMutate={canMutate} onSaved={() => void tabQuery.refetch()} />
         ) : tab === "family" ? (
           <FamilyPanel data={tabQuery.data as never} />
         ) : tab === "documents" ? (
@@ -349,75 +355,6 @@ function AttendanceList({ rows }: { rows: { id: string; date: string; status: st
           </li>
         ))}
       </ul>
-    </div>
-  );
-}
-
-function ResultsPanel({
-  id,
-  rows,
-  canMutate,
-  onSaved,
-}: {
-  id: string;
-  rows: { id: string; name: string; subject: string; obtainedMarks: number; totalMarks: number; pct: number; heldOn: string }[];
-  canMutate: boolean;
-  onSaved: () => void;
-}) {
-  const { data: exams } = useQuery({ queryKey: queryKeys.exams, queryFn: api.exams, enabled: canMutate });
-  const [examId, setExamId] = useState("");
-  const [subject, setSubject] = useState("English");
-  const [obtained, setObtained] = useState("0");
-  const [total, setTotal] = useState("100");
-  return (
-    <div>
-      {canMutate ? (
-        <form
-          className="mb-4"
-          onSubmit={async (event) => {
-            event.preventDefault();
-            if (!examId) return;
-            await api.writeExamResult(examId, { studentId: id, subject, obtainedMarks: Number(obtained), totalMarks: Number(total) });
-            onSaved();
-          }}
-        >
-        <FieldGroup className="grid md:grid-cols-4">
-          <Field>
-            <FieldLabel htmlFor="exam">Exam</FieldLabel>
-            <FormSelect
-              id="exam"
-              value={examId || undefined}
-              onValueChange={(value) => setExamId(value ?? "")}
-              placeholder="Select exam"
-              options={(exams ?? []).map((exam) => ({ value: exam.id, label: exam.name }))}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="subject">Subject</FieldLabel>
-            <Input id="subject" value={subject} onChange={(event) => setSubject(event.target.value)} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="obtained">Obtained</FieldLabel>
-            <Input id="obtained" type="number" value={obtained} onChange={(event) => setObtained(event.target.value)} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="total">Total</FieldLabel>
-            <Input id="total" type="number" value={total} onChange={(event) => setTotal(event.target.value)} />
-          </Field>
-          <Button type="submit">Save result</Button>
-        </FieldGroup>
-        </form>
-      ) : null}
-      {!rows?.length ? <EmptyState title="No exam results" description="Results appear after exams are entered." /> : (
-        <ul className="space-y-3">
-          {rows.map((row) => (
-            <li key={row.id} className="flex justify-between rounded-2xl bg-paper px-4 py-3">
-              <span>{row.name}{row.subject ? ` · ${row.subject}` : ""}</span>
-              <span>{row.obtainedMarks}/{row.totalMarks} · {row.pct}%</span>
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }

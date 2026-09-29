@@ -38,7 +38,7 @@ export function currentUser() {
   return raw ? (JSON.parse(raw) as SessionUser) : null;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...(init?.headers as Record<string, string> | undefined) };
   if (init?.body && !headers["Content-Type"] && !headers["content-type"]) {
     headers["Content-Type"] = "application/json";
@@ -198,11 +198,6 @@ export const api = {
     request(`/console/students/${id}/communications`, { method: "POST", body: JSON.stringify(payload) }),
   uploadStudentDocument: (id: string, payload: Record<string, unknown>) =>
     request(`/console/students/${id}/documents`, { method: "POST", body: JSON.stringify(payload) }),
-  exams: () => request<ExamRow[]>("/console/exams"),
-  createExam: (payload: Record<string, unknown>) =>
-    request<ExamRow>("/console/exams", { method: "POST", body: JSON.stringify(payload) }),
-  writeExamResult: (examId: string, payload: Record<string, unknown>) =>
-    request(`/console/exams/${examId}/results`, { method: "POST", body: JSON.stringify(payload) }),
   admissions: (query?: Record<string, string | number | undefined>) => {
     const params = new URLSearchParams();
     if (query) {
@@ -585,6 +580,8 @@ export type StudentProfile = {
     attendanceMarked: boolean;
     feesDue: number;
     latestExamPct: number | null;
+    latestGrade?: string | null;
+    latestRank?: number | null;
     enrollmentYears: number;
   };
   years?: { id: string; name: string; current: boolean; startsOn: string; endsOn: string }[];
@@ -598,13 +595,6 @@ export type SchoolClass = {
   section: string;
   yearId?: string;
   enrollments: { student: Student }[];
-};
-
-export type ExamRow = {
-  id: string;
-  name: string;
-  heldOn: string;
-  yearId?: string | null;
 };
 
 export type AdmissionStatus =
@@ -1297,3 +1287,20 @@ export type AdminClaim = {
   school: { name: string; slug: string; city: string };
   user: { name: string; email: string };
 };
+
+/** Fetches an authenticated file (PDF) and returns an object URL for opening or downloading. */
+export async function authedFileUrl(path: string, errorMessage = "Could not download this file") {
+  const headers: Record<string, string> = {};
+  const auth = token();
+  if (auth) headers.Authorization = `Bearer ${auth}`;
+  const campusId = readCampusId();
+  if (campusId) headers["X-Campus-Id"] = campusId;
+  const yearId = readYearId();
+  if (yearId) headers["X-Year-Id"] = yearId;
+  const res = await fetch(`${API}${path}`, { headers, credentials: "include" });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string };
+    throw new ApiError(body.message ?? errorMessage, res.status);
+  }
+  return URL.createObjectURL(await res.blob());
+}

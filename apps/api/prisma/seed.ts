@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
+import { seedDemoSchool } from "./seed-demo";
 
 const prisma = new PrismaClient();
 
@@ -154,18 +155,6 @@ const schools: SchoolSeed[] = [
   },
 ];
 
-const firstNames = ["Ahmed", "Fatima", "Hassan", "Zainab", "Ali", "Maryam", "Usman", "Hira"];
-const lastNames = ["Khan", "Siddiqui", "Butt", "Sheikh", "Raza", "Iqbal"];
-
-function karachiToday() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Karachi",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
 async function seedSchool(school: SchoolSeed, passwordHash: string) {
   const created = await prisma.school.create({
     data: {
@@ -251,482 +240,7 @@ async function seedSchool(school: SchoolSeed, passwordHash: string) {
     data: { schoolId: created.id, campusId: campus.id, userId: admin.id, role: "SUPER_ADMIN" },
   });
 
-  const yearPrev = await prisma.academicYear.create({
-    data: {
-      schoolId: created.id,
-      name: "2025-26",
-      startsOn: new Date("2025-04-01"),
-      endsOn: new Date("2026-03-31"),
-      current: false,
-    },
-  });
-
-  const year = await prisma.academicYear.create({
-    data: {
-      schoolId: created.id,
-      name: "2026-27",
-      startsOn: new Date("2026-04-01"),
-      endsOn: new Date("2027-03-31"),
-      current: true,
-    },
-  });
-
-  const grade4 = await prisma.class.create({
-    data: { schoolId: created.id, yearId: yearPrev.id, campusId: campus.id, name: "Grade 4", section: "A" },
-  });
-  const grade5 = await prisma.class.create({
-    data: { schoolId: created.id, yearId: year.id, campusId: campus.id, name: "Grade 5", section: "A" },
-  });
-  const grade6 = await prisma.class.create({
-    data: { schoolId: created.id, yearId: year.id, campusId: campus.id, name: "Grade 6", section: "A" },
-  });
-
-  const feePlan = await prisma.feePlan.create({
-    data: {
-      schoolId: created.id,
-      yearId: year.id,
-      name: "September tuition",
-      amountPkr: school.profile.feeMinPkr,
-    },
-  });
-
-  const admissionItem = await prisma.feeItem.create({
-    data: { schoolId: created.id, name: "Admission fee", amountPkr: 15000, enabled: true, sortOrder: 1 },
-  });
-  const tuitionItem = await prisma.feeItem.create({
-    data: { schoolId: created.id, name: "Monthly tuition", amountPkr: school.profile.feeMinPkr, enabled: true, sortOrder: 2 },
-  });
-  await prisma.feeHead.createMany({
-    data: [
-      { id: admissionItem.id, schoolId: created.id, name: "Admission fee", code: "ADMISSION_FEE", amountPkr: 15000, frequency: "ONE_TIME", recurring: false, sortOrder: 1 },
-      { id: tuitionItem.id, schoolId: created.id, name: "Monthly tuition", code: "MONTHLY_TUITION", amountPkr: school.profile.feeMinPkr, frequency: "MONTHLY", sortOrder: 2 },
-    ],
-  });
-  await prisma.schoolFeeSettings.create({ data: { schoolId: created.id } });
-  const feeStructure = await prisma.feeStructure.create({
-    data: {
-      schoolId: created.id,
-      campusId: campus.id,
-      academicYearId: year.id,
-      name: "Grade 5 monthly",
-      className: "Grade 5",
-      section: "A",
-      status: "ACTIVE",
-      effectiveFrom: new Date("2026-04-01"),
-      items: { create: [{ feeHeadId: tuitionItem.id, amountPkr: school.profile.feeMinPkr, sortOrder: 0 }] },
-    },
-  });
-
-  const today = new Date(`${karachiToday()}T00:00:00.000Z`);
-  const seededStudents: { id: string; score: number; admissionNo: string }[] = [];
-  const siblingGuardian = await prisma.guardian.create({
-    data: {
-      schoolId: created.id,
-      name: "Sana Khan",
-      phone: "03001112201",
-      cnic: "4210111122334",
-      email: "sana.khan@example.com",
-      relation: "Mother",
-      occupation: "Teacher",
-    },
-  });
-
-  for (let i = 0; i < 8; i += 1) {
-    const admissionNo = `ADM-2026-${String(i + 1).padStart(4, "0")}`;
-    const student = await prisma.student.create({
-      data: {
-        schoolId: created.id,
-        admissionNo,
-        rollNo: String(i + 1),
-        firstName: firstNames[i],
-        lastName: lastNames[i % lastNames.length],
-        gender: i % 2 === 0 ? "male" : "female",
-        dateOfBirth: new Date(2014, i % 12, 4 + i),
-        campusId: campus.id,
-        status: i === 7 ? "inactive" : "active",
-        admissionDate: new Date("2026-04-08"),
-        firstAdmissionDate: i === 0 ? new Date("2025-04-08") : new Date("2026-04-08"),
-        extra: i === 2 ? { cnic: "3520212345678", phone: "03001112203" } : { phone: `0300111220${i + 1}` },
-      },
-    });
-
-    const guardian =
-      i === 0 || i === 1
-        ? siblingGuardian
-        : await prisma.guardian.create({
-            data: {
-              schoolId: created.id,
-              name: `Parent of ${firstNames[i]}`,
-              phone: `0300${String(1000000 + i).slice(0, 7)}`,
-              cnic: `42101${String(10000000 + i).slice(0, 8)}`,
-              email: `parent.${admissionNo.toLowerCase()}@example.com`,
-              relation: "Mother",
-            },
-          });
-
-    await prisma.studentGuardian.create({
-      data: { studentId: student.id, guardianId: guardian.id },
-    });
-
-    if (i === 0) {
-      await prisma.enrollment.create({
-        data: {
-          schoolId: created.id,
-          studentId: student.id,
-          classId: grade4.id,
-          active: false,
-          rollNo: "12",
-          status: "completed",
-          studentType: "new",
-          endedAt: new Date("2026-03-31"),
-        },
-      });
-    }
-
-    await prisma.enrollment.create({
-      data: {
-        schoolId: created.id,
-        studentId: student.id,
-        classId: i < 6 ? grade5.id : grade6.id,
-        active: i !== 7,
-        rollNo: String(i + 1),
-        status: i === 7 ? "completed" : "active",
-        studentType: i === 0 ? "returning" : "new",
-        endedAt: i === 7 ? new Date("2026-06-01") : null,
-      },
-    });
-
-    await prisma.attendanceRecord.create({
-      data: {
-        schoolId: created.id,
-        studentId: student.id,
-        classId: i < 6 ? grade5.id : grade6.id,
-        date: today,
-        status: i === 1 || i === 5 ? "ABSENT" : "PRESENT",
-      },
-    });
-
-    const invoice = await prisma.invoice.create({
-      data: {
-        schoolId: created.id,
-        campusId: campus.id,
-        studentId: student.id,
-        academicYearId: year.id,
-        feePlanId: feePlan.id,
-        feeStructureId: i < 6 ? feeStructure.id : undefined,
-        invoiceNumber: `INV-2026-${String(i + 1).padStart(6, "0")}`,
-        billingPeriod: "2026-09",
-        amountPkr: school.profile.feeMinPkr,
-        totalAmountPkr: school.profile.feeMinPkr,
-        subtotalPkr: school.profile.feeMinPkr,
-        balanceAmountPkr: i < 3 ? 0 : school.profile.feeMinPkr,
-        paidAmountPkr: i < 3 ? school.profile.feeMinPkr : 0,
-        status: i < 3 ? "PAID" : "ISSUED",
-        dueOn: new Date("2026-09-10"),
-        dueDate: new Date("2026-09-10"),
-        items: {
-          create: [{ description: "September tuition", unitAmountPkr: school.profile.feeMinPkr, grossAmountPkr: school.profile.feeMinPkr, netAmountPkr: school.profile.feeMinPkr, feeHeadId: tuitionItem.id }],
-        },
-      },
-    });
-
-    if (i < 6) {
-      await prisma.studentFeeAssignment.create({
-        data: {
-          schoolId: created.id,
-          studentId: student.id,
-          academicYearId: year.id,
-          feeStructureId: feeStructure.id,
-          effectiveFrom: new Date("2026-04-01"),
-        },
-      });
-    }
-
-    if (i < 3) {
-      const payment = await prisma.payment.create({
-        data: {
-          schoolId: created.id,
-          campusId: campus.id,
-          studentId: student.id,
-          invoiceId: invoice.id,
-          paymentNumber: `PAY-2026-${String(i + 1).padStart(6, "0")}`,
-          amountPkr: school.profile.feeMinPkr,
-          method: "cash",
-          receiptNo: `REC-2026-${String(i + 1).padStart(6, "0")}`,
-          status: "COMPLETED",
-        },
-      });
-      await prisma.paymentAllocation.create({
-        data: { paymentId: payment.id, invoiceId: invoice.id, amountPkr: school.profile.feeMinPkr },
-      });
-      await prisma.receipt.create({
-        data: {
-          schoolId: created.id,
-          campusId: campus.id,
-          studentId: student.id,
-          paymentId: payment.id,
-          receiptNumber: payment.receiptNo,
-          amountPkr: payment.amountPkr,
-        },
-      });
-    }
-    seededStudents.push({ id: student.id, score: i % 3 === 0 ? 92 : 68, admissionNo });
-  }
-
-  const midterm = await prisma.exam.create({
-    data: {
-      schoolId: created.id,
-      yearId: year.id,
-      name: "Midterm 2026",
-      heldOn: new Date("2026-08-20"),
-    },
-  });
-  await prisma.examResult.createMany({
-    data: seededStudents.flatMap((row) => [
-      { examId: midterm.id, studentId: row.id, subject: "English", totalMarks: 100, obtainedMarks: row.score },
-      { examId: midterm.id, studentId: row.id, subject: "Math", totalMarks: 100, obtainedMarks: Math.max(row.score - 8, 50) },
-    ]),
-  });
-
-  await prisma.staff.create({
-    data: { schoolId: created.id, name: school.adminName, title: "Principal", email: school.adminEmail },
-  });
-
-  const teacher = await prisma.staff.create({
-    data: {
-      schoolId: created.id,
-      name: "Farah Noor",
-      title: "Grade 5 teacher",
-      email: "teacher@greenfield.school",
-      subjects: ["English"],
-    },
-  });
-
-  await prisma.user.create({
-    data: {
-      email: "teacher@greenfield.school",
-      password: passwordHash,
-      name: "Farah Noor",
-      role: "TEACHER",
-      schoolId: created.id,
-    },
-  });
-
-  await prisma.teacherAssignment.create({
-    data: { schoolId: created.id, staffId: teacher.id, classId: grade5.id, subject: "English" },
-  });
-
-  const periods = await Promise.all(
-    [
-      { label: "Period 1", startTime: "08:00", endTime: "08:45", sortOrder: 1 },
-      { label: "Period 2", startTime: "08:45", endTime: "09:30", sortOrder: 2 },
-      { label: "Break", startTime: "09:30", endTime: "09:50", sortOrder: 3, isBreak: true },
-      { label: "Period 3", startTime: "09:50", endTime: "10:35", sortOrder: 4 },
-    ].map((period) => prisma.timetablePeriod.create({ data: { schoolId: created.id, ...period } })),
-  );
-
-  await prisma.timetableLesson.create({
-    data: {
-      schoolId: created.id,
-      classId: grade5.id,
-      periodId: periods[0].id,
-      staffId: teacher.id,
-      weekday: 1,
-      subject: "English",
-    },
-  });
-
-  await prisma.auditLog.create({
-    data: {
-      schoolId: created.id,
-      actorId: admin.id,
-      action: "seeded",
-      entity: "school",
-      entityId: created.id,
-      summary: "Demo workspace",
-    },
-  });
-
-  const admissionPlan = await prisma.feePlan.create({
-    data: { schoolId: created.id, yearId: year.id, name: "Admission fee", amountPkr: 20000 },
-  });
-
-  const pipeline = [
-    { no: "APP-2026-000001", status: "DRAFT" as const, first: "Bilal", last: "Ahmed", className: "Grade 5" },
-    { no: "APP-2026-000002", status: "SUBMITTED" as const, first: "Noor", last: "Fatima", className: "Grade 5" },
-    { no: "APP-2026-000003", status: "UNDER_REVIEW" as const, first: "Yusuf", last: "Malik", className: "Grade 6" },
-    { no: "APP-2026-000004", status: "ASSESSMENT_PENDING" as const, first: "Amina", last: "Shah", className: "Grade 5" },
-    { no: "APP-2026-000005", status: "FEE_PENDING" as const, first: "Hamza", last: "Qureshi", className: "Grade 5" },
-    { no: "APP-2026-000006", status: "DOCUMENTS_PENDING" as const, first: "Sara", last: "Nadeem", className: "Grade 6" },
-    { no: "APP-2026-000007", status: "WAITLISTED" as const, first: "Ibrahim", last: "Ali", className: "Grade 5" },
-    { no: "APP-2026-000008", status: "REJECTED" as const, first: "Hina", last: "Rashid", className: "Grade 5" },
-    {
-      no: "APP-2026-000009",
-      status: "ADMISSION_CONFIRMED" as const,
-      first: firstNames[0],
-      last: lastNames[0],
-      className: "Grade 5",
-      studentId: seededStudents[0].id,
-    },
-  ];
-
-  const similarGuardian = await prisma.guardian.create({
-    data: {
-      schoolId: created.id,
-      name: "Parent of applicant",
-      phone: "03009998877",
-      cnic: "6110112345678",
-      relation: "Father",
-    },
-  });
-
-  for (const [index, row] of pipeline.entries()) {
-    const application = await prisma.admissionApplication.create({
-      data: {
-        schoolId: created.id,
-        applicationNo: row.no,
-        status: row.status,
-        firstName: row.first,
-        lastName: row.last,
-        gender: index % 2 === 0 ? "male" : "female",
-        dateOfBirth: new Date(2015, index % 12, 10),
-        cnic: index === 2 ? "3520212345678" : `35202${String(2000000 + index).padStart(8, "0")}`,
-        address: "DHA Phase 6, Karachi",
-        yearId: year.id,
-        campusId: campus.id,
-        className: row.className,
-        section: "A",
-        targetClassId: row.className === "Grade 6" ? grade6.id : grade5.id,
-        studentType: row.studentId ? "returning" : "new",
-        studentId: row.studentId,
-        guardianId: similarGuardian.id,
-        family: { guardianName: similarGuardian.name, guardianPhone: similarGuardian.phone, guardianRelation: "Father" },
-        assessmentMode: row.status === "ASSESSMENT_PENDING" ? "TEST" : "NONE",
-        submittedAt: row.status === "DRAFT" ? null : new Date("2026-08-12"),
-        decidedAt: ["REJECTED", "WAITLISTED", "FEE_PENDING", "DOCUMENTS_PENDING", "ADMISSION_CONFIRMED"].includes(row.status)
-          ? new Date("2026-08-20")
-          : null,
-        confirmedAt: row.status === "ADMISSION_CONFIRMED" ? new Date("2026-08-28") : null,
-        decisionNote: row.status === "REJECTED" ? "Seat not available in this section." : "",
-      },
-    });
-
-    await prisma.schoolDocument.createMany({
-      data: [
-        { schoolId: created.id, ownerType: "application", ownerId: application.id, kind: "birth_certificate", label: "Birth certificate", required: true, url: index >= 5 && index !== 5 ? "https://example.com/docs/birth.pdf" : "" },
-        { schoolId: created.id, ownerType: "application", ownerId: application.id, kind: "cnic", label: "Parent CNIC copy", required: true, url: index >= 5 ? "https://example.com/docs/cnic.pdf" : "" },
-        { schoolId: created.id, ownerType: "application", ownerId: application.id, kind: "photos", label: "Photographs", required: true, url: index >= 4 ? "https://example.com/docs/photo.jpg" : "" },
-      ],
-    });
-
-    if (row.status === "ASSESSMENT_PENDING") {
-      await prisma.admissionTestScore.create({
-        data: { applicationId: application.id, subject: "English", maxMarks: 50, obtainedMarks: 0 },
-      });
-    }
-    if (row.status === "FEE_PENDING" || row.status === "DOCUMENTS_PENDING" || row.status === "ADMISSION_CONFIRMED") {
-      await prisma.invoice.create({
-        data: {
-          schoolId: created.id,
-          campusId: campus.id,
-          applicationId: application.id,
-          studentId: row.studentId ?? null,
-          academicYearId: year.id,
-          feePlanId: admissionPlan.id,
-          invoiceNumber: `INV-2026-${String(80 + index).padStart(6, "0")}`,
-          billingPeriod: `ADM-${row.no}`,
-          amountPkr: 20000,
-          totalAmountPkr: 20000,
-          subtotalPkr: 20000,
-          paidAmountPkr: row.status === "FEE_PENDING" ? 0 : 20000,
-          balanceAmountPkr: row.status === "FEE_PENDING" ? 20000 : 0,
-          status: row.status === "FEE_PENDING" ? "ISSUED" : "PAID",
-          dueOn: new Date("2026-09-01"),
-          dueDate: new Date("2026-09-01"),
-          items: {
-            create: [{ description: "Admission fee", unitAmountPkr: 20000, grossAmountPkr: 20000, netAmountPkr: 20000, feeHeadId: admissionItem.id }],
-          },
-        },
-      });
-    }
-  }
-
-  const similarApp = await prisma.admissionApplication.create({
-    data: {
-      schoolId: created.id,
-      applicationNo: "APP-2026-000010",
-      status: "SUBMITTED",
-      firstName: "Hassan",
-      lastName: "Butt",
-      gender: "male",
-      dateOfBirth: new Date(2014, 2, 6),
-      cnic: "9999911122233",
-      yearId: year.id,
-      campusId: campus.id,
-      className: "Grade 5",
-      section: "A",
-      targetClassId: grade5.id,
-      studentType: "new",
-      guardianId: similarGuardian.id,
-      family: { guardianName: similarGuardian.name, guardianPhone: similarGuardian.phone },
-    },
-  });
-  void similarApp;
-
-  await prisma.communicationLog.createMany({
-    data: [
-      {
-        schoolId: created.id,
-        studentId: seededStudents[0].id,
-        type: "NOTE",
-        subject: "Settling in",
-        body: "Ahmed is settling well after re-admission from Grade 4.",
-        sentById: admin.id,
-        status: "logged",
-      },
-      {
-        schoolId: created.id,
-        studentId: seededStudents[0].id,
-        type: "MEETING",
-        subject: "Parent meeting",
-        body: "Met Sana Khan to discuss Grade 5 placement.",
-        recipient: "Sana Khan",
-        sentById: admin.id,
-        status: "logged",
-      },
-    ],
-  });
-
-  await prisma.schoolDocument.create({
-    data: {
-      schoolId: created.id,
-      ownerType: "student",
-      ownerId: seededStudents[0].id,
-      kind: "birth_certificate",
-      label: "Birth certificate",
-      required: true,
-      url: "https://example.com/docs/ahmed-birth.pdf",
-      uploadedBy: admin.id,
-    },
-  });
-
-  await prisma.schoolSequence.createMany({
-    data: [
-      { schoolId: created.id, kind: "ADM", year: 2026, value: 8 },
-      { schoolId: created.id, kind: "APP", year: 2026, value: 10 },
-    ],
-  });
-
-  await prisma.auditLog.create({
-    data: {
-      schoolId: created.id,
-      actorId: admin.id,
-      action: "admission_confirmed",
-      entity: "student",
-      entityId: seededStudents[0].id,
-      summary: "APP-2026-000009",
-    },
-  });
+  await seedDemoSchool({ prisma, schoolId: created.id, adminId: admin.id, campusId: campus.id, passwordHash, address: school.profile.location });
 }
 
 async function main() {
@@ -738,8 +252,15 @@ async function main() {
       "CommunicationLog",
       "AdmissionApplication",
       "SchoolSequence",
-      "ExamResult",
+      "StudentResult",
+      "MarkCorrection",
+      "ExamMark",
+      "ExamPaper",
       "Exam",
+      "Term",
+      "GradingScale",
+      "ExamSettings",
+      "ReportCardTemplate",
       "ClassSubject",
       "Subject",
       "AdmissionForm",
@@ -772,6 +293,9 @@ async function main() {
       "StudentGuardian",
       "Guardian",
       "Student",
+      "Payslip",
+      "StaffStatusChange",
+      "StaffContract",
       "Staff",
       "Class",
       "FeePlan",
@@ -812,7 +336,7 @@ async function main() {
 
   console.log("Seeded 3 schools + users.");
   console.log("  School admin  admin@greenfield.school / school123");
-  console.log("  Teacher       teacher@greenfield.school / school123");
+  console.log("  Teachers      teacher@greenfield.school (English), maths@greenfield.school, primary@greenfield.school / school123");
   console.log("  Platform      ops@wellrun.school / school123");
   console.log("  Parent        parent@wellrun.school / school123");
 }
