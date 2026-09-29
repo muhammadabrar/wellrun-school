@@ -2,7 +2,7 @@ import { ForbiddenException, Inject, Injectable } from "@nestjs/common";
 import type { SaveAttendanceInput } from "@wellrun/shared";
 import { audit } from "../common/audit";
 import { dateOnly, karachiToday } from "../common/date";
-import { assertWritableSchool, teacherClassIds } from "../common/school";
+import { assertWritableSchool, firstPeriodClassIds, staffForUser, teacherClassIds } from "../common/school";
 import type { CurrentUser } from "../common/current-user";
 import type { SchoolScope } from "../common/school-scope";
 import { PrismaService } from "../prisma/prisma.service";
@@ -31,10 +31,7 @@ export class AttendanceService {
   async save(user: CurrentUser, input: SaveAttendanceInput) {
     const schoolId = user.schoolId!;
     await assertWritableSchool(this.prisma, schoolId);
-    const allowed = await teacherClassIds(this.prisma, user);
-    if (allowed && !allowed.includes(input.classId)) {
-      throw new ForbiddenException("You can only mark attendance for your classes");
-    }
+    await this.assertCanMark(user, schoolId, input.classId, input.date);
     const date = dateOnly(input.date);
     await this.prisma.$transaction(
       input.records.map((record) =>
@@ -60,6 +57,21 @@ export class AttendanceService {
       summary: `${input.date} ${input.records.length} marks`,
     });
     return this.day(schoolId, input.classId, input.date);
+  }
+
+  /** Teachers mark classes they're assigned to, and any class whose first period they teach that day. */
+  private async assertCanMark(user: CurrentUser, schoolId: string, classId: string, date: string) {
+    if (user.role !== "TEACHER") return;
+    const staff = await staffForUser(this.prisma, user);
+    if (!staff || (staff.status !== "ACTIVE" && staff.status !== "ON_LEAVE")) {
+      throw new ForbiddenException("Your staff record isn't active, so you can't mark attendance.");
+    }
+    const assigned = (await this.prisma.teacherAssignment.findMany({ where: { staffId: staff.id }, select: { classId: true } })).map((row) => row.classId);
+    const weekday = dateOnly(date).getUTCDay();
+    const firstPeriod = weekday >= 1 && weekday <= 6 ? await firstPeriodClassIds(this.prisma, schoolId, staff.id, weekday) : [];
+    if (!assigned.includes(classId) && !firstPeriod.includes(classId)) {
+      throw new ForbiddenException("You can mark attendance for your own classes, or a class whose first period you teach that day.");
+    }
   }
 
   async absent(user: CurrentUser, date = karachiToday(), scope: SchoolScope = {}) {

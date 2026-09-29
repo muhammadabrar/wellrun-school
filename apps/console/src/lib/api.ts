@@ -358,12 +358,14 @@ export const api = {
       "/console/setup/admission",
     ),
   campuses: () => request<{ campuses: Setup["campuses"] }>("/console/setup/campuses"),
-  academics: () =>
-    request<{
-      years: Setup["years"];
-      classes: { id: string; name: string; section: string; yearId: string }[];
-      subjects: { id: string; name: string; enabled: boolean }[];
-    }>("/console/setup/academics"),
+  academics: () => request<Academics>("/console/setup/academics"),
+  removeClass: (id: string) => request<{ ok: true }>(`/console/setup/classes/${id}`, { method: "DELETE" }),
+  setClassSubjects: (id: string, subjectIds: string[]) =>
+    request<{ subjectIds: string[] }>(`/console/setup/classes/${id}/subjects`, {
+      method: "PUT",
+      body: JSON.stringify({ subjectIds }),
+    }),
+  removeSubject: (id: string) => request<{ ok: true }>(`/console/setup/subjects/${id}`, { method: "DELETE" }),
   feeStructure: () =>
     request<{ feeItems: Setup["feeItems"]; templates: { feeItems: string[] } }>("/console/setup/fees"),
   schoolProfile: () =>
@@ -416,11 +418,42 @@ export const api = {
   skipSetup: (step: number) => request(`/console/setup/skip?step=${step}`, { method: "POST" }),
   uploadMedia: (payload: { kind: "LOGO" | "COVER"; filename?: string; dataUrl: string }) =>
     request<{ url: string }>("/console/setup/media", { method: "POST", body: JSON.stringify(payload) }),
-  staff: () => request<Staff[]>("/console/staff"),
+  staff: (query: { status?: string; q?: string } = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value) params.set(key, value);
+    const qs = params.toString();
+    return request<Staff[]>(`/console/staff${qs ? `?${qs}` : ""}`);
+  },
+  staffMember: (id: string) => request<StaffDetail>(`/console/staff/${id}`),
+  staffTimetable: (id: string) => request<StaffWeek>(`/console/staff/${id}/timetable`),
   createStaff: (payload: Record<string, unknown>) =>
-    request<Staff>("/console/staff", { method: "POST", body: JSON.stringify(payload) }),
+    request<StaffDetail>("/console/staff", { method: "POST", body: JSON.stringify(payload) }),
+  updateStaff: (id: string, payload: Record<string, unknown>) =>
+    request<StaffDetail>(`/console/staff/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  changeStaffStatus: (id: string, payload: { status: StaffStatus; effectiveOn: string; reason?: string }) =>
+    request<StaffDetail & { freedLessons: number }>(`/console/staff/${id}/status`, { method: "POST", body: JSON.stringify(payload) }),
+  addStaffContract: (id: string, payload: Record<string, unknown>) =>
+    request<StaffDetail>(`/console/staff/${id}/contracts`, { method: "POST", body: JSON.stringify(payload) }),
+  saveStaffAccount: (id: string, payload: { email: string; password?: string; role: StaffLoginRole }) =>
+    request<StaffDetail>(`/console/staff/${id}/account`, { method: "PUT", body: JSON.stringify(payload) }),
   assignStaff: (id: string, payload: { classId: string; subject?: string }) =>
     request(`/console/staff/${id}/assign`, { method: "POST", body: JSON.stringify(payload) }),
+  unassignStaff: (id: string, assignmentId: string) =>
+    request(`/console/staff/${id}/assign/${assignmentId}`, { method: "DELETE" }),
+  payroll: (period: string) => request<PayrollMonth>(`/console/payroll?period=${period}`),
+  generatePayroll: (period: string) =>
+    request<{ created: number; withoutContract: string[] }>("/console/payroll/generate", { method: "POST", body: JSON.stringify({ period }) }),
+  finalizePayroll: (period: string) =>
+    request<{ finalized: number }>("/console/payroll/finalize", { method: "POST", body: JSON.stringify({ period }) }),
+  payslip: (id: string) => request<PayslipDetail>(`/console/payroll/payslips/${id}`),
+  updatePayslip: (id: string, payload: { basicPkr?: number; allowances?: PayLine[]; deductions?: PayLine[]; notes?: string }) =>
+    request<PayslipDetail>(`/console/payroll/payslips/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  finalizePayslip: (id: string) => request<PayslipDetail>(`/console/payroll/payslips/${id}/finalize`, { method: "POST", body: "{}" }),
+  payPayslip: (id: string, payload: { paidOn: string; method: string; reference?: string }) =>
+    request<PayslipDetail>(`/console/payroll/payslips/${id}/pay`, { method: "POST", body: JSON.stringify(payload) }),
+  cancelPayslip: (id: string) => request<PayslipDetail>(`/console/payroll/payslips/${id}/cancel`, { method: "POST", body: "{}" }),
+  portal: () => request<Portal>("/console/me"),
+  myPayslip: (id: string) => request<PayslipDetail>(`/console/me/payslips/${id}`),
   invites: () => request<Invite[]>("/console/invites"),
   invite: (payload: Record<string, unknown>) =>
     request<Invite & { acceptUrl: string }>("/console/invites", {
@@ -433,8 +466,14 @@ export const api = {
     request<Timetable>(`/console/timetable${classId ? `?classId=${classId}` : ""}`),
   savePeriod: (payload: Record<string, unknown>) =>
     request("/console/timetable/periods", { method: "POST", body: JSON.stringify(payload) }),
+  updatePeriod: (id: string, payload: Record<string, unknown>) =>
+    request(`/console/timetable/periods/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  removePeriod: (id: string) => request(`/console/timetable/periods/${id}`, { method: "DELETE" }),
   saveLesson: (payload: Record<string, unknown>) =>
     request("/console/timetable/lessons", { method: "POST", body: JSON.stringify(payload) }),
+  removeLesson: (id: string) => request(`/console/timetable/lessons/${id}`, { method: "DELETE" }),
+  generateTimetable: (payload: GenerateTimetablePayload) =>
+    request<GenerateTimetableResult>("/console/timetable/generate", { method: "POST", body: JSON.stringify(payload) }),
   adminSchools: () => request<AdminSchool[]>("/admin/schools"),
   adminClaims: () => request<AdminClaim[]>("/admin/claims"),
   approveClaim: (id: string) => request(`/admin/claims/${id}/approve`, { method: "POST" }),
@@ -961,14 +1000,161 @@ export type AbsentRow = {
   class: { name: string; section: string };
 };
 
+export type StaffStatus = "ACTIVE" | "ON_LEAVE" | "SUSPENDED" | "RESIGNED" | "TERMINATED";
+export type ContractType = "PERMANENT" | "CONTRACT" | "PROBATION" | "PART_TIME" | "VISITING";
+export type PayslipStatus = "DRAFT" | "FINALIZED" | "PAID" | "CANCELLED";
+export type StaffLoginRole = "TEACHER" | "SCHOOL_ADMIN";
+export type PayLine = { label: string; amountPkr: number };
+
+export type StaffAssignment = { id: string; subject: string; class: { id: string; name: string; section: string } };
+
 export type Staff = {
   id: string;
+  employeeNo: string;
   name: string;
+  cnic: string;
   title: string;
+  department: string;
+  status: StaffStatus;
   email: string | null;
   phone: string;
-  assignments: { id: string; subject: string; class: { name: string; section: string } }[];
+  joinDate: string | null;
+  campus: { id: string; name: string } | null;
+  login: { role: string; disabled: boolean } | null;
+  contract: { type: ContractType; basicSalaryPkr: number; endDate: string | null } | null;
+  assignments: StaffAssignment[];
 };
+
+export type StaffContract = {
+  id: string;
+  type: ContractType;
+  startDate: string;
+  endDate: string | null;
+  basicSalaryPkr: number;
+  allowances: PayLine[];
+  notes: string;
+};
+
+export type StaffDetail = {
+  id: string;
+  employeeNo: string;
+  name: string;
+  cnic: string;
+  gender: string;
+  dateOfBirth: string | null;
+  address: string;
+  title: string;
+  department: string;
+  joinDate: string | null;
+  status: StaffStatus;
+  email: string | null;
+  phone: string;
+  bankName: string;
+  bankAccountTitle: string;
+  bankAccountNo: string;
+  subjects: string[];
+  campusId: string | null;
+  campus: { id: string; name: string } | null;
+  login: { email: string; role: string; disabled: boolean } | null;
+  contracts: StaffContract[];
+  currentContractId: string | null;
+  statusChanges: { id: string; fromStatus: StaffStatus; toStatus: StaffStatus; reason: string; effectiveOn: string; createdAt: string; actorName: string }[];
+  assignments: StaffAssignment[];
+  payslips: { id: string; period: string; payslipNo: string; netPkr: number; status: PayslipStatus; paidOn: string | null }[];
+};
+
+export type StaffWeek = {
+  periods: TimetablePeriod[];
+  lessons: { id: string; weekday: number; periodId: string; subject: string; class: { id: string; name: string; section: string } }[];
+};
+
+export type PayslipRow = {
+  id: string;
+  period: string;
+  payslipNo: string;
+  basicPkr: number;
+  grossPkr: number;
+  deductionPkr: number;
+  netPkr: number;
+  status: PayslipStatus;
+  paidOn: string | null;
+  staff: { id: string; employeeNo: string; name: string; title: string; department: string };
+};
+
+export type PayrollMonth = {
+  period: string;
+  label: string;
+  payslips: PayslipRow[];
+  summary: {
+    staff: number;
+    grossPkr: number;
+    deductionPkr: number;
+    netPkr: number;
+    paidPkr: number;
+    drafts: number;
+    finalized: number;
+    paid: number;
+    missing: number;
+  };
+};
+
+export type PayslipDetail = {
+  id: string;
+  period: string;
+  label: string;
+  payslipNo: string;
+  basicPkr: number;
+  allowances: PayLine[];
+  deductions: PayLine[];
+  grossPkr: number;
+  deductionPkr: number;
+  netPkr: number;
+  status: PayslipStatus;
+  paidOn: string | null;
+  method: string;
+  reference: string;
+  notes: string;
+  staff: {
+    id: string;
+    employeeNo: string;
+    name: string;
+    cnic: string;
+    title: string;
+    department: string;
+    joinDate: string | null;
+    bankName: string;
+    bankAccountTitle: string;
+    bankAccountNo: string;
+    campus: { name: string } | null;
+  };
+  school: SchoolLetterhead;
+};
+
+export type Portal =
+  | { staff: null }
+  | {
+      staff: {
+        id: string;
+        employeeNo: string;
+        name: string;
+        cnic: string;
+        title: string;
+        department: string;
+        status: StaffStatus;
+        joinDate: string | null;
+        phone: string;
+        email: string | null;
+        campus: { name: string } | null;
+        contract: { type: ContractType; startDate: string; endDate: string | null; basicSalaryPkr: number; allowances: PayLine[] } | null;
+      };
+      today: { date: string; weekday: number };
+      timetable: StaffWeek;
+      firstPeriod: {
+        period: { id: string; label: string; startTime: string; endTime: string };
+        classes: { id: string; name: string; section: string; marked: boolean }[];
+      } | null;
+      payslips: { id: string; period: string; payslipNo: string; grossPkr: number; deductionPkr: number; netPkr: number; status: PayslipStatus; paidOn: string | null }[];
+    };
 
 export type Invite = {
   id: string;
@@ -1026,9 +1212,11 @@ export type Setup = {
   };
 };
 
+export type TimetablePeriod = { id: string; label: string; startTime: string; endTime: string; isBreak: boolean; sortOrder: number };
+
 export type Timetable = {
   classId: string | null;
-  periods: { id: string; label: string; startTime: string; endTime: string; isBreak: boolean; sortOrder: number }[];
+  periods: TimetablePeriod[];
   lessons: {
     id: string;
     weekday: number;
@@ -1037,6 +1225,55 @@ export type Timetable = {
     staffId: string | null;
     staff: { name: string } | null;
   }[];
+  /** Subjects offered to this class: its own list, else grade defaults, else every enabled subject. */
+  subjects: string[];
+};
+
+export type BellSchedule = {
+  startTime: string;
+  periodMinutes: number;
+  periodsPerDay: number;
+  breakAfter: number;
+  breakMinutes: number;
+};
+
+export type GenerateTimetablePayload = {
+  classIds: string[];
+  weekdays: number[];
+  mode: "fill_empty" | "replace";
+  schedule?: BellSchedule;
+};
+
+export type GenerateTimetableResult = {
+  classes: number;
+  skipped: number;
+  lessons: number;
+  withoutTeacher: number;
+  periodsCreated: number;
+  noSubjects: string[];
+  /** Classes with more subjects than periods a day; the least-core subjects were left out. */
+  tooManySubjects: string[];
+};
+
+export type AcademicClass = {
+  id: string;
+  name: string;
+  section: string;
+  yearId: string;
+  campusId: string | null;
+  students: number;
+  lessons: number;
+  subjectIds: string[];
+  timetableSubjects: string[];
+  teachers: { id: string; name: string }[];
+};
+
+export type AcademicSubject = { id: string; name: string; enabled: boolean; classes: number };
+
+export type Academics = {
+  years: Setup["years"];
+  classes: AcademicClass[];
+  subjects: AcademicSubject[];
 };
 
 export type AdminSchool = {

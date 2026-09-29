@@ -24,7 +24,13 @@ const StudentEditPage = lazyPage(() => import("./pages/StudentEdit"), "StudentEd
 const AttendancePage = lazyPage(() => import("./pages/Attendance"), "AttendancePage");
 const AbsentPage = lazyPage(() => import("./pages/Absent"), "AbsentPage");
 const TimetablePage = lazyPage(() => import("./pages/Timetable"), "TimetablePage");
-const TeachersPage = lazyPage(() => import("./pages/Teachers"), "TeachersPage");
+const StaffListPage = lazyPage(() => import("./pages/staff/List"), "StaffListPage");
+const StaffNewPage = lazyPage(() => import("./pages/staff/New"), "StaffNewPage");
+const StaffDetailPage = lazyPage(() => import("./pages/staff/Detail"), "StaffDetailPage");
+const PayrollPage = lazyPage(() => import("./pages/payroll/Month"), "PayrollPage");
+const PayslipPage = lazyPage(() => import("./pages/payroll/Payslip"), "PayslipPage");
+const MyPayslipPage = lazyPage(() => import("./pages/payroll/Payslip"), "MyPayslipPage");
+const PortalPage = lazyPage(() => import("./pages/Portal"), "PortalPage");
 const CampusesPage = lazyPage(() => import("./pages/Campuses"), "CampusesPage");
 const AcademicsPage = lazyPage(() => import("./pages/Academics"), "AcademicsPage");
 const FeeStructurePage = lazyPage(() => import("./pages/FeeStructure"), "FeeStructurePage");
@@ -94,8 +100,14 @@ export function App() {
         <Route path="/attendance" element={<AttendancePage />} />
         <Route path="/absent" element={<AbsentPage />} />
         <Route path="/timetable" element={<TimetablePage />} />
-        <Route path="/staff" element={<TeachersPage />} />
-        <Route path="/teachers" element={<TeachersPage />} />
+        <Route path="/staff" element={<StaffListPage />} />
+        <Route path="/staff/new" element={<StaffNewPage />} />
+        <Route path="/staff/:id" element={<StaffDetailPage />} />
+        <Route path="/teachers" element={<Navigate to="/staff" replace />} />
+        <Route path="/payroll" element={<PayrollPage />} />
+        <Route path="/payroll/payslips/:id" element={<PayslipPage />} />
+        <Route path="/me" element={<PortalPage />} />
+        <Route path="/me/payslips/:id" element={<MyPayslipPage />} />
         <Route path="/campuses" element={<CampusesPage />} />
         <Route path="/academics" element={<AcademicsPage />} />
         <Route path="/fee-structure" element={<FeeStructurePage />} />

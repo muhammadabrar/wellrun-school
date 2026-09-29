@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Put, Query, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "../auth/auth.guard";
 import type { CurrentUser } from "../common/current-user";
 import { requireSchoolAdmin } from "../common/roles";
@@ -87,6 +87,21 @@ export class SetupController {
   @Patch("classes/:id")
   updateClass(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Body() body: unknown) {
     return this.setup.updateClass(requireSchoolAdmin(req.user), req.user.id, id, body);
+  }
+
+  @Delete("classes/:id")
+  removeClass(@Req() req: { user: CurrentUser }, @Param("id") id: string) {
+    return this.setup.removeClass(requireSchoolAdmin(req.user), req.user.id, id);
+  }
+
+  @Put("classes/:id/subjects")
+  classSubjects(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Body() body: unknown) {
+    return this.setup.setClassSubjects(requireSchoolAdmin(req.user), req.user.id, id, body);
+  }
+
+  @Delete("subjects/:id")
+  removeSubject(@Req() req: { user: CurrentUser }, @Param("id") id: string) {
+    return this.setup.removeSubject(requireSchoolAdmin(req.user), req.user.id, id);
   }
 
   @Post("classes/apply")

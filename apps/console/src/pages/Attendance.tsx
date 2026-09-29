@@ -1,10 +1,10 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EmptyState, FetchingIndicator, Skeleton } from "@wellrun/ui";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/form/date-picker";
 import { FormSelect } from "@/components/form/form-select";
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Toast } from "../components/motion";
 import { useCampus } from "@/hooks/use-campus";
 import { api } from "../lib/api";
@@ -22,8 +22,11 @@ const marks: { id: Status; label: string; on: string }[] = [
 
 export function AttendancePage() {
   const { classes } = useCampus();
-  const [classId, setClassId] = useState("");
-  const [date, setDate] = useState(todayIso());
+  const queryClient = useQueryClient();
+  // The staff portal links here with ?classId=&date= for a teacher's first-period class.
+  const [params] = useSearchParams();
+  const [classId, setClassId] = useState(params.get("classId") ?? "");
+  const [date, setDate] = useState(params.get("date") ?? todayIso());
   const [draft, setDraft] = useState<Record<string, Status> | null>(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -60,6 +63,7 @@ export function AttendancePage() {
         })),
       });
       setToast("Attendance saved");
+      void queryClient.invalidateQueries({ queryKey: queryKeys.portal });
       setTimeout(() => setToast(null), 2200);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save");

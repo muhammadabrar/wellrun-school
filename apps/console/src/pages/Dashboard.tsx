@@ -14,10 +14,12 @@ export function DashboardPage() {
   const { data, isPending, isError, isFetching, refetch } = useQuery({
     queryKey: queryKeys.dashboard,
     queryFn: api.dashboard,
-    enabled: user?.role !== "PLATFORM_ADMIN",
+    enabled: user?.role === "SCHOOL_ADMIN",
   });
 
   if (user?.role === "PLATFORM_ADMIN") return <Navigate to="/admin" replace />;
+  // Staff start their day in their own portal: first-period register, today's classes, payslips.
+  if (user?.role === "TEACHER") return <Navigate to="/me" replace />;
 
   if (isPending && !data) return <LoadingState variant="metrics" />;
   if (isError || !data) {

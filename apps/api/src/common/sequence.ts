@@ -1,10 +1,11 @@
 import type { Prisma } from "@prisma/client";
 
-type Kind = "ADM" | "APP" | "INV" | "PAY" | "REC";
+type Kind = "ADM" | "APP" | "INV" | "PAY" | "REC" | "PSL";
 
 async function numberTaken(tx: Prisma.TransactionClient, schoolId: string, kind: Kind, value: string) {
   if (kind === "REC") return Boolean(await tx.payment.findFirst({ where: { schoolId, receiptNo: value }, select: { id: true } }));
   if (kind === "PAY") return Boolean(await tx.payment.findFirst({ where: { schoolId, paymentNumber: value }, select: { id: true } }));
+  if (kind === "PSL") return Boolean(await tx.payslip.findFirst({ where: { schoolId, payslipNo: value }, select: { id: true } }));
   if (kind === "INV") return Boolean(await tx.invoice.findFirst({ where: { schoolId, invoiceNumber: value }, select: { id: true } }));
   return false;
 }

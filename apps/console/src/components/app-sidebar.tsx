@@ -10,6 +10,7 @@ import {
   GlobeIcon,
   GraduationCapIcon,
   ShieldCheckIcon,
+  SunIcon,
   UserXIcon,
   UsersIcon,
   WalletIcon,
@@ -42,7 +43,16 @@ const dayItems: NavItem[] = [
 ];
 
 const schoolItems: NavItem[] = [
-  { title: "Staff", url: "/staff", icon: <BriefcaseIcon /> },
+  {
+    title: "Staff",
+    url: "/staff",
+    icon: <BriefcaseIcon />,
+    items: [
+      { title: "Staff directory", url: "/staff", end: true },
+      { title: "Add staff", url: "/staff/new", end: true },
+      { title: "Payroll", url: "/payroll" },
+    ],
+  },
   { title: "Campuses", url: "/campuses", icon: <Building2Icon /> },
   { title: "Classes & subjects", url: "/academics", icon: <BookOpenIcon /> },
   {
@@ -76,8 +86,9 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
         ]
       : user?.role === "TEACHER"
         ? [
+            { label: "Me", items: [{ title: "My portal", url: "/me", icon: <SunIcon /> }] },
             { label: "People", items: [{ title: "Students", url: "/students", icon: <UsersIcon /> }] },
-            { label: "Day", items: dayItems },
+            { label: "Day", items: dayItems.filter((item) => item.url !== "/") },
           ]
         : [
             { label: "People", items: peopleItems },

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Inject, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "../auth/auth.guard";
 import type { CurrentUser } from "../common/current-user";
 import { requireSchoolAdmin, requireSchoolId } from "../common/roles";
@@ -19,9 +19,24 @@ export class TimetableController {
     return this.timetable.savePeriod(requireSchoolAdmin(req.user), req.user.id, body);
   }
 
+  @Patch("periods/:id")
+  updatePeriod(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Body() body: unknown) {
+    return this.timetable.updatePeriod(requireSchoolAdmin(req.user), req.user.id, id, body);
+  }
+
+  @Delete("periods/:id")
+  removePeriod(@Req() req: { user: CurrentUser }, @Param("id") id: string) {
+    return this.timetable.removePeriod(requireSchoolAdmin(req.user), req.user.id, id);
+  }
+
   @Get()
   grid(@Req() req: { user: CurrentUser }, @Query("classId") classId?: string) {
     return this.timetable.grid(requireSchoolId(req.user), classId, req.user);
+  }
+
+  @Post("generate")
+  generate(@Req() req: { user: CurrentUser }, @Body() body: unknown) {
+    return this.timetable.generate(requireSchoolAdmin(req.user), req.user.id, body);
   }
 
   @Post("lessons")

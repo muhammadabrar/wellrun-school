@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Put, Query, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "../auth/auth.guard";
 import type { CurrentUser } from "../common/current-user";
 import { requireSchoolAdmin } from "../common/roles";
@@ -10,13 +10,43 @@ export class StaffController {
   constructor(@Inject(StaffService) private readonly staff: StaffService) {}
 
   @Get("staff")
-  list(@Req() req: { user: CurrentUser }) {
-    return this.staff.list(requireSchoolAdmin(req.user));
+  list(@Req() req: { user: CurrentUser }, @Query("status") status?: string, @Query("q") q?: string) {
+    return this.staff.list(requireSchoolAdmin(req.user), { status, q });
   }
 
   @Post("staff")
   create(@Req() req: { user: CurrentUser }, @Body() body: unknown) {
     return this.staff.create(requireSchoolAdmin(req.user), req.user.id, body);
+  }
+
+  @Get("staff/:id")
+  detail(@Req() req: { user: CurrentUser }, @Param("id") id: string) {
+    return this.staff.detail(requireSchoolAdmin(req.user), id);
+  }
+
+  @Get("staff/:id/timetable")
+  timetable(@Req() req: { user: CurrentUser }, @Param("id") id: string) {
+    return this.staff.weekly(requireSchoolAdmin(req.user), id);
+  }
+
+  @Patch("staff/:id")
+  update(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Body() body: unknown) {
+    return this.staff.update(requireSchoolAdmin(req.user), req.user.id, id, body);
+  }
+
+  @Post("staff/:id/status")
+  status(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Body() body: unknown) {
+    return this.staff.changeStatus(requireSchoolAdmin(req.user), req.user.id, id, body);
+  }
+
+  @Post("staff/:id/contracts")
+  contract(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Body() body: unknown) {
+    return this.staff.addContract(requireSchoolAdmin(req.user), req.user.id, id, body);
+  }
+
+  @Put("staff/:id/account")
+  account(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Body() body: unknown) {
+    return this.staff.saveAccount(requireSchoolAdmin(req.user), req.user.id, id, body);
   }
 
   @Post("staff/:id/assign")
@@ -26,6 +56,11 @@ export class StaffController {
     @Body() body: { classId: string; subject?: string },
   ) {
     return this.staff.assign(requireSchoolAdmin(req.user), req.user.id, id, body.classId, body.subject);
+  }
+
+  @Delete("staff/:id/assign/:assignmentId")
+  unassign(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Param("assignmentId") assignmentId: string) {
+    return this.staff.unassign(requireSchoolAdmin(req.user), req.user.id, id, assignmentId);
   }
 
   @Get("invites")

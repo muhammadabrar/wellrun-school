@@ -319,6 +319,7 @@ export const classSchema = z.object({
   name: z.string().min(1),
   section: z.string().default("A"),
   yearId: z.string().optional(),
+  campusId: z.string().optional(),
 });
 
 export const yearSchema = z.object({
@@ -424,13 +425,126 @@ export const campusRoleSchema = z.object({
   role: z.enum(["SUPER_ADMIN", "ADMIN", "PRINCIPAL", "TEACHER"]),
 });
 
-export const staffSchema = z.object({
-  name: z.string().min(1),
-  title: z.string().default("Teacher"),
-  email: z.string().email().optional().or(z.literal("")),
+export const staffStatuses = ["ACTIVE", "ON_LEAVE", "SUSPENDED", "RESIGNED", "TERMINATED"] as const;
+export const contractTypes = ["PERMANENT", "CONTRACT", "PROBATION", "PART_TIME", "VISITING"] as const;
+export const payslipStatuses = ["DRAFT", "FINALIZED", "PAID", "CANCELLED"] as const;
+export const staffLoginRoles = ["TEACHER", "SCHOOL_ADMIN"] as const;
+
+export const STAFF_DEPARTMENTS = [
+  "Academics",
+  "Administration",
+  "Accounts",
+  "Admissions",
+  "IT",
+  "Library",
+  "Transport",
+  "Security",
+  "Support staff",
+] as const;
+
+export const STAFF_DESIGNATIONS = [
+  "Teacher",
+  "Senior Teacher",
+  "Head of Department",
+  "Coordinator",
+  "Vice Principal",
+  "Principal",
+  "Accountant",
+  "Clerk",
+  "Receptionist",
+  "Librarian",
+  "Lab Assistant",
+  "IT Officer",
+  "Driver",
+  "Guard",
+  "Peon",
+] as const;
+
+/** Pakistani CNIC: 12345-1234567-1 */
+export const cnicPattern = /^\d{5}-\d{7}-\d$/;
+
+const payLineSchema = z.object({
+  label: z.string().trim().min(1),
+  amountPkr: z.number().int().min(0),
+});
+
+export const staffContractSchema = z.object({
+  type: z.enum(contractTypes).default("PERMANENT"),
+  startDate: z.string().min(1),
+  endDate: z.string().optional().or(z.literal("")),
+  basicSalaryPkr: z.number().int().min(0),
+  allowances: z.array(payLineSchema).default([]),
+  notes: z.string().optional(),
+});
+
+export const staffAccountSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8, "Password must be at least 8 characters").optional().or(z.literal("")),
+  role: z.enum(staffLoginRoles).default("TEACHER"),
+});
+
+/** Everything about a staff member that may change after they join. Name and CNIC are not here on purpose. */
+export const staffUpdateSchema = z
+  .object({
+    gender: z.string().optional(),
+    dateOfBirth: z.string().optional().or(z.literal("")),
+    address: z.string().optional(),
+    phone: z.string().optional(),
+    email: z.string().email().optional().or(z.literal("")),
+    title: z.string().min(1).optional(),
+    department: z.string().optional(),
+    joinDate: z.string().optional().or(z.literal("")),
+    campusId: z.string().optional().or(z.literal("")),
+    bankName: z.string().optional(),
+    bankAccountTitle: z.string().optional(),
+    bankAccountNo: z.string().optional(),
+    subjects: z.array(z.string()).optional(),
+  })
+  .strict();
+
+export const staffCreateSchema = z.object({
+  name: z.string().trim().min(2, "Enter the full name"),
+  cnic: z.string().regex(cnicPattern, "CNIC must look like 12345-1234567-1"),
+  gender: z.string().optional(),
+  dateOfBirth: z.string().optional().or(z.literal("")),
+  address: z.string().optional(),
   phone: z.string().optional(),
+  email: z.string().email().optional().or(z.literal("")),
+  title: z.string().min(1).default("Teacher"),
+  department: z.string().optional(),
+  joinDate: z.string().min(1, "Choose the joining date"),
+  campusId: z.string().optional().or(z.literal("")),
+  bankName: z.string().optional(),
+  bankAccountTitle: z.string().optional(),
+  bankAccountNo: z.string().optional(),
+  subjects: z.array(z.string()).optional(),
+  contract: staffContractSchema.optional(),
+  account: staffAccountSchema.extend({ password: z.string().min(8, "Password must be at least 8 characters") }).optional(),
   classId: z.string().optional(),
   subject: z.string().optional(),
+});
+
+export const staffStatusSchema = z.object({
+  status: z.enum(staffStatuses),
+  effectiveOn: z.string().min(1),
+  reason: z.string().optional(),
+});
+
+export const payrollGenerateSchema = z.object({
+  period: z.string().regex(/^\d{4}-\d{2}$/, "Use YYYY-MM"),
+});
+
+export const payslipUpdateSchema = z.object({
+  basicPkr: z.number().int().min(0).optional(),
+  allowances: z.array(payLineSchema).optional(),
+  deductions: z.array(payLineSchema).optional(),
+  notes: z.string().optional(),
+});
+
+export const payslipPaySchema = z.object({
+  paidOn: z.string().min(1),
+  method: z.string().min(1),
+  reference: z.string().optional(),
 });
 
 export const profileSchema = z.object({
@@ -479,6 +593,27 @@ export const periodSchema = z.object({
   endTime: z.string(),
   isBreak: z.boolean().optional(),
   sortOrder: z.number().int(),
+});
+
+const clockTime = z.string().regex(/^\d{2}:\d{2}$/, "Use HH:mm");
+
+export const bellScheduleSchema = z.object({
+  startTime: clockTime,
+  periodMinutes: z.number().int().min(20).max(90),
+  periodsPerDay: z.number().int().min(1).max(12),
+  breakAfter: z.number().int().min(0).max(12),
+  breakMinutes: z.number().int().min(0).max(90),
+});
+
+export const generateTimetableSchema = z.object({
+  classIds: z.array(z.string().min(1)).min(1),
+  weekdays: z.array(z.number().int().min(1).max(6)).min(1).default([1, 2, 3, 4, 5]),
+  mode: z.enum(["fill_empty", "replace"]).default("fill_empty"),
+  schedule: bellScheduleSchema.optional(),
+});
+
+export const classSubjectsSchema = z.object({
+  subjectIds: z.array(z.string().min(1)),
 });
 
 export const admissionStatuses = [

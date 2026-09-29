@@ -12,6 +12,7 @@ import { ClaimsModule } from "./claims/claims.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { FeesModule } from "./fees/fees.module";
 import { HealthController } from "./health.controller";
+import { PayrollModule } from "./payroll/payroll.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { SchoolsModule } from "./schools/schools.module";
 import { SessionModule } from "./session/session.module";
@@ -42,6 +43,7 @@ import { TraceMiddleware } from "./trace/trace.middleware";
     DashboardModule,
     SetupModule,
     StaffModule,
+    PayrollModule,
     ClaimsModule,
     AdminModule,
     TimetableModule,

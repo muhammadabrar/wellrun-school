@@ -143,6 +143,7 @@ model User {
   applications AdmissionApplication[] @relation("ApplicationCreator")
   collectedPayments Payment[] @relation("PaymentCollector")
   generatedReceipts Receipt[] @relation("ReceiptGenerator")
+  staff      Staff?
 
   @@index([schoolId])
 }
@@ -218,6 +219,9 @@ model School {
   documents    SchoolDocument[]
   communications CommunicationLog[]
   sequences    SchoolSequence[]
+  staffContracts StaffContract[]
+  staffStatusChanges StaffStatusChange[]
+  payslips     Payslip[]
 }
 
 model SchoolProfile {
@@ -396,21 +400,130 @@ model StudentGuardian {
   @@id([studentId, guardianId])
 }
 
+enum StaffStatus {
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  RESIGNED
+  TERMINATED
+}
+
+enum ContractType {
+  PERMANENT
+  CONTRACT
+  PROBATION
+  PART_TIME
+  VISITING
+}
+
+enum PayslipStatus {
+  DRAFT
+  FINALIZED
+  PAID
+  CANCELLED
+}
+
+/// Name and CNIC are fixed once saved; staff are never deleted — change their status instead.
 model Staff {
-  id           String              @id @default(cuid())
-  schoolId     String
-  school       School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  name         String
-  title        String
-  email        String?
-  phone        String              @default("")
-  subjects     Json                @default("[]")
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  assignments  TeacherAssignment[]
-  lessons      TimetableLesson[]
+  id               String              @id @default(cuid())
+  schoolId         String
+  school           School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  campusId         String?
+  campus           Campus?             @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  userId           String?             @unique
+  user             User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  employeeNo       String              @default("")
+  name             String
+  cnic             String              @default("")
+  gender           String              @default("")
+  dateOfBirth      DateTime?
+  address          String              @default("")
+  title            String
+  department       String              @default("")
+  joinDate         DateTime?
+  status           StaffStatus         @default(ACTIVE)
+  email            String?
+  phone            String              @default("")
+  bankName         String              @default("")
+  bankAccountTitle String              @default("")
+  bankAccountNo    String              @default("")
+  subjects         Json                @default("[]")
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  assignments      TeacherAssignment[]
+  lessons          TimetableLesson[]
+  contracts        StaffContract[]
+  statusChanges    StaffStatusChange[]
+  payslips         Payslip[]
 
   @@index([schoolId])
+  @@index([schoolId, cnic])
+  @@index([schoolId, status])
+}
+
+model StaffContract {
+  id             String       @id @default(cuid())
+  schoolId       String
+  school         School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  staffId        String
+  staff          Staff        @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  type           ContractType @default(PERMANENT)
+  startDate      DateTime
+  endDate        DateTime?
+  basicSalaryPkr Int          @default(0)
+  /// [{ label, amountPkr }] paid every month on top of the basic salary.
+  allowances     Json         @default("[]")
+  notes          String       @default("")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([schoolId])
+  @@index([staffId])
+}
+
+model StaffStatusChange {
+  id          String      @id @default(cuid())
+  schoolId    String
+  school      School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  staffId     String
+  staff       Staff       @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  fromStatus  StaffStatus
+  toStatus    StaffStatus
+  reason      String      @default("")
+  effectiveOn DateTime
+  actorId     String?
+  createdAt   DateTime    @default(now())
+
+  @@index([staffId])
+}
+
+model Payslip {
+  id           String        @id @default(cuid())
+  schoolId     String
+  school       School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  staffId      String
+  staff        Staff         @relation(fields: [staffId], references: [id], onDelete: Restrict)
+  /// "YYYY-MM"
+  period       String
+  payslipNo    String        @default("")
+  basicPkr     Int           @default(0)
+  /// [{ label, amountPkr }]
+  allowances   Json          @default("[]")
+  /// [{ label, amountPkr }]
+  deductions   Json          @default("[]")
+  grossPkr     Int           @default(0)
+  deductionPkr Int           @default(0)
+  netPkr       Int           @default(0)
+  status       PayslipStatus @default(DRAFT)
+  paidOn       DateTime?
+  method       String        @default("")
+  reference    String        @default("")
+  notes        String        @default("")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([staffId, period])
+  @@index([schoolId, period])
 }
 
 model Enrollment {
@@ -827,6 +940,7 @@ model Campus {
   invoices     Invoice[]
   payments     Payment[]
   receipts     Receipt[]
+  staff        Staff[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

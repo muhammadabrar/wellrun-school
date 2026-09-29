@@ -13,6 +13,7 @@ import {
   campusRoleSchema,
   campusSchema,
   classSchema,
+  classSubjectsSchema,
   feeItemsSchema,
   importStudentsSchema,
   orgProfileSchema,
@@ -131,16 +132,53 @@ export class SetupService {
       }),
       this.prisma.class.findMany({
         where: { schoolId },
-        select: { id: true, name: true, section: true, yearId: true },
+        select: {
+          id: true,
+          name: true,
+          section: true,
+          yearId: true,
+          campusId: true,
+          _count: { select: { enrollments: { where: { active: true } }, lessons: true } },
+          subjects: { select: { subjectId: true } },
+          assignments: { select: { staff: { select: { id: true, name: true } } } },
+          lessons: {
+            distinct: ["subject", "staffId"],
+            select: { subject: true, staff: { select: { id: true, name: true } } },
+          },
+        },
         orderBy: [{ name: "asc" }, { section: "asc" }],
       }),
       this.prisma.subject.findMany({
         where: { schoolId },
-        select: { id: true, name: true, enabled: true },
+        select: { id: true, name: true, enabled: true, _count: { select: { classes: true } } },
         orderBy: { name: "asc" },
       }),
     ]);
-    return { years, classes, subjects };
+    return {
+      years,
+      classes: classes.map((cls) => {
+        const teachers = new Map<string, string>();
+        for (const row of [...cls.assignments, ...cls.lessons]) if (row.staff) teachers.set(row.staff.id, row.staff.name);
+        return {
+          id: cls.id,
+          name: cls.name,
+          section: cls.section,
+          yearId: cls.yearId,
+          campusId: cls.campusId,
+          students: cls._count.enrollments,
+          lessons: cls._count.lessons,
+          subjectIds: cls.subjects.map((row) => row.subjectId),
+          timetableSubjects: [...new Set(cls.lessons.map((row) => row.subject))].sort((a, b) => a.localeCompare(b)),
+          teachers: [...teachers].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
+        };
+      }),
+      subjects: subjects.map((subject) => ({
+        id: subject.id,
+        name: subject.name,
+        enabled: subject.enabled,
+        classes: subject._count.classes,
+      })),
+    };
   }
 
   async feeStructure(schoolId: string) {
@@ -355,14 +393,20 @@ export class SetupService {
     const data = classSchema.parse(body);
     const yearId = data.yearId ?? (await this.prisma.academicYear.findFirst({ where: { schoolId, current: true } }))?.id;
     if (!yearId) throw new BadRequestException("Create an academic year first");
-    const main = await this.prisma.campus.findFirst({ where: { schoolId, isMain: true } });
+    const campus =
+      (data.campusId ? await this.prisma.campus.findFirst({ where: { id: data.campusId, schoolId } }) : null) ??
+      (await this.prisma.campus.findFirst({ where: { schoolId, isMain: true } }));
+    const duplicate = await this.prisma.class.findFirst({
+      where: { schoolId, yearId, campusId: campus?.id ?? null, name: data.name, section: data.section },
+    });
+    if (duplicate) throw new BadRequestException(`${data.name} ${data.section} already exists.`);
     const cls = await this.prisma.class.create({
       data: {
         schoolId,
         name: data.name,
         section: data.section,
         yearId,
-        campusId: main?.id,
+        campusId: campus?.id,
       },
     });
     await audit(this.prisma, { schoolId, actorId, action: "class_created", entity: "class", entityId: cls.id });
@@ -380,6 +424,47 @@ export class SetupService {
     });
     await audit(this.prisma, { schoolId, actorId, action: "class_updated", entity: "class", entityId: cls.id });
     return cls;
+  }
+
+  async removeClass(schoolId: string, actorId: string, id: string) {
+    await this.writable(schoolId);
+    const existing = await this.prisma.class.findFirst({
+      where: { id, schoolId },
+      select: { id: true, name: true, section: true, _count: { select: { enrollments: { where: { active: true } } } } },
+    });
+    if (!existing) throw new NotFoundException("Class not found");
+    const students = existing._count.enrollments;
+    if (students) {
+      throw new BadRequestException(
+        `${existing.name} ${existing.section} still has ${students} student${students === 1 ? "" : "s"}. Move them to another class first.`,
+      );
+    }
+    await this.prisma.class.delete({ where: { id } });
+    await audit(this.prisma, { schoolId, actorId, action: "class_deleted", entity: "class", entityId: id });
+    return { ok: true };
+  }
+
+  async setClassSubjects(schoolId: string, actorId: string, id: string, body: unknown) {
+    await this.writable(schoolId);
+    const cls = await this.prisma.class.findFirst({ where: { id, schoolId }, select: { id: true } });
+    if (!cls) throw new NotFoundException("Class not found");
+    const { subjectIds } = classSubjectsSchema.parse(body);
+    const valid = await this.prisma.subject.findMany({ where: { schoolId, id: { in: subjectIds } }, select: { id: true } });
+    await this.prisma.$transaction([
+      this.prisma.classSubject.deleteMany({ where: { classId: id } }),
+      this.prisma.classSubject.createMany({ data: valid.map((row) => ({ schoolId, classId: id, subjectId: row.id })) }),
+    ]);
+    await audit(this.prisma, { schoolId, actorId, action: "class_subjects_saved", entity: "class", entityId: id });
+    return { subjectIds: valid.map((row) => row.id) };
+  }
+
+  async removeSubject(schoolId: string, actorId: string, id: string) {
+    await this.writable(schoolId);
+    const existing = await this.prisma.subject.findFirst({ where: { id, schoolId } });
+    if (!existing) throw new NotFoundException("Subject not found");
+    await this.prisma.subject.delete({ where: { id } });
+    await audit(this.prisma, { schoolId, actorId, action: "subject_deleted", entity: "subject", entityId: id });
+    return { ok: true };
   }
 
   async applyClasses(schoolId: string, actorId: string, body: unknown) {

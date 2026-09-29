@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from "@nes
 import { Prisma } from "@prisma/client";
 import type { CreatePaymentInput } from "@wellrun/shared";
 import { audit } from "../common/audit";
+import { schoolLetterhead } from "../common/school";
 import type { SchoolScope } from "../common/school-scope";
 import { nextSchoolNumber } from "../common/sequence";
 import { PrismaService } from "../prisma/prisma.service";
@@ -158,31 +159,8 @@ export class FeePaymentService {
       );
   }
 
-  async schoolHeader(schoolId: string) {
-    const school = await this.prisma.school.findUniqueOrThrow({
-      where: { id: schoolId },
-      select: {
-        name: true,
-        address: true,
-        city: true,
-        phone: true,
-        email: true,
-        website: true,
-        registrationNo: true,
-        primaryColor: true,
-        media: { where: { kind: "LOGO" }, select: { url: true }, take: 1 },
-      },
-    });
-    return {
-      name: school.name,
-      address: school.city && !school.address.toLowerCase().includes(school.city.toLowerCase()) ? [school.address, school.city].filter(Boolean).join(", ") : school.address,
-      phone: school.phone,
-      email: school.email,
-      website: school.website,
-      registrationNo: school.registrationNo,
-      primaryColor: school.primaryColor,
-      logoUrl: school.media[0]?.url ?? "",
-    };
+  schoolHeader(schoolId: string) {
+    return schoolLetterhead(this.prisma, schoolId);
   }
 
   async primaryGuardian(studentId: string) {
