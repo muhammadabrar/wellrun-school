@@ -187,35 +187,33 @@ export class ResultsService {
     groups.forEach((list) => rankRows(list, rules.rankMethod, rules.rankOnlyPassed).forEach((rank, id) => ranks.set(id, rank)));
 
     const classIds = [...new Set(rows.map((r) => r.classId))];
-    await this.prisma.$transaction(
-      async (tx) => {
-        await tx.studentResult.deleteMany({
-          where: { scope, scopeKey, classId: { in: classIds }, studentId: { notIn: computed.map((r) => r.studentId) } },
+    // One batched transaction: an interactive one makes a round trip per student and times out on a remote database.
+    await this.prisma.$transaction([
+      this.prisma.studentResult.deleteMany({
+        where: { scope, scopeKey, classId: { in: classIds }, studentId: { notIn: computed.map((r) => r.studentId) } },
+      }),
+      ...computed.map((r) => {
+        const data = {
+          classId: r.classId,
+          totalObtained: r.totalObtained,
+          totalMax: r.totalMax,
+          percentage: r.percentage,
+          grade: r.grade,
+          gpa: r.gpa,
+          rank: ranks.get(r.studentId) ?? null,
+          passed: r.passed,
+          failedSubjects: r.failedSubjects,
+          subjects: r.lines as unknown as Prisma.InputJsonValue,
+          attendancePct: attendance?.get(r.studentId) ?? null,
+          computedAt: new Date(),
+        };
+        return this.prisma.studentResult.upsert({
+          where: { scope_scopeKey_studentId: { scope, scopeKey, studentId: r.studentId } },
+          create: { schoolId, yearId, scope, scopeKey, examId: ids.examId, termId: ids.termId, studentId: r.studentId, ...data },
+          update: data,
         });
-        for (const r of computed) {
-          const data = {
-            classId: r.classId,
-            totalObtained: r.totalObtained,
-            totalMax: r.totalMax,
-            percentage: r.percentage,
-            grade: r.grade,
-            gpa: r.gpa,
-            rank: ranks.get(r.studentId) ?? null,
-            passed: r.passed,
-            failedSubjects: r.failedSubjects,
-            subjects: r.lines as unknown as Prisma.InputJsonValue,
-            attendancePct: attendance?.get(r.studentId) ?? null,
-            computedAt: new Date(),
-          };
-          await tx.studentResult.upsert({
-            where: { scope_scopeKey_studentId: { scope, scopeKey, studentId: r.studentId } },
-            create: { schoolId, yearId, scope, scopeKey, examId: ids.examId, termId: ids.termId, studentId: r.studentId, ...data },
-            update: data,
-          });
-        }
-      },
-      { timeout: 60000 },
-    );
+      }),
+    ]);
     return { students: computed.length, classes: classIds.length };
   }
 

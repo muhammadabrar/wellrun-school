@@ -56,7 +56,6 @@ export const queryKeys = {
   feePreview: (query: Record<string, unknown>) => ["fees", "preview", query] as const,
   schoolProfile: ["school-profile"] as const,
   classes: ["classes"] as const,
-  attendance: (classId: string, date: string) => ["attendance", classId, date] as const,
   absent: (date: string) => ["absent", date] as const,
   invoices: ["invoices"] as const,
   receipt: (id: string) => ["fees", "receipt", id] as const,

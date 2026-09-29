@@ -90,9 +90,9 @@ export class StudentsController {
   }
 
   @Get(":id/attendance")
-  async attendance(@Req() req: { user: CurrentUser }, @Param("id") id: string) {
+  async attendance(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }, @Param("id") id: string) {
     const { schoolId, classIds } = await teacherClassIds(this.prisma, req.user);
-    return this.students.attendanceTab(schoolId, id, classIds);
+    return this.students.attendanceTab(schoolId, id, classIds, req.schoolScope);
   }
 
   @Get(":id/fees")

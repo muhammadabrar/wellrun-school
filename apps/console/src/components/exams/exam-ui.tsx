@@ -247,9 +247,20 @@ export function GradeSpread({ grades, order }: { grades: Record<string, number>;
 }
 
 /** Percentage across exams: one 2px line, 8px markers, hover titles. */
-export function TrendLine({ points, height = 140 }: { points: { label: string; value: number | null }[]; height?: number }) {
+export function TrendLine({
+  points,
+  height = 140,
+  emptyText = "The trend appears after two exams.",
+  labelEvery = 1,
+}: {
+  points: { label: string; value: number | null }[];
+  height?: number;
+  emptyText?: string;
+  /** Print every Nth x-axis label (the last one always shows) so long series stay readable. */
+  labelEvery?: number;
+}) {
   const valid = points.filter((p) => p.value != null);
-  if (valid.length < 2) return <p className="text-sm text-muted-foreground">The trend appears after two exams.</p>;
+  if (valid.length < 2) return <p className="text-sm text-muted-foreground">{emptyText}</p>;
   const width = 560;
   const pad = { l: 32, r: 12, t: 12, b: 28 };
   const x = (i: number) => pad.l + (points.length === 1 ? 0 : (i / (points.length - 1)) * (width - pad.l - pad.r));
@@ -281,7 +292,7 @@ export function TrendLine({ points, height = 140 }: { points: { label: string; v
           </g>
         ),
       )}
-      {points.map((p, i) => (
+      {points.map((p, i) => (i % labelEvery !== 0 && i !== points.length - 1 ? null :
         <text key={`l${i}`} x={x(i)} y={height - 8} textAnchor={i === 0 ? "start" : i === points.length - 1 ? "end" : "middle"} className="fill-muted-foreground text-[10px]">
           {p.label.length > 16 ? `${p.label.slice(0, 15)}…` : p.label}
         </text>

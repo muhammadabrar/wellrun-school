@@ -234,11 +234,6 @@ export const api = {
     }
     return request<{ matches: DuplicateMatch[] }>(`/console/admissions/duplicates?${params}`);
   },
-  attendance: (classId: string, date: string) =>
-    request<{
-      records: { studentId: string; status: string }[];
-      students: { id: string; firstName: string; lastName: string; admissionNo: string }[];
-    }>(`/console/attendance?classId=${classId}&date=${date}`),
   saveAttendance: (payload: {
     classId: string;
     date: string;
@@ -1141,6 +1136,8 @@ export type Portal =
       timetable: StaffWeek;
       firstPeriod: {
         period: { id: string; label: string; startTime: string; endTime: string };
+        /** Why attendance can't be taken today (holiday, closed day), or null. */
+        locked: string | null;
         classes: { id: string; name: string; section: string; marked: boolean }[];
       } | null;
       payslips: { id: string; period: string; payslipNo: string; grossPkr: number; deductionPkr: number; netPkr: number; status: PayslipStatus; paidOn: string | null }[];

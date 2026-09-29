@@ -21,7 +21,11 @@ const AdmissionPage = lazyPage(() => import("./pages/Admission"), "AdmissionPage
 const StudentsPage = lazyPage(() => import("./pages/Students"), "StudentsPage");
 const StudentPage = lazyPage(() => import("./pages/Student"), "StudentPage");
 const StudentEditPage = lazyPage(() => import("./pages/StudentEdit"), "StudentEditPage");
-const AttendancePage = lazyPage(() => import("./pages/Attendance"), "AttendancePage");
+const AttendanceOverviewPage = lazyPage(() => import("./pages/attendance/Overview"), "AttendanceOverviewPage");
+const MarkAttendancePage = lazyPage(() => import("./pages/attendance/Mark"), "MarkAttendancePage");
+const AttendanceRegisterPage = lazyPage(() => import("./pages/attendance/Register"), "RegisterPage");
+const AttendanceReportsPage = lazyPage(() => import("./pages/attendance/Reports"), "AttendanceReportsPage");
+const AttendanceSettingsPage = lazyPage(() => import("./pages/attendance/Settings"), "AttendanceSettingsPage");
 const AbsentPage = lazyPage(() => import("./pages/Absent"), "AbsentPage");
 const TimetablePage = lazyPage(() => import("./pages/Timetable"), "TimetablePage");
 const StaffListPage = lazyPage(() => import("./pages/staff/List"), "StaffListPage");
@@ -120,7 +124,11 @@ export function App() {
         <Route path="/students" element={<StudentsPage />} />
         <Route path="/students/:id/edit" element={<StudentEditPage />} />
         <Route path="/students/:id" element={<StudentPage />} />
-        <Route path="/attendance" element={<AttendancePage />} />
+        <Route path="/attendance" element={<AttendanceOverviewPage />} />
+        <Route path="/attendance/mark" element={<MarkAttendancePage />} />
+        <Route path="/attendance/register" element={<AttendanceRegisterPage />} />
+        <Route path="/attendance/reports" element={<AttendanceReportsPage />} />
+        <Route path="/attendance/settings" element={<AttendanceSettingsPage />} />
         <Route path="/absent" element={<AbsentPage />} />
         <Route path="/timetable" element={<TimetablePage />} />
         <Route path="/staff" element={<StaffListPage />} />

@@ -45,10 +45,30 @@ const peopleItems: NavItem[] = [
 
 const dayItems: NavItem[] = [
   { title: "Today", url: "/", icon: <CalendarDaysIcon />, end: true },
-  { title: "Attendance", url: "/attendance", icon: <ClipboardCheckIcon /> },
+  {
+    title: "Attendance",
+    url: "/attendance",
+    icon: <ClipboardCheckIcon />,
+    items: [
+      { title: "Overview", url: "/attendance", end: true },
+      { title: "Mark attendance", url: "/attendance/mark" },
+      { title: "Month register", url: "/attendance/register" },
+      { title: "Reports", url: "/attendance/reports" },
+      { title: "Settings", url: "/attendance/settings" },
+    ],
+  },
   { title: "Absent list", url: "/absent", icon: <UserXIcon /> },
   { title: "Timetable", url: "/timetable", icon: <CalendarClockIcon /> },
 ];
+
+/** Teachers mark from their first period; no overview or settings. */
+const teacherDayItems: NavItem[] = dayItems
+  .filter((item) => item.url !== "/")
+  .map((item) =>
+    item.url === "/attendance"
+      ? { ...item, url: "/attendance/mark", items: item.items?.filter((sub) => sub.url !== "/attendance" && sub.url !== "/attendance/settings") }
+      : item,
+  );
 
 const examItems: NavItem[] = [
   { title: "Dashboard", url: "/exams", icon: <LayoutDashboardIcon />, end: true },
@@ -177,7 +197,7 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
         ? [
             { label: "Me", items: [{ title: "My portal", url: "/me", icon: <SunIcon /> }] },
             { label: "People", items: [{ title: "Students", url: "/students", icon: <UsersIcon /> }] },
-            { label: "Day", items: dayItems.filter((item) => item.url !== "/") },
+            { label: "Day", items: teacherDayItems },
             { label: "Exams", items: teacherExamItems },
           ]
         : [

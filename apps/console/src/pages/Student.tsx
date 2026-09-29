@@ -4,9 +4,9 @@ import { MessageCircle, Pencil, Phone, Wallet } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { FormSelect } from "@/components/form/form-select";
-import { AttendanceMeter } from "@/components/students/attendance-meter";
 import { CollectPaymentDialog } from "@/components/fees/collect-payment-dialog";
 import { StudentFeesPanel } from "@/components/fees/student-fees-panel";
+import { StudentAttendancePanel } from "@/components/students/student-attendance-panel";
 import { StudentResultsPanel } from "@/components/students/student-results-panel";
 import { TodayAttendance, todayAttendanceLabel, useTodayAttendance } from "@/components/students/today-attendance";
 import { Button } from "@/components/ui/button";
@@ -49,7 +49,7 @@ export function StudentPage() {
   const tabQuery = useQuery({
     queryKey: queryKeys.studentTab(id ?? "", tab),
     queryFn: () => api.studentTab(id!, tab === "overview" ? "enrollments" : tab),
-    enabled: Boolean(id) && tab !== "overview" && tab !== "fees" && tab !== "results",
+    enabled: Boolean(id) && tab !== "overview" && tab !== "fees" && tab !== "results" && tab !== "attendance",
   });
   const [toast, setToast] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"promote" | "deactivate" | null>(null);
@@ -212,12 +212,12 @@ export function StudentPage() {
           <StudentFeesPanel studentId={student.id} studentName={`${student.firstName} ${student.lastName}`} canMutate={canMutate} />
         ) : tab === "results" ? (
           <StudentResultsPanel studentId={student.id} />
+        ) : tab === "attendance" ? (
+          <StudentAttendancePanel studentId={student.id} studentName={`${student.firstName} ${student.lastName}`} />
         ) : tabQuery.isPending ? (
           <LoadingState variant="form" />
         ) : tab === "enrollments" ? (
           <EnrollmentList rows={tabQuery.data as never} />
-        ) : tab === "attendance" ? (
-          <AttendanceList rows={tabQuery.data as never} />
         ) : tab === "family" ? (
           <FamilyPanel data={tabQuery.data as never} />
         ) : tab === "documents" ? (
@@ -335,27 +335,6 @@ function EnrollmentList({ rows }: { rows: { id: string; rollNo: string; status: 
         </li>
       ))}
     </ul>
-  );
-}
-
-function AttendanceList({ rows }: { rows: { id: string; date: string; status: string; className: string }[] }) {
-  if (!rows?.length) return <EmptyState title="No attendance marked" description="Attendance appears here after a class is marked." />;
-  const pct = Math.round((rows.filter((row) => row.status === "PRESENT" || row.status === "LATE").length / rows.length) * 100);
-  return (
-    <div>
-      <div className="mb-4 flex items-center gap-3">
-        <AttendanceMeter value={pct} marked />
-        <p className="text-sm text-muted-foreground">{pct}% present across {rows.length} days</p>
-      </div>
-      <ul className="max-h-[28rem] space-y-2 overflow-auto text-sm">
-        {rows.map((row) => (
-          <li key={row.id} className="flex justify-between">
-            <span>{String(row.date).slice(0, 10)}</span>
-            <span>{row.status.toLowerCase()}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
 

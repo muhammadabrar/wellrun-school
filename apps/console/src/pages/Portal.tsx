@@ -51,6 +51,8 @@ export function PortalPage() {
         <Panel title="First-period attendance" icon={<ClipboardCheck className="size-5 text-primary" aria-hidden />}>
           {!firstPeriod ? (
             <p className="text-sm text-muted-foreground">Your school hasn't set up its periods yet.</p>
+          ) : firstPeriod.locked && !firstPeriod.classes.some((cls) => cls.marked) ? (
+            <p className="text-sm text-muted-foreground">{firstPeriod.locked} No attendance to take today.</p>
           ) : !firstPeriod.classes.length ? (
             <p className="text-sm text-muted-foreground">
               You don't teach {firstPeriod.period.label} ({formatClock(firstPeriod.period.startTime)}) today, so there's no register for you to take.
@@ -72,12 +74,12 @@ export function PortalPage() {
                       <span className="inline-flex items-center gap-1 text-sm text-success">
                         <CheckCircle2 className="size-4" aria-hidden /> Taken
                       </span>
-                      <Button variant="outline" size="sm" render={<Link to={`/attendance?classId=${cls.id}&date=${today.date}`} />}>
+                      <Button variant="outline" size="sm" render={<Link to={`/attendance/mark?classId=${cls.id}&date=${today.date}`} />}>
                         Review
                       </Button>
                     </div>
                   ) : (
-                    <Button render={<Link to={`/attendance?classId=${cls.id}&date=${today.date}`} />}>Take attendance</Button>
+                    <Button render={<Link to={`/attendance/mark?classId=${cls.id}&date=${today.date}`} />}>Take attendance</Button>
                   )}
                 </li>
               ))}

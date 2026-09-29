@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge, Dialog, EmptyState, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
 import { CLASS_TEMPLATE_LABELS, SUBJECT_TEMPLATES, classSortIndex, type ClassTemplateId } from "@wellrun/shared";
-import { BookOpen, CalendarDays, Pencil, Plus, Sparkles, Trash2, Users, Wallet } from "lucide-react";
+import { BookOpen, CalendarDays, ClipboardCheck, Pencil, Plus, Sparkles, Trash2, Users, Wallet } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ClassSubjectsSheet } from "@/components/academics/class-subjects-sheet";
@@ -461,6 +461,9 @@ function SectionCard({
         </Button>
         <Button variant="outline" size="sm" icon={<Users />} render={<Link to={studentsLink} />}>
           Students
+        </Button>
+        <Button variant="outline" size="sm" icon={<ClipboardCheck />} render={<Link to={`/attendance/register?classId=${cls.id}`} />}>
+          Attendance
         </Button>
         <Button variant="outline" size="sm" icon={<Wallet />} render={<Link to={`/fees/structures?class=${encodeURIComponent(cls.name)}`} />}>
           Fee structure

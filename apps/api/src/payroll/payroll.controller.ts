@@ -4,6 +4,7 @@ import type { CurrentUser } from "../common/current-user";
 import { dateOnly, karachiToday } from "../common/date";
 import { requireSchoolAdmin, requireSchoolId } from "../common/roles";
 import { firstTeachingPeriod, staffForUser } from "../common/school";
+import { dayLockReason, loadHolidays, loadSettings } from "../attendance/rules";
 import { PrismaService } from "../prisma/prisma.service";
 import { currentContract, payLines, StaffService } from "../staff/staff.service";
 import { PayrollService } from "./payroll.service";
@@ -71,7 +72,7 @@ export class PortalController {
     if (!record) return { staff: null };
     const today = karachiToday();
     const weekday = dateOnly(today).getUTCDay();
-    const [profile, week, payslips, period] = await Promise.all([
+    const [profile, week, payslips, period, attendanceSettings, holidays] = await Promise.all([
       this.prisma.staff.findUniqueOrThrow({
         where: { id: record.id },
         select: {
@@ -92,7 +93,10 @@ export class PortalController {
       this.staff.weekly(schoolId, record.id),
       this.payroll.forStaff(schoolId, record.id),
       firstTeachingPeriod(this.prisma, schoolId),
+      loadSettings(this.prisma, schoolId),
+      loadHolidays(this.prisma, schoolId, today, today, record.campusId),
     ]);
+    const locked = dayLockReason(today, today, attendanceSettings, holidays, false);
     const firstClasses =
       period && weekday >= 1 && weekday <= 6
         ? week.lessons.filter((lesson) => lesson.weekday === weekday && lesson.periodId === period.id).map((lesson) => lesson.class)
@@ -115,7 +119,7 @@ export class PortalController {
       today: { date: today, weekday },
       timetable: week,
       firstPeriod: period
-        ? { period, classes: firstClasses.map((cls) => ({ ...cls, marked: markedIds.has(cls.id) })) }
+        ? { period, locked, classes: firstClasses.map((cls) => ({ ...cls, marked: markedIds.has(cls.id) })) }
         : null,
       payslips,
     };

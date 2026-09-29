@@ -10,6 +10,7 @@ import {
   studentListQuerySchema,
   studentMoveSchema,
   studentSchema,
+  type AttendanceSettingsView,
 } from "@wellrun/shared";
 import { Prisma } from "@prisma/client";
 import { audit } from "../common/audit";
@@ -24,12 +25,15 @@ import { karachiToday } from "../common/date";
 import { nextSchoolNumber } from "../common/sequence";
 import { saveDataUrl } from "../common/uploads";
 import { PrismaService } from "../prisma/prisma.service";
+import { AttendanceReportsService } from "../attendance/reports.service";
+import { loadSettings, pctOf } from "../attendance/rules";
 
 @Injectable()
 export class StudentsService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(FeeAssignmentService) private readonly feeAssignments: FeeAssignmentService,
+    @Inject(AttendanceReportsService) private readonly attendanceReports: AttendanceReportsService,
   ) {}
 
   async list(
@@ -112,7 +116,8 @@ export class StudentsService {
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     });
 
-    let rows = students.map((student) => this.toListRow(student));
+    const attendanceSettings = await loadSettings(this.prisma, schoolId);
+    let rows = students.map((student) => this.toListRow(student, attendanceSettings));
     const addressQuery = filters.address?.trim().toLowerCase();
     if (addressQuery) {
       rows = rows.filter((row) => row.address.toLowerCase().includes(addressQuery));
@@ -195,7 +200,7 @@ export class StudentsService {
     }
     const extra = this.extraRecord(student.extra);
     const current = student.enrollments.find((row) => row.active) ?? student.enrollments[0] ?? null;
-    const presentLike = student.attendance.filter((row) => row.status === "PRESENT" || row.status === "LATE").length;
+    const attendancePct = pctOf(student.attendance.map((row) => row.status), await loadSettings(this.prisma, schoolId));
     const marked = student.attendance.length;
     const today = karachiToday();
     const todayAttendance =
@@ -249,7 +254,7 @@ export class StudentsService {
         { label: "Admission date", value: student.admissionDate.toISOString().slice(0, 10) },
       ].filter((row) => row.value),
       metrics: {
-        attendancePct: marked ? Math.round((presentLike / marked) * 100) : null,
+        attendancePct: attendancePct === null ? null : Math.round(attendancePct),
         attendanceMarked: marked > 0,
         feesDue,
         latestExamPct: latest ? Math.round(latest.percentage) : null,
@@ -777,8 +782,8 @@ export class StudentsService {
     guardians: { guardian: { name: string; phone?: string } }[];
     invoices: { status: string; amountPkr: number; paidAmountPkr?: number; balanceAmountPkr?: number; payments: { amountPkr: number; status?: string }[] }[];
     attendance: { status: string; date: Date }[];
-  }) {
-    const presentLike = student.attendance.filter((row) => row.status === "PRESENT" || row.status === "LATE").length;
+  }, attendanceSettings: AttendanceSettingsView) {
+    const attendancePct = pctOf(student.attendance.map((row) => row.status), attendanceSettings);
     const marked = student.attendance.length;
     const today = karachiToday();
     const todayAttendance = student.attendance.find((row) => this.attendanceDay(row.date) === today)?.status ?? null;
@@ -804,7 +809,7 @@ export class StudentsService {
       address: this.extraText(student.extra, "address"),
       campus: student.campus ?? null,
       class: student.enrollments[0]?.class ?? null,
-      attendancePct: marked ? Math.round((presentLike / marked) * 100) : 0,
+      attendancePct: attendancePct === null ? 0 : Math.round(attendancePct),
       attendanceMarked: marked > 0,
       todayAttendance,
       pendingFees: {
@@ -839,19 +844,9 @@ export class StudentsService {
     }));
   }
 
-  async attendanceTab(schoolId: string, id: string, classIds: string[] | null = null) {
+  async attendanceTab(schoolId: string, id: string, classIds: string[] | null = null, scope: SchoolScope = {}) {
     await this.byId(schoolId, id, classIds);
-    const rows = await this.prisma.attendanceRecord.findMany({
-      where: { schoolId, studentId: id },
-      include: { class: true },
-      orderBy: { date: "desc" },
-    });
-    return rows.map((row) => ({
-      id: row.id,
-      date: row.date,
-      status: row.status,
-      className: `${row.class.name} ${row.class.section}`,
-    }));
+    return this.attendanceReports.student(schoolId, id, scope);
   }
 
   async feesTab(schoolId: string, id: string, classIds: string[] | null = null) {

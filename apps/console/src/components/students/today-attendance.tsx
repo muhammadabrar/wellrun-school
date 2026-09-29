@@ -91,11 +91,16 @@ export function useTodayAttendance() {
       patchTodayAttendance(queryClient, input.studentId, input.status);
       return { previous };
     },
-    onError: (_error, input, previous) => {
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["attendance"] });
+    },
+    onError: (error, input, previous) => {
       for (const [key, data] of previous?.previous ?? []) {
         queryClient.setQueryData(key, data);
       }
-      publishAttendanceToast(`Could not mark attendance for ${input.firstName} ${input.lastName}.`);
+      // Surface the server's reason, e.g. only the first-period teacher can mark, or a holiday.
+      const reason = error instanceof Error && error.message ? ` ${error.message}` : "";
+      publishAttendanceToast(`Could not mark attendance for ${input.firstName} ${input.lastName}.${reason}`);
     },
   });
 

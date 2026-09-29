@@ -29,20 +29,6 @@ export const resetSchema = z.object({
   confirm: z.string().min(8),
 }).refine((v) => v.password === v.confirm, { message: "Passwords do not match", path: ["confirm"] });
 
-export const attendanceStatus = ["PRESENT", "ABSENT", "LATE", "LEAVE", "EXCUSED"] as const;
-export type AttendanceStatus = (typeof attendanceStatus)[number];
-
-export const saveAttendanceSchema = z.object({
-  classId: z.string(),
-  date: z.string(),
-  records: z.array(
-    z.object({
-      studentId: z.string(),
-      status: z.enum(attendanceStatus),
-    }),
-  ),
-});
-
 export const feeFrequencies = ["MONTHLY", "QUARTERLY", "ANNUAL", "ONE_TIME"] as const;
 export const discountTypes = ["FIXED", "PERCENT"] as const;
 export const lateFeeModes = ["NONE", "FIXED", "DAILY", "PERCENT"] as const;
@@ -744,7 +730,6 @@ export const documentUploadSchema = z.object({
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
-export type SaveAttendanceInput = z.infer<typeof saveAttendanceSchema>;
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
 export type FeeHeadInput = z.infer<typeof feeHeadSchema>;
 export type FeeStructureInput = z.infer<typeof feeStructureSchema>;
@@ -753,3 +738,4 @@ export type FeeSettingsInput = z.infer<typeof feeSettingsSchema>;
 
 export * from "./templates";
 export * from "./exams";
+export * from "./attendance";

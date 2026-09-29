@@ -336,10 +336,20 @@ export async function seedDemoSchool(ctx: Ctx) {
 
   // Attendance: last 25 school days ------------------------------------------------------------------------
   console.log("  demo: attendance");
+  await prisma.attendanceSettings.create({
+    data: { schoolId, workingWeekdays: [1, 2, 3, 4, 5], lowThresholdPct: 75, teacherEditDays: 1, lateCountsPresent: true, leaveCountsPresent: false },
+  });
+  const demoHolidays = [
+    { name: "Independence Day", startsOn: d("2026-08-14"), endsOn: d("2026-08-14") },
+    { name: "Iqbal Day", startsOn: d("2026-11-09"), endsOn: d("2026-11-09") },
+    { name: "Winter break", startsOn: d("2026-12-22"), endsOn: d("2026-12-31") },
+  ];
+  await prisma.holiday.createMany({ data: demoHolidays.map((h) => ({ schoolId, ...h })) });
+  const isHoliday = (day: Date) => demoHolidays.some((h) => day >= h.startsOn && day <= h.endsOn);
   const schoolDays: Date[] = [];
   for (let back = 0; schoolDays.length < 25 && back < 60; back += 1) {
     const day = new Date(today.getTime() - back * 86400000);
-    if (day.getUTCDay() !== 0 && day.getUTCDay() !== 6 && day >= d("2026-08-10")) schoolDays.push(day);
+    if (day.getUTCDay() !== 0 && day.getUTCDay() !== 6 && day >= d("2026-08-10") && !isHoliday(day)) schoolDays.push(day);
   }
   const attendance: Prisma.AttendanceRecordCreateManyInput[] = [];
   for (const s of students) {

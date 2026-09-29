@@ -226,6 +226,8 @@ model School {
   gradingScales       GradingScale[]
   examSettings        ExamSettings?
   reportCardTemplates ReportCardTemplate[]
+  attendanceSettings  AttendanceSettings?
+  holidays            Holiday[]
 }
 
 model SchoolProfile {
@@ -558,22 +560,56 @@ model Enrollment {
 }
 
 model AttendanceRecord {
-  id        String           @id @default(cuid())
-  schoolId  String
-  school    School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  studentId String
-  student   Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  classId   String
-  class     Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
-  date      DateTime         @db.Date
-  status    AttendanceStatus
-  note      String?
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  id         String           @id @default(cuid())
+  schoolId   String
+  school     School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  classId    String
+  class      Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
+  date       DateTime         @db.Date
+  status     AttendanceStatus
+  note       String?
+  /// User who last saved this mark.
+  markedById String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
 
   @@unique([studentId, date])
   @@index([schoolId, date])
   @@index([classId, date])
+}
+
+model AttendanceSettings {
+  id                 String   @id @default(cuid())
+  schoolId           String   @unique
+  school             School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  /// 0 = Sunday … 6 = Saturday.
+  workingWeekdays    Int[]    @default([1, 2, 3, 4, 5, 6])
+  lowThresholdPct    Float    @default(75)
+  /// Days before today a teacher may still change marks. 0 = today only.
+  teacherEditDays    Int      @default(0)
+  lateCountsPresent  Boolean  @default(true)
+  /// When false, LEAVE/EXCUSED days are left out of the percentage instead of counting as absent.
+  leaveCountsPresent Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Holiday {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  /// null = every campus.
+  campusId  String?
+  campus    Campus?  @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  name      String
+  startsOn  DateTime @db.Date
+  endsOn    DateTime @db.Date
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId, startsOn])
 }
 
 model FeePlan {
@@ -952,6 +988,7 @@ model Campus {
   payments      Payment[]
   receipts      Receipt[]
   staff         Staff[]
+  holidays      Holiday[]
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
 
