@@ -55,7 +55,8 @@ export const attendanceApi = {
   report: (query: { classId?: string; from: string; to: string }) => request<AttendanceReport>(`/console/attendance/report${qs(query)}`),
   settings: () => request<AttendanceSettingsView>("/console/attendance/settings"),
   saveSettings: (payload: AttendanceSettingsInput) => request<AttendanceSettingsView>("/console/attendance/settings", json("PUT", payload)),
-  holidays: (year?: string) => request<HolidayView[]>(`/console/attendance/holidays${qs({ year })}`),
+  /** `yearId` = an academic year; `year` = a calendar year (fallback before any academic year exists). */
+  holidays: (range: { yearId?: string; year?: string }) => request<HolidayView[]>(`/console/attendance/holidays${qs(range)}`),
   createHoliday: (payload: HolidayInput) => request<HolidayView>("/console/attendance/holidays", json("POST", payload)),
   updateHoliday: (id: string, payload: HolidayInput) => request<HolidayView>(`/console/attendance/holidays/${id}`, json("PATCH", payload)),
   removeHoliday: (id: string) => request<{ ok: true }>(`/console/attendance/holidays/${id}`, { method: "DELETE" }),
@@ -73,6 +74,6 @@ export const attendanceKeys = {
   register: (classId: string, month: string) => ["attendance", "register", classId, month] as const,
   report: (query: Params) => ["attendance", y(), "report", query] as const,
   settings: ["attendance", "settings"] as const,
-  holidays: (year?: string) => ["attendance", "holidays", year ?? "all"] as const,
+  holidays: (range: { yearId?: string; year?: string }) => ["attendance", "holidays", range.yearId ?? range.year ?? "all"] as const,
   student: (id: string) => ["attendance", y(), "student", id] as const,
 };

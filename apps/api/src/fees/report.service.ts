@@ -64,6 +64,7 @@ export class FeeReportService {
         take: 8,
       }),
     ]);
+    const previousYears = await this.previousYearsDue(schoolId, scope);
     const outstanding = addPkr(...invoices.map((row) => row.balanceAmountPkr || Math.max(row.amountPkr - row.paidAmountPkr, 0)));
     const overdueAmount = addPkr(
       ...invoices.filter((row) => row.status === "OVERDUE").map((row) => row.balanceAmountPkr || Math.max(row.amountPkr - row.paidAmountPkr, 0)),
@@ -79,6 +80,7 @@ export class FeeReportService {
       monthPkr: month._sum.amountPkr ?? 0,
       outstandingPkr: outstanding,
       overduePkr: overdueAmount,
+      previousYears,
       counts,
       recentPayments: recentPayments.map((row) => ({
         id: row.id,
@@ -102,6 +104,24 @@ export class FeeReportService {
         student: slimStudent(row.student),
       })),
     };
+  }
+
+  /** Unpaid balance on invoices from years before the one being viewed — still collectable after a year closes. */
+  private async previousYearsDue(schoolId: string, scope: SchoolScope) {
+    if (!scope.yearId) return { pkr: 0, invoices: 0 };
+    const viewed = await this.prisma.academicYear.findFirst({ where: { id: scope.yearId, schoolId }, select: { startsOn: true } });
+    if (!viewed) return { pkr: 0, invoices: 0 };
+    const agg = await this.prisma.invoice.aggregate({
+      where: {
+        schoolId,
+        status: { in: ["ISSUED", "PARTIALLY_PAID", "OVERDUE"] },
+        year: { startsOn: { lt: viewed.startsOn } },
+        ...(scope.campusId ? { OR: [{ campusId: scope.campusId }, { campusId: null, student: { campusId: scope.campusId } }] } : {}),
+      },
+      _sum: { balanceAmountPkr: true },
+      _count: { _all: true },
+    });
+    return { pkr: agg._sum.balanceAmountPkr ?? 0, invoices: agg._count._all };
   }
 
   outstanding(schoolId: string, scope: SchoolScope = {}, query: { className?: string; section?: string } = {}) {

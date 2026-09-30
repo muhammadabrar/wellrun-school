@@ -1,15 +1,19 @@
+import type { AcademicYearStatus } from "@wellrun/shared";
 import { defaultCampusId, readCampusId, writeCampusId } from "./campus";
 import { queryClient, queryKeys } from "./query";
 
 export const CONTEXT_STORAGE_KEY = "wellrun-school-context";
 export const YEAR_STORAGE_KEY = "wellrun-year-id";
 
+/** `status` is missing from contexts cached before year statuses existed. */
+export type SessionYear = { id: string; name: string; current: boolean; status?: AcademicYearStatus; startsOn: string; endsOn: string };
+
 export type SchoolContext = {
   setupCompleted: boolean;
   setupStep: number;
   campuses: { id: string; name: string; isMain: boolean; code: string }[];
-  years: { id: string; name: string; current: boolean; startsOn: string; endsOn: string }[];
-  currentYear: { id: string; name: string; current: boolean; startsOn: string; endsOn: string } | null;
+  years: SessionYear[];
+  currentYear: SessionYear | null;
   classes: { id: string; name: string; section: string; yearId: string; campusId: string | null }[];
 };
 
@@ -38,6 +42,14 @@ export function writeSchoolContext(ctx: SchoolContext | null) {
 
 export function readYearId() {
   return localStorage.getItem(YEAR_STORAGE_KEY) ?? readSchoolContext()?.currentYear?.id ?? "";
+}
+
+/** Point the whole console at another academic year and refetch everything year-scoped. */
+export function viewYear(id: string) {
+  if (!id || id === readYearId()) return;
+  writeYearId(id);
+  window.dispatchEvent(new Event("wellrun-context"));
+  void queryClient.invalidateQueries();
 }
 
 export function writeYearId(id: string) {

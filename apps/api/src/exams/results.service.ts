@@ -3,6 +3,7 @@ import type { Prisma, ResultScope } from "@prisma/client";
 import { resultComputeSchema, resultPublishSchema, resultRemarksSchema } from "@wellrun/shared";
 import { audit } from "../common/audit";
 import { assertWritableSchool } from "../common/school";
+import { assertExamYearOpen } from "../common/year-lock";
 import { PrismaService } from "../prisma/prisma.service";
 import { assertClassInScope, type TeacherScope } from "./access";
 import { classLabel } from "./exams.service";
@@ -567,6 +568,7 @@ export class ResultsService {
   async saveRemarks(schoolId: string, actorId: string, body: unknown) {
     await assertWritableSchool(this.prisma, schoolId);
     const { rows } = resultRemarksSchema.parse(body);
+    await assertExamYearOpen(this.prisma, schoolId, { resultIds: rows.map((r) => r.resultId) });
     const owned = await this.prisma.studentResult.count({ where: { schoolId, id: { in: rows.map((r) => r.resultId) } } });
     if (owned !== rows.length) throw new BadRequestException("Some results were not found");
     await this.prisma.$transaction(

@@ -14,6 +14,7 @@ import { randomBytes } from "crypto";
 import { audit } from "../common/audit";
 import { dateOnly } from "../common/date";
 import { assertWritableSchool } from "../common/school";
+import { assertClassWritable } from "../common/year-lock";
 import { PrismaService } from "../prisma/prisma.service";
 
 /** Statuses that keep a login working. Everyone else is signed out and can't sign in. */
@@ -357,8 +358,7 @@ export class StaffService {
     await assertWritableSchool(this.prisma, schoolId);
     const staff = await this.prisma.staff.findFirst({ where: { id: staffId, schoolId } });
     if (!staff) throw new NotFoundException("Teacher not found");
-    const cls = await this.prisma.class.findFirst({ where: { id: classId, schoolId } });
-    if (!cls) throw new NotFoundException("Class not found");
+    await assertClassWritable(this.prisma, schoolId, classId);
     const row = await this.prisma.teacherAssignment.upsert({
       where: { staffId_classId_subject: { staffId, classId, subject } },
       update: {},
@@ -378,6 +378,7 @@ export class StaffService {
     await assertWritableSchool(this.prisma, schoolId);
     const row = await this.prisma.teacherAssignment.findFirst({ where: { id: assignmentId, staffId, schoolId } });
     if (!row) throw new NotFoundException("Assignment not found");
+    await assertClassWritable(this.prisma, schoolId, row.classId);
     await this.prisma.teacherAssignment.delete({ where: { id: assignmentId } });
     await audit(this.prisma, { schoolId, actorId, action: "teacher_unassigned", entity: "assignment", entityId: assignmentId });
     return { ok: true };

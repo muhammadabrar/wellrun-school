@@ -164,7 +164,7 @@ export function SetupPage() {
 
   const logo = data.school.media.find((m) => m.kind === "LOGO")?.url;
   const cover = data.school.media.find((m) => m.kind === "COVER")?.url;
-  const yearId = data.years[0]?.id;
+  const yearId = (data.years.find((year) => year.current) ?? data.years[0])?.id;
 
   return (
     <main className="min-h-dvh bg-paper px-6 py-10">

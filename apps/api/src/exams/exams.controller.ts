@@ -3,6 +3,7 @@ import type { Response } from "express";
 import { AuthGuard } from "../auth/auth.guard";
 import type { CurrentUser } from "../common/current-user";
 import type { SchoolScope } from "../common/school-scope";
+import { assertExamYearOpen } from "../common/year-lock";
 import { PrismaService } from "../prisma/prisma.service";
 import { assertExamAccess, resolveYearId, teacherScope, type ExamAction } from "./access";
 import { ExamAnalyticsService } from "./analytics.service";
@@ -19,6 +20,20 @@ async function examContext(prisma: PrismaService, req: Req, action: ExamAction) 
   const schoolId = assertExamAccess(req.user, action);
   const [yearId, scope] = await Promise.all([resolveYearId(prisma, schoolId, req.schoolScope), teacherScope(prisma, req.user)]);
   return { schoolId, yearId, scope };
+}
+
+/** examContext for writes: the viewed year must not be closed. */
+async function examWriteContext(prisma: PrismaService, req: Req, action: ExamAction) {
+  const ctx = await examContext(prisma, req, action);
+  await assertExamYearOpen(prisma, ctx.schoolId, { yearId: ctx.yearId });
+  return ctx;
+}
+
+/** Access check plus the closed-year lock for routes that name an exam, paper, term or correction. */
+async function examWriteAccess(prisma: PrismaService, req: Req, action: ExamAction, ref: Parameters<typeof assertExamYearOpen>[2]) {
+  const schoolId = assertExamAccess(req.user, action);
+  await assertExamYearOpen(prisma, schoolId, ref);
+  return schoolId;
 }
 
 @Controller("console/exams")
@@ -55,24 +70,24 @@ export class ExamsController {
 
   @Post()
   async create(@Req() req: Req, @Body() body: unknown) {
-    const { schoolId, yearId } = await examContext(this.prisma, req, "exams.manage");
+    const { schoolId, yearId } = await examWriteContext(this.prisma, req, "exams.manage");
     return this.exams.create(schoolId, req.user, yearId, body);
   }
 
   @Post("assessments")
   async quickAssessment(@Req() req: Req, @Body() body: unknown) {
-    const { schoolId, yearId, scope } = await examContext(this.prisma, req, "exams.assessment.create");
+    const { schoolId, yearId, scope } = await examWriteContext(this.prisma, req, "exams.assessment.create");
     return this.exams.quickAssessment(schoolId, req.user, yearId, body, scope);
   }
 
   @Patch("papers/:paperId")
-  updatePaper(@Req() req: Req, @Param("paperId") paperId: string, @Body() body: unknown) {
-    return this.exams.updatePaper(assertExamAccess(req.user, "exams.manage"), req.user.id, paperId, body);
+  async updatePaper(@Req() req: Req, @Param("paperId") paperId: string, @Body() body: unknown) {
+    return this.exams.updatePaper(await examWriteAccess(this.prisma, req, "exams.manage", { paperIds: [paperId] }), req.user.id, paperId, body);
   }
 
   @Delete("papers/:paperId")
-  removePaper(@Req() req: Req, @Param("paperId") paperId: string) {
-    return this.exams.removePaper(assertExamAccess(req.user, "exams.manage"), req.user.id, paperId);
+  async removePaper(@Req() req: Req, @Param("paperId") paperId: string) {
+    return this.exams.removePaper(await examWriteAccess(this.prisma, req, "exams.manage", { paperIds: [paperId] }), req.user.id, paperId);
   }
 
   @Get(":id")
@@ -82,29 +97,32 @@ export class ExamsController {
   }
 
   @Patch(":id")
-  update(@Req() req: Req, @Param("id") id: string, @Body() body: unknown) {
-    return this.exams.update(assertExamAccess(req.user, "exams.manage"), req.user.id, id, body);
+  async update(@Req() req: Req, @Param("id") id: string, @Body() body: unknown) {
+    return this.exams.update(await examWriteAccess(this.prisma, req, "exams.manage", { examId: id }), req.user.id, id, body);
   }
 
   @Delete(":id")
   async remove(@Req() req: Req, @Param("id") id: string) {
-    const schoolId = assertExamAccess(req.user, "exams.assessment.create");
+    const schoolId = await examWriteAccess(this.prisma, req, "exams.assessment.create", { examId: id });
     return this.exams.remove(schoolId, req.user.id, id, await teacherScope(this.prisma, req.user));
   }
 
   @Post(":id/duplicate")
-  duplicate(@Req() req: Req, @Param("id") id: string, @Body() body: unknown) {
-    return this.exams.duplicate(assertExamAccess(req.user, "exams.manage"), req.user.id, id, body);
+  async duplicate(@Req() req: Req, @Param("id") id: string, @Body() body: unknown) {
+    const schoolId = assertExamAccess(req.user, "exams.manage");
+    // Copying out of a closed year is fine; the copy lands in the year being viewed.
+    await assertExamYearOpen(this.prisma, schoolId, { yearId: await resolveYearId(this.prisma, schoolId, req.schoolScope) });
+    return this.exams.duplicate(schoolId, req.user.id, id, body);
   }
 
   @Post(":id/papers")
-  addPapers(@Req() req: Req, @Param("id") id: string, @Body() body: unknown) {
-    return this.exams.addPapers(assertExamAccess(req.user, "exams.manage"), req.user.id, id, body);
+  async addPapers(@Req() req: Req, @Param("id") id: string, @Body() body: unknown) {
+    return this.exams.addPapers(await examWriteAccess(this.prisma, req, "exams.manage", { examId: id }), req.user.id, id, body);
   }
 
   @Post(":id/schedule")
-  schedule(@Req() req: Req, @Param("id") id: string, @Body() body: unknown) {
-    return this.exams.generateSchedule(assertExamAccess(req.user, "exams.manage"), req.user.id, id, body);
+  async schedule(@Req() req: Req, @Param("id") id: string, @Body() body: unknown) {
+    return this.exams.generateSchedule(await examWriteAccess(this.prisma, req, "exams.manage", { examId: id }), req.user.id, id, body);
   }
 }
 
@@ -130,7 +148,7 @@ export class ExamMarksController {
 
   @Put("papers/:paperId")
   async save(@Req() req: Req, @Param("paperId") paperId: string, @Body() body: unknown) {
-    const schoolId = assertExamAccess(req.user, "marks.enter");
+    const schoolId = await examWriteAccess(this.prisma, req, "marks.enter", { paperIds: [paperId] });
     return this.marks.save(schoolId, req.user, paperId, body, await teacherScope(this.prisma, req.user));
   }
 
@@ -140,8 +158,8 @@ export class ExamMarksController {
   }
 
   @Post("papers/:paperId/reopen")
-  reopen(@Req() req: Req, @Param("paperId") paperId: string, @Body() body: unknown) {
-    return this.marks.reopen(assertExamAccess(req.user, "marks.review"), req.user.id, paperId, body);
+  async reopen(@Req() req: Req, @Param("paperId") paperId: string, @Body() body: unknown) {
+    return this.marks.reopen(await examWriteAccess(this.prisma, req, "marks.review", { paperIds: [paperId] }), req.user.id, paperId, body);
   }
 
   @Get("corrections")
@@ -157,8 +175,8 @@ export class ExamMarksController {
   }
 
   @Post("corrections/:id/review")
-  reviewCorrection(@Req() req: Req, @Param("id") id: string, @Body() body: unknown) {
-    return this.marks.reviewCorrection(assertExamAccess(req.user, "marks.correction.review"), req.user.id, id, body);
+  async reviewCorrection(@Req() req: Req, @Param("id") id: string, @Body() body: unknown) {
+    return this.marks.reviewCorrection(await examWriteAccess(this.prisma, req, "marks.correction.review", { correctionId: id }), req.user.id, id, body);
   }
 }
 
@@ -191,13 +209,13 @@ export class ExamResultsController {
 
   @Post("compute")
   async compute(@Req() req: Req, @Body() body: unknown) {
-    const { schoolId, yearId } = await examContext(this.prisma, req, "results.manage");
+    const { schoolId, yearId } = await examWriteContext(this.prisma, req, "results.manage");
     return this.results.compute(schoolId, req.user.id, yearId, body);
   }
 
   @Post("publish")
   async publish(@Req() req: Req, @Body() body: unknown) {
-    const { schoolId, yearId } = await examContext(this.prisma, req, "results.manage");
+    const { schoolId, yearId } = await examWriteContext(this.prisma, req, "results.manage");
     return this.results.publish(schoolId, req.user.id, yearId, body);
   }
 
@@ -266,18 +284,18 @@ export class ExamSettingsController {
 
   @Post("terms")
   async createTerm(@Req() req: Req, @Body() body: unknown) {
-    const { schoolId, yearId } = await examContext(this.prisma, req, "settings.manage");
+    const { schoolId, yearId } = await examWriteContext(this.prisma, req, "settings.manage");
     return this.settings.createTerm(schoolId, req.user.id, yearId, body);
   }
 
   @Patch("terms/:id")
-  updateTerm(@Req() req: Req, @Param("id") id: string, @Body() body: unknown) {
-    return this.settings.updateTerm(assertExamAccess(req.user, "settings.manage"), req.user.id, id, body);
+  async updateTerm(@Req() req: Req, @Param("id") id: string, @Body() body: unknown) {
+    return this.settings.updateTerm(await examWriteAccess(this.prisma, req, "settings.manage", { termId: id }), req.user.id, id, body);
   }
 
   @Delete("terms/:id")
-  deleteTerm(@Req() req: Req, @Param("id") id: string) {
-    return this.settings.deleteTerm(assertExamAccess(req.user, "settings.manage"), req.user.id, id);
+  async deleteTerm(@Req() req: Req, @Param("id") id: string) {
+    return this.settings.deleteTerm(await examWriteAccess(this.prisma, req, "settings.manage", { termId: id }), req.user.id, id);
   }
 
   @Get("grading-scales")

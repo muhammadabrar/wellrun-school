@@ -5,6 +5,7 @@ import { z } from "zod";
 import { audit } from "../common/audit";
 import type { CurrentUser } from "../common/current-user";
 import { assertWritableSchool } from "../common/school";
+import { assertExamYearOpen } from "../common/year-lock";
 import { PrismaService } from "../prisma/prisma.service";
 import { assertCanMarkPaper, canMarkPaper, type TeacherScope } from "./access";
 import { classLabel, syncExamStatus } from "./exams.service";
@@ -228,6 +229,7 @@ export class MarksService {
   async review(schoolId: string, actorId: string, body: unknown) {
     await assertWritableSchool(this.prisma, schoolId);
     const data = marksReviewSchema.parse(body);
+    await assertExamYearOpen(this.prisma, schoolId, { paperIds: data.paperIds });
     const papers = await this.prisma.examPaper.findMany({ where: { schoolId, id: { in: data.paperIds } }, select: { id: true, examId: true, classId: true, status: true } });
     if (papers.length !== data.paperIds.length) throw new NotFoundException("Some papers were not found");
     const reviewable = papers.filter((p) => p.status === "SUBMITTED" || (data.action === "APPROVE" && p.status === "DRAFT"));
@@ -319,6 +321,7 @@ export class MarksService {
   async requestCorrection(schoolId: string, user: CurrentUser, body: unknown, scope: TeacherScope) {
     await assertWritableSchool(this.prisma, schoolId);
     const data = markCorrectionSchema.parse(body);
+    await assertExamYearOpen(this.prisma, schoolId, { paperIds: [data.paperId] });
     const paper = await this.ownedPaper(schoolId, data.paperId);
     assertCanMarkPaper(scope, paper);
     if (paper.status !== "APPROVED") throw new BadRequestException("This paper isn't approved — edit the marks directly");

@@ -295,6 +295,13 @@ model SchoolMedia {
   @@index([schoolId])
 }
 
+/// PLANNING = upcoming year being prepared; ACTIVE = the running (current) year; CLOSED = read-only history.
+enum AcademicYearStatus {
+  PLANNING
+  ACTIVE
+  CLOSED
+}
+
 model AcademicYear {
   id             String                 @id @default(cuid())
   schoolId       String
@@ -302,7 +309,11 @@ model AcademicYear {
   name           String
   startsOn       DateTime
   endsOn         DateTime
+  /// Mirrors status: true only while ACTIVE. At most one per school (partial unique index in SQL).
   current        Boolean                @default(false)
+  status         AcademicYearStatus     @default(PLANNING)
+  closedAt       DateTime?
+  closedById     String?
   classes        Class[]
   feePlans       FeePlan[]
   feeStructures  FeeStructure[]

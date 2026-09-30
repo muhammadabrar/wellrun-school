@@ -9,8 +9,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
-import { queryClient } from "@/lib/query";
-import { readSchoolContext, readYearId, writeYearId } from "@/lib/school-context";
+import { ACADEMIC_YEAR_STATUS_LABEL } from "@wellrun/shared";
+import { readSchoolContext, readYearId, viewYear, type SessionYear } from "@/lib/school-context";
+
+const statusLabel = (year: SessionYear) => (year.status ? ACADEMIC_YEAR_STATUS_LABEL[year.status] : year.current ? "Current" : "Past");
 
 /** Academic year the console is looking at. Every year-scoped page (exams, fees, classes) follows it. */
 export function YearSwitcher() {
@@ -33,10 +35,8 @@ export function YearSwitcher() {
 
   function choose(id: string) {
     if (id === active.id) return;
-    writeYearId(id);
     setYearId(id);
-    window.dispatchEvent(new Event("wellrun-context"));
-    void queryClient.invalidateQueries();
+    viewYear(id);
   }
 
   return (
@@ -47,7 +47,7 @@ export function YearSwitcher() {
             <CalendarRangeIcon />
             <span className="truncate">
               {active.name}
-              {active.current ? "" : " (past)"}
+              {active.current ? "" : ` (${statusLabel(active).toLowerCase()})`}
             </span>
             <ChevronsUpDownIcon className="ml-auto" />
           </DropdownMenuTrigger>
@@ -57,7 +57,7 @@ export function YearSwitcher() {
               {sorted.map((year) => (
                 <DropdownMenuItem key={year.id} onClick={() => choose(year.id)}>
                   <span className="truncate">{year.name}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">{year.id === active.id ? "Viewing" : year.current ? "Current" : ""}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">{year.id === active.id ? "Viewing" : statusLabel(year)}</span>
                 </DropdownMenuItem>
               ))}
             </DropdownMenuGroup>

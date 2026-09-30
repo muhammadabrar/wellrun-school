@@ -3,6 +3,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from "@nes
 import type { studentDiscountSchema, studentFeeAssignmentSchema, discountSchema } from "@wellrun/shared";
 import type { z } from "zod";
 import { audit } from "../common/audit";
+import { assertYearWritable } from "../common/year-lock";
 import { PrismaService } from "../prisma/prisma.service";
 import { asStringArray, periodRange } from "./json";
 import { toPkr } from "./money";
@@ -118,6 +119,7 @@ export class FeeAssignmentService {
     if (!student) throw new NotFoundException("Student not found");
     const structure = await this.prisma.feeStructure.findFirst({ where: { id: input.feeStructureId, schoolId } });
     if (!structure) throw new NotFoundException("Fee structure not found");
+    await assertYearWritable(this.prisma, schoolId, input.academicYearId);
     const assignment = await this.prisma.$transaction(async (tx) => {
       await tx.studentFeeAssignment.updateMany({
         where: { schoolId, studentId: input.studentId, academicYearId: input.academicYearId, status: "ACTIVE" },
@@ -159,6 +161,7 @@ export class FeeAssignmentService {
   async updateOverrides(schoolId: string, actorId: string, id: string, input: Partial<AssignmentInput>) {
     const existing = await this.prisma.studentFeeAssignment.findFirst({ where: { id, schoolId } });
     if (!existing) throw new NotFoundException("Assignment not found");
+    await assertYearWritable(this.prisma, schoolId, existing.academicYearId);
     const assignment = await this.prisma.$transaction(async (tx) => {
       if (input.overrides) {
         await tx.studentFeeOverride.deleteMany({ where: { assignmentId: id } });

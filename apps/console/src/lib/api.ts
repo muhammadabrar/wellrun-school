@@ -779,6 +779,8 @@ export type FeeInvoiceRow = {
   totalPkr: number;
   paidPkr: number;
   balancePkr: number;
+  /** Academic year the invoice belongs to; shown when listing more than one year. */
+  yearName: string | null;
   student: FeeStudentSummary | null;
 };
 
@@ -789,11 +791,14 @@ export type FeeInvoiceQuery = {
   billingPeriod?: string;
   className?: string;
   section?: string;
+  years?: "this" | "previous" | "all";
 };
 
 export type StudentFees = {
   outstandingPkr: number;
   overduePkr: number;
+  /** Part of outstandingPkr carried over from earlier academic years. */
+  previousYearsPkr?: number;
   creditPkr: number;
   currentInvoice: FeeInvoiceView | null;
   invoices: FeeInvoiceView[];
@@ -903,6 +908,8 @@ export type FeesDashboard = {
   monthPkr: number;
   outstandingPkr: number;
   overduePkr: number;
+  /** Unpaid balance from earlier academic years (still collectable). */
+  previousYears: { pkr: number; invoices: number };
   counts: { unpaid: number; partial: number; paid: number; overdue: number };
   recentPayments: { id: string; amountPkr: number; method: string; paymentDate: string; student: { firstName: string; lastName: string } | null }[];
   overdueInvoices: { id: string; name: string; amountPkr: number; dueOn: string; student: { firstName: string; lastName: string } | null }[];

@@ -42,8 +42,8 @@ export class AttendanceController {
   }
 
   @Get("holidays")
-  holidays(@Req() req: AttendanceReq, @Query("year") year?: string) {
-    return this.settings.holidays(requireSchoolId(req.user), year);
+  holidays(@Req() req: AttendanceReq, @Query("year") year?: string, @Query("yearId") yearId?: string) {
+    return this.settings.holidays(requireSchoolId(req.user), year, yearId);
   }
 
   @Post("holidays")

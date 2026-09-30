@@ -3,6 +3,7 @@ import type { ComponentProps } from "react";
 import {
   BarChart3Icon,
   BookOpenIcon,
+  CalendarRangeIcon,
   BriefcaseIcon,
   FilePenLineIcon,
   LayoutDashboardIcon,
@@ -163,7 +164,8 @@ const schoolItems: NavItem[] = [
     ],
   },
   { title: "Campuses", url: "/campuses", icon: <Building2Icon /> },
-  { title: "Classes & subjects", url: "/academics", icon: <BookOpenIcon /> },
+  { title: "Classes & subjects", url: "/academics", icon: <BookOpenIcon />, end: true },
+  { title: "Academic years", url: "/academics/years", icon: <CalendarRangeIcon /> },
   {
     title: "Fees",
     url: "/fees",

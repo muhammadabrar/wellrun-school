@@ -22,6 +22,7 @@ import {
 } from "@wellrun/shared";
 import { audit } from "../common/audit";
 import { assertWritableSchool } from "../common/school";
+import { assertClassWritable, assertClassesWritable, assertYearOpen, assertYearWritable } from "../common/year-lock";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
@@ -340,17 +341,18 @@ export class SetupService {
   async createYear(schoolId: string, actorId: string, body: unknown) {
     await this.writable(schoolId);
     const data = yearSchema.parse(body);
-    if (data.current) {
-      await this.prisma.academicYear.updateMany({ where: { schoolId }, data: { current: false } });
-    }
     const existing = await this.prisma.academicYear.findFirst({ where: { schoolId, name: data.name } });
+    assertYearOpen(existing);
+    const current = data.current ?? true;
+    if (current) await this.clearCurrentYear(schoolId, existing?.id);
     const year = existing
       ? await this.prisma.academicYear.update({
           where: { id: existing.id },
           data: {
             startsOn: new Date(data.startsOn),
             endsOn: new Date(data.endsOn),
-            current: data.current ?? true,
+            current,
+            ...(current ? { status: "ACTIVE" as const } : {}),
           },
         })
       : await this.prisma.academicYear.create({
@@ -359,7 +361,8 @@ export class SetupService {
             name: data.name,
             startsOn: new Date(data.startsOn),
             endsOn: new Date(data.endsOn),
-            current: data.current ?? true,
+            current,
+            ...(current ? { status: "ACTIVE" as const } : {}),
           },
         });
     await this.prisma.school.update({ where: { id: schoolId }, data: { setupStep: 4 } });
@@ -371,10 +374,9 @@ export class SetupService {
     await this.writable(schoolId);
     const existing = await this.prisma.academicYear.findFirst({ where: { id, schoolId } });
     if (!existing) throw new NotFoundException("Year not found");
+    assertYearOpen(existing);
     const data = yearSchema.partial().parse(body);
-    if (data.current) {
-      await this.prisma.academicYear.updateMany({ where: { schoolId }, data: { current: false } });
-    }
+    if (data.current) await this.clearCurrentYear(schoolId, id);
     const year = await this.prisma.academicYear.update({
       where: { id },
       data: {
@@ -382,10 +384,18 @@ export class SetupService {
         startsOn: data.startsOn ? new Date(data.startsOn) : undefined,
         endsOn: data.endsOn ? new Date(data.endsOn) : undefined,
         current: data.current,
+        ...(data.current ? { status: "ACTIVE" as const } : {}),
       },
     });
     await audit(this.prisma, { schoolId, actorId, action: "year_updated", entity: "academic_year", entityId: year.id });
     return year;
+  }
+
+  /** Only one current year per school: the one being replaced is closed if it has ended, otherwise goes back to upcoming. */
+  private async clearCurrentYear(schoolId: string, exceptId?: string) {
+    const where = { schoolId, current: true, ...(exceptId ? { id: { not: exceptId } } : {}) };
+    await this.prisma.academicYear.updateMany({ where: { ...where, endsOn: { lt: new Date() } }, data: { current: false, status: "CLOSED", closedAt: new Date() } });
+    await this.prisma.academicYear.updateMany({ where, data: { current: false, status: "PLANNING" } });
   }
 
   async createClass(schoolId: string, actorId: string, body: unknown) {
@@ -393,6 +403,7 @@ export class SetupService {
     const data = classSchema.parse(body);
     const yearId = data.yearId ?? (await this.prisma.academicYear.findFirst({ where: { schoolId, current: true } }))?.id;
     if (!yearId) throw new BadRequestException("Create an academic year first");
+    await assertYearWritable(this.prisma, schoolId, yearId);
     const campus =
       (data.campusId ? await this.prisma.campus.findFirst({ where: { id: data.campusId, schoolId } }) : null) ??
       (await this.prisma.campus.findFirst({ where: { schoolId, isMain: true } }));
@@ -418,6 +429,8 @@ export class SetupService {
     const existing = await this.prisma.class.findFirst({ where: { id, schoolId } });
     if (!existing) throw new NotFoundException("Class not found");
     const data = classSchema.partial().parse(body);
+    await assertYearWritable(this.prisma, schoolId, existing.yearId);
+    if (data.yearId && data.yearId !== existing.yearId) await assertYearWritable(this.prisma, schoolId, data.yearId);
     const cls = await this.prisma.class.update({
       where: { id },
       data: { name: data.name, section: data.section, yearId: data.yearId },
@@ -433,6 +446,7 @@ export class SetupService {
       select: { id: true, name: true, section: true, _count: { select: { enrollments: { where: { active: true } } } } },
     });
     if (!existing) throw new NotFoundException("Class not found");
+    await assertClassWritable(this.prisma, schoolId, id);
     const students = existing._count.enrollments;
     if (students) {
       throw new BadRequestException(
@@ -448,6 +462,7 @@ export class SetupService {
     await this.writable(schoolId);
     const cls = await this.prisma.class.findFirst({ where: { id, schoolId }, select: { id: true } });
     if (!cls) throw new NotFoundException("Class not found");
+    await assertClassWritable(this.prisma, schoolId, id);
     const { subjectIds } = classSubjectsSchema.parse(body);
     const valid = await this.prisma.subject.findMany({ where: { schoolId, id: { in: subjectIds } }, select: { id: true } });
     await this.prisma.$transaction([
@@ -470,6 +485,7 @@ export class SetupService {
   async applyClasses(schoolId: string, actorId: string, body: unknown) {
     await this.writable(schoolId);
     const data = applyClassesSchema.parse(body);
+    await assertYearWritable(this.prisma, schoolId, data.yearId);
     const campus =
       (data.campusId
         ? await this.prisma.campus.findFirst({ where: { id: data.campusId, schoolId } })
@@ -532,7 +548,9 @@ export class SetupService {
           create: { schoolId, name: data.name, code: data.code ?? "", enabled: data.enabled ?? true },
         });
     if (data.classIds) {
-      await this.prisma.classSubject.deleteMany({ where: { subjectId: subject.id } });
+      await assertClassesWritable(this.prisma, schoolId, data.classIds);
+      // Closed years keep their subject list as history.
+      await this.prisma.classSubject.deleteMany({ where: { subjectId: subject.id, class: { year: { status: { not: "CLOSED" } } } } });
       for (const classId of data.classIds) {
         await this.prisma.classSubject.create({ data: { schoolId, classId, subjectId: subject.id } });
       }

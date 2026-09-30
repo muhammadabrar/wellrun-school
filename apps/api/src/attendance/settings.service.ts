@@ -21,14 +21,18 @@ export class AttendanceSettingsService {
     return this.get(schoolId);
   }
 
-  async holidays(schoolId: string, year?: string): Promise<HolidayView[]> {
+  /** `yearId` = holidays inside that academic year's dates; `year` (YYYY) = a calendar year. */
+  async holidays(schoolId: string, year?: string, yearId?: string): Promise<HolidayView[]> {
+    const academic = yearId
+      ? await this.prisma.academicYear.findFirst({ where: { id: yearId, schoolId }, select: { startsOn: true, endsOn: true } })
+      : null;
+    const range = academic
+      ? { startsOn: { lte: academic.endsOn }, endsOn: { gte: academic.startsOn } }
+      : year && /^\d{4}$/.test(year)
+        ? { startsOn: { lte: dateOnly(`${year}-12-31`) }, endsOn: { gte: dateOnly(`${year}-01-01`) } }
+        : {};
     const rows = await this.prisma.holiday.findMany({
-      where: {
-        schoolId,
-        ...(year && /^\d{4}$/.test(year)
-          ? { startsOn: { lte: dateOnly(`${year}-12-31`) }, endsOn: { gte: dateOnly(`${year}-01-01`) } }
-          : {}),
-      },
+      where: { schoolId, ...range },
       include: { campus: { select: { name: true } } },
       orderBy: { startsOn: "asc" },
     });

@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { useCampus } from "@/hooks/use-campus";
 import { attendanceApi, attendanceKeys, type HolidayView } from "@/lib/attendance-api";
 import { todayIso } from "@/lib/format";
+import { readYearId } from "@/lib/school-context";
 import { cn } from "@/lib/utils";
 
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -158,10 +159,15 @@ export function AttendanceSettingsPage() {
 
 function HolidaysCard() {
   const queryClient = useQueryClient();
-  const { campuses } = useCampus();
-  const year = String(new Date().getFullYear());
-  const [shownYear, setShownYear] = useState(year);
-  const { data, isPending, isError, refetch } = useQuery({ queryKey: attendanceKeys.holidays(shownYear), queryFn: () => attendanceApi.holidays(shownYear) });
+  const { campuses, years: academicYears } = useCampus();
+  // Tabs follow academic years (Apr–Mar etc.); calendar years only before any academic year exists.
+  const calendar = String(new Date().getFullYear());
+  const tabs = academicYears.length
+    ? [...academicYears].sort((a, b) => b.startsOn.localeCompare(a.startsOn)).slice(0, 4).map((y) => ({ key: y.id, label: y.name, range: { yearId: y.id } }))
+    : [Number(calendar) - 1, Number(calendar), Number(calendar) + 1].map(String).map((y) => ({ key: y, label: y, range: { year: y } }));
+  const [shownYear, setShownYear] = useState(() => (academicYears.length ? (tabs.find((t) => t.key === readYearId())?.key ?? tabs[0]!.key) : calendar));
+  const shown = tabs.find((t) => t.key === shownYear) ?? tabs[0]!;
+  const { data, isPending, isError, refetch } = useQuery({ queryKey: attendanceKeys.holidays(shown.range), queryFn: () => attendanceApi.holidays(shown.range) });
   const [editing, setEditing] = useState<HolidayView | "new" | null>(null);
   const [removing, setRemoving] = useState<HolidayView | null>(null);
   const remove = useMutation({
@@ -171,7 +177,6 @@ function HolidaysCard() {
       setRemoving(null);
     },
   });
-  const years = [Number(year) - 1, Number(year), Number(year) + 1].map(String);
 
   return (
     <Card>
@@ -185,17 +190,17 @@ function HolidaysCard() {
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex gap-1" role="tablist" aria-label="Year">
-          {years.map((y) => (
+        <div className="flex flex-wrap gap-1" role="tablist" aria-label="Year">
+          {tabs.map((t) => (
             <button
-              key={y}
+              key={t.key}
               type="button"
               role="tab"
-              aria-selected={y === shownYear}
-              onClick={() => setShownYear(y)}
-              className={cn("rounded-full px-3 py-1 text-sm", y === shownYear ? "bg-ink text-white" : "text-muted-foreground hover:bg-paper")}
+              aria-selected={t.key === shown.key}
+              onClick={() => setShownYear(t.key)}
+              className={cn("rounded-full px-3 py-1 text-sm", t.key === shown.key ? "bg-ink text-white" : "text-muted-foreground hover:bg-paper")}
             >
-              {y}
+              {t.label}
             </button>
           ))}
         </div>
@@ -204,7 +209,7 @@ function HolidaysCard() {
         ) : isError ? (
           <ErrorState title="Could not load holidays" description="Try again in a moment." onRetry={() => void refetch()} />
         ) : !data.length ? (
-          <EmptyState title={`No holidays in ${shownYear}`} description="Add Eid, national days and school breaks so they don't count as absences." />
+          <EmptyState title={`No holidays in ${shown.label}`} description="Add Eid, national days and school breaks so they don't count as absences." />
         ) : (
           <ul className="divide-y divide-line">
             {data.map((h) => (
@@ -236,7 +241,8 @@ function HolidaysCard() {
         onClose={() => setEditing(null)}
         onSaved={(startsOn) => {
           void queryClient.invalidateQueries({ queryKey: attendanceKeys.root });
-          setShownYear(startsOn.slice(0, 4));
+          const containing = academicYears.find((y) => y.startsOn.slice(0, 10) <= startsOn && startsOn <= y.endsOn.slice(0, 10));
+          setShownYear(containing?.id ?? startsOn.slice(0, 4));
           setEditing(null);
         }}
       />

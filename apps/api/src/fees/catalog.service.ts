@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from "@nes
 import type { FeeFrequency, FeeStructureStatus } from "@prisma/client";
 import type { FeeHeadInput, FeeStructureInput } from "@wellrun/shared";
 import { audit } from "../common/audit";
+import { assertYearOpen, assertYearWritable } from "../common/year-lock";
 import type { SchoolScope } from "../common/school-scope";
 import { PrismaService } from "../prisma/prisma.service";
 import { feeHeadCode } from "./billing";
@@ -200,6 +201,7 @@ export class FeeCatalogService {
   async updateStructure(schoolId: string, actorId: string, id: string, input: Partial<FeeStructureInput>) {
     const existing = await this.prisma.feeStructure.findFirst({ where: { id, schoolId } });
     if (!existing) throw new NotFoundException("Fee structure not found");
+    await assertYearWritable(this.prisma, schoolId, existing.academicYearId);
     if (input.academicYearId) await this.assertYear(schoolId, input.academicYearId);
     const structure = await this.prisma.$transaction(async (tx) => {
       if (input.items) {
@@ -361,5 +363,6 @@ export class FeeCatalogService {
   private async assertYear(schoolId: string, academicYearId: string) {
     const year = await this.prisma.academicYear.findFirst({ where: { id: academicYearId, schoolId } });
     if (!year) throw new BadRequestException("Academic year not found");
+    assertYearOpen(year);
   }
 }

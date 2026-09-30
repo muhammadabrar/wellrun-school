@@ -21,6 +21,7 @@ import { dateOnly, karachiToday } from "../common/date";
 import { assertWritableSchool, teacherClassIds } from "../common/school";
 import { PrismaService } from "../prisma/prisma.service";
 import { classLabel } from "./attendance.service";
+import { assertYearOpen } from "../common/year-lock";
 import { dayLockReason, loadHolidays, loadSettings, requireAttendanceAdmin, type AttendanceCtx } from "./rules";
 
 export function buildDays(from: string, to: string, settings: AttendanceSettingsView, holidays: HolidayRange[]): AttendanceDay[] {
@@ -60,7 +61,10 @@ export class RegisterService {
 
   async month(ctx: AttendanceCtx, query: unknown): Promise<MonthRegister> {
     const { classId, month } = monthRegisterQuery.parse(query);
-    const cls = await this.prisma.class.findFirst({ where: { id: classId, schoolId: ctx.schoolId }, select: { id: true, name: true, section: true, campusId: true } });
+    const cls = await this.prisma.class.findFirst({
+      where: { id: classId, schoolId: ctx.schoolId },
+      select: { id: true, name: true, section: true, campusId: true, year: { select: { status: true } } },
+    });
     if (!cls) throw new NotFoundException("Class not found");
     if (!ctx.isAdmin) {
       const own = (await teacherClassIds(this.prisma, ctx.user)) ?? [];
@@ -93,6 +97,7 @@ export class RegisterService {
       return { id: s.id, name: s.name, admissionNo: s.admissionNo, rollNo: s.rollNo, counts, pct: attendancePct(counts, settings) };
     });
     const today = karachiToday();
+    const canEditGrid = ctx.isAdmin && cls.year.status !== "CLOSED";
     return {
       class: { id: cls.id, label: classLabel(cls) },
       month,
@@ -101,8 +106,8 @@ export class RegisterService {
       marks,
       dailyPresent,
       settings,
-      editableDates: ctx.isAdmin ? days.filter((d) => d.working && d.date <= today).map((d) => d.date) : [],
-      canEditGrid: ctx.isAdmin,
+      editableDates: canEditGrid ? days.filter((d) => d.working && d.date <= today).map((d) => d.date) : [],
+      canEditGrid,
     };
   }
 
@@ -111,8 +116,12 @@ export class RegisterService {
     requireAttendanceAdmin(ctx);
     const input = saveRegisterSchema.parse(body);
     await assertWritableSchool(this.prisma, ctx.schoolId);
-    const cls = await this.prisma.class.findFirst({ where: { id: input.classId, schoolId: ctx.schoolId }, select: { campusId: true } });
+    const cls = await this.prisma.class.findFirst({
+      where: { id: input.classId, schoolId: ctx.schoolId },
+      select: { campusId: true, year: { select: { name: true, status: true } } },
+    });
     if (!cls) throw new NotFoundException("Class not found");
+    assertYearOpen(cls.year);
     const dates = input.cells.map((c) => c.date).sort();
     const [settings, holidays, roster] = await Promise.all([
       loadSettings(this.prisma, ctx.schoolId),

@@ -62,8 +62,8 @@ export async function seedDemoSchool(ctx: Ctx) {
   console.log("  demo: years, classes, subjects");
 
   // Years ---------------------------------------------------------------------------------
-  const prevYear = await prisma.academicYear.create({ data: { schoolId, name: "2025-26", startsOn: d("2025-04-01"), endsOn: d("2026-03-31"), current: false } });
-  const year = await prisma.academicYear.create({ data: { schoolId, name: "2026-27", startsOn: d("2026-04-01"), endsOn: d("2027-03-31"), current: true } });
+  const prevYear = await prisma.academicYear.create({ data: { schoolId, name: "2025-26", startsOn: d("2025-04-01"), endsOn: d("2026-03-31"), current: false, status: "CLOSED", closedAt: d("2026-04-01") } });
+  const year = await prisma.academicYear.create({ data: { schoolId, name: "2026-27", startsOn: d("2026-04-01"), endsOn: d("2027-03-31"), current: true, status: "ACTIVE" } });
 
   // Classes: Grades 1–4 one section, Grades 5–8 two sections. Last year: Grades 1–7, one section each.
   type Cls = { id: string; grade: number; name: string; section: string; yearId: string };

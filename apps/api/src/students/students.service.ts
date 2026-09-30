@@ -20,6 +20,7 @@ import { ensureStudentFeeAssignment, FeeAssignmentService } from "../fees/assign
 import { invoiceViewInclude, toInvoiceView } from "../fees/invoice-view";
 import { currentBillingPeriod } from "../fees/json";
 import { assertWritableSchool } from "../common/school";
+import { assertClassWritable, assertYearOpen } from "../common/year-lock";
 import type { SchoolScope } from "../common/school-scope";
 import { karachiToday } from "../common/date";
 import { nextSchoolNumber } from "../common/sequence";
@@ -375,6 +376,7 @@ export class StudentsService {
     const existing = await this.prisma.student.findFirst({ where: { schoolId, admissionNo } });
     if (existing) throw new BadRequestException("Admission number already exists");
     const cls = data.classId ? await this.prisma.class.findFirst({ where: { id: data.classId, schoolId } }) : null;
+    if (cls) await assertClassWritable(this.prisma, schoolId, cls.id);
     const student = await this.prisma.student.create({
       data: {
         schoolId,
@@ -557,12 +559,15 @@ export class StudentsService {
 
   private async resolveClass(schoolId: string, classId: string | undefined, className: string, section: string) {
     if (classId) {
-      const cls = await this.prisma.class.findFirst({ where: { id: classId, schoolId } });
+      const cls = await this.prisma.class.findFirst({ where: { id: classId, schoolId }, include: { year: { select: { name: true, status: true } } } });
       if (!cls) throw new BadRequestException("Class not found");
+      assertYearOpen(cls.year);
       return cls;
     }
+    // By name: the current year first, never a closed one.
     const cls = await this.prisma.class.findFirst({
-      where: { schoolId, name: className, section },
+      where: { schoolId, name: className, section, year: { status: { not: "CLOSED" } } },
+      orderBy: { year: { current: "desc" } },
     });
     if (!cls) throw new BadRequestException("That class and section are not set up yet.");
     return cls;
@@ -851,7 +856,7 @@ export class StudentsService {
 
   async feesTab(schoolId: string, id: string, classIds: string[] | null = null) {
     await this.byId(schoolId, id, classIds);
-    const [invoices, payments, credits, assignment] = await Promise.all([
+    const [invoices, payments, credits, assignment, currentYear] = await Promise.all([
       this.prisma.invoice.findMany({
         where: { schoolId, studentId: id, status: { not: "DRAFT" } },
         include: invoiceViewInclude,
@@ -867,13 +872,22 @@ export class StudentsService {
         select: { id: true, amountPkr: true, remainingAmountPkr: true, reason: true, createdAt: true },
         orderBy: { createdAt: "asc" },
       }),
+      // After a rollover a student has one assignment per year; the newest one is the one that bills.
       this.prisma.studentFeeAssignment.findFirst({
         where: { schoolId, studentId: id, status: "ACTIVE" },
+        orderBy: { effectiveFrom: "desc" },
         select: { academicYearId: true, structure: { select: { id: true, name: true } }, _count: { select: { overrides: true } } },
       }),
+      this.prisma.academicYear.findFirst({ where: { schoolId, current: true }, select: { startsOn: true } }),
     ]);
     const views = invoices.map(toInvoiceView);
     const open = views.filter((row) => ["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(row.status));
+    const earlierYearIds = currentYear
+      ? new Set(
+          (await this.prisma.academicYear.findMany({ where: { schoolId, startsOn: { lt: currentYear.startsOn } }, select: { id: true } })).map((y) => y.id),
+        )
+      : new Set<string>();
+    const fromEarlierYear = new Set(invoices.filter((row) => row.academicYearId && earlierYearIds.has(row.academicYearId)).map((row) => row.id));
     const period = currentBillingPeriod();
     const currentInvoice =
       views.find((row) => row.billingPeriod === period && row.status !== "CANCELLED") ??
@@ -882,6 +896,8 @@ export class StudentsService {
     return {
       outstandingPkr: open.reduce((sum, row) => sum + row.balancePkr, 0),
       overduePkr: open.filter((row) => row.status === "OVERDUE").reduce((sum, row) => sum + row.balancePkr, 0),
+      /** Part of outstandingPkr carried over from earlier academic years. */
+      previousYearsPkr: open.filter((row) => fromEarlierYear.has(row.id)).reduce((sum, row) => sum + row.balancePkr, 0),
       creditPkr: credits.reduce((sum, row) => sum + row.remainingAmountPkr, 0),
       currentInvoice,
       invoices: views,
@@ -1071,8 +1087,10 @@ export class StudentsService {
   }
 
   private async moveEnrollment(schoolId: string, studentId: string, classId: string, previousStatus: string) {
-    const cls = await this.prisma.class.findFirst({ where: { id: classId, schoolId } });
+    const cls = await this.prisma.class.findFirst({ where: { id: classId, schoolId }, include: { year: { select: { name: true, status: true } } } });
     if (!cls) throw new BadRequestException("Class not found");
+    // The target year must be open; ending the old enrollment in a closed year is fine (that's how students leave it).
+    assertYearOpen(cls.year);
     await this.prisma.enrollment.updateMany({
       where: { studentId, active: true },
       data: { active: false, status: previousStatus, endedAt: new Date() },

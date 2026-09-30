@@ -21,6 +21,12 @@ const STATUS_OPTIONS = [
   { value: "all", label: "All invoices" },
 ];
 
+const YEAR_OPTIONS = [
+  { value: "this", label: "Year being viewed" },
+  { value: "previous", label: "Previous years (arrears)" },
+  { value: "all", label: "All years" },
+];
+
 export function FeeInvoicesPage() {
   const canCollect = currentUser()?.role === "SCHOOL_ADMIN";
   const { classes } = useCampus();
@@ -28,6 +34,7 @@ export function FeeInvoicesPage() {
   const status = params.get("status") ?? "unpaid";
   const billingPeriod = params.get("billingPeriod") ?? "";
   const classId = params.get("classId") ?? "";
+  const years = (params.get("years") ?? "this") as "this" | "previous" | "all";
   const [search, setSearch] = useState(params.get("q") ?? "");
   const [q, setQ] = useState(search);
   const [collect, setCollect] = useState<FeeInvoiceRow | null>(null);
@@ -44,6 +51,7 @@ export function FeeInvoicesPage() {
     className: selectedClass?.name,
     section: selectedClass?.section,
     q: q || undefined,
+    years: years === "this" ? undefined : years,
   };
   const { data, isPending, isError, refetch } = useQuery({ queryKey: queryKeys.feeInvoices(query), queryFn: () => api.feeInvoices(query) });
 
@@ -56,7 +64,7 @@ export function FeeInvoicesPage() {
 
   const rows = data ?? [];
   const balance = rows.reduce((sum, row) => sum + row.balancePkr, 0);
-  const filtered = Boolean(billingPeriod || classId || q || status !== "unpaid");
+  const filtered = Boolean(billingPeriod || classId || q || status !== "unpaid" || years !== "this");
 
   return (
     <div className="space-y-6">
@@ -65,7 +73,7 @@ export function FeeInvoicesPage() {
         description="Every fee invoice for this campus and year. Find a family, collect a payment, or print a challan."
         actions={<Button render={<Link to="/fees/generate" />}>Generate monthly fees</Button>}
       />
-      <div className="grid gap-3 rounded-3xl bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 rounded-3xl bg-surface p-4 sm:grid-cols-2 lg:grid-cols-5">
         <Field>
           <FieldLabel htmlFor="inv-search">Search</FieldLabel>
           <Input id="inv-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Student, admission no. or invoice no." />
@@ -73,6 +81,10 @@ export function FeeInvoicesPage() {
         <Field>
           <FieldLabel htmlFor="inv-status">Status</FieldLabel>
           <FormSelect id="inv-status" value={status} onValueChange={(value) => setParam("status", value && value !== "unpaid" ? value : "")} options={STATUS_OPTIONS} />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="inv-years">Academic year</FieldLabel>
+          <FormSelect id="inv-years" value={years} onValueChange={(value) => setParam("years", value && value !== "this" ? value : "")} options={YEAR_OPTIONS} />
         </Field>
         <Field>
           <FieldLabel htmlFor="inv-month">Month</FieldLabel>
@@ -148,7 +160,10 @@ export function FeeInvoicesPage() {
                         </span>
                       ) : null}
                     </td>
-                    <td className="px-4 py-3">{row.periodLabel || row.title}</td>
+                    <td className="px-4 py-3">
+                      {row.periodLabel || row.title}
+                      {years !== "this" && row.yearName ? <span className="block text-muted-foreground">{row.yearName}</span> : null}
+                    </td>
                     <td className="px-4 py-3">{formatDate(row.dueOn)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{pkr(row.totalPkr)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{pkr(row.paidPkr)}</td>

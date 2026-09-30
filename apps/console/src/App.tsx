@@ -37,6 +37,8 @@ const MyPayslipPage = lazyPage(() => import("./pages/payroll/Payslip"), "MyPaysl
 const PortalPage = lazyPage(() => import("./pages/Portal"), "PortalPage");
 const CampusesPage = lazyPage(() => import("./pages/Campuses"), "CampusesPage");
 const AcademicsPage = lazyPage(() => import("./pages/Academics"), "AcademicsPage");
+const AcademicYearsPage = lazyPage(() => import("./pages/academics/Years"), "AcademicYearsPage");
+const NewYearPage = lazyPage(() => import("./pages/academics/NewYear"), "NewYearPage");
 const FeeStructurePage = lazyPage(() => import("./pages/FeeStructure"), "FeeStructurePage");
 const ProfilePage = lazyPage(() => import("./pages/Profile"), "ProfilePage");
 const FeesPage = lazyPage(() => import("./pages/fees/Dashboard"), "FeesDashboardPage");
@@ -141,6 +143,8 @@ export function App() {
         <Route path="/me/payslips/:id" element={<MyPayslipPage />} />
         <Route path="/campuses" element={<CampusesPage />} />
         <Route path="/academics" element={<AcademicsPage />} />
+        <Route path="/academics/years" element={<AcademicYearsPage />} />
+        <Route path="/academics/years/new" element={<NewYearPage />} />
         <Route path="/fee-structure" element={<FeeStructurePage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/exams" element={<ExamsDashboardPage />} />

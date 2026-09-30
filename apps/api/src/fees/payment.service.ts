@@ -21,6 +21,8 @@ export type InvoiceListQuery = {
   billingPeriod?: string;
   className?: string;
   section?: string;
+  /** Which academic years: the one being viewed (default), earlier ones only, or every year. */
+  years?: "this" | "previous" | "all";
 };
 
 @Injectable()
@@ -35,6 +37,7 @@ export class FeePaymentService {
         : query.status && query.status !== "all"
           ? (query.status as never)
           : { not: "DRAFT" as const };
+    const yearFilter = await this.yearFilter(schoolId, scope, query);
     const rows = await this.prisma.invoice.findMany({
       where: {
         schoolId,
@@ -45,9 +48,7 @@ export class FeePaymentService {
           scope.campusId
             ? { OR: [{ campusId: scope.campusId }, { student: { campusId: scope.campusId } }, { application: { campusId: scope.campusId } }] }
             : {},
-          query.studentId || !scope.yearId
-            ? {}
-            : { OR: [{ academicYearId: scope.yearId }, { academicYearId: null, feePlan: { yearId: scope.yearId } }] },
+          yearFilter,
           query.className || query.section
             ? {
                 student: {
@@ -79,10 +80,15 @@ export class FeePaymentService {
       orderBy: [{ dueOn: "desc" }, { invoiceNumber: "desc" }],
       take: 300,
     });
+    const yearIds = [...new Set(rows.map((row) => row.academicYearId).filter((id): id is string => Boolean(id)))];
+    const yearNames = new Map(
+      (yearIds.length ? await this.prisma.academicYear.findMany({ where: { id: { in: yearIds } }, select: { id: true, name: true } }) : []).map((y) => [y.id, y.name]),
+    );
     return rows.map((row) => {
       const view = toInvoiceView(row);
       return {
         id: view.id,
+        yearName: row.academicYearId ? (yearNames.get(row.academicYearId) ?? null) : null,
         invoiceNumber: view.invoiceNumber,
         title: view.title,
         periodLabel: view.periodLabel,
@@ -94,6 +100,15 @@ export class FeePaymentService {
         student: view.student,
       };
     });
+  }
+
+  private async yearFilter(schoolId: string, scope: SchoolScope, query: InvoiceListQuery): Promise<Prisma.InvoiceWhereInput> {
+    if (query.studentId || query.years === "all" || !scope.yearId) return {};
+    if (query.years === "previous") {
+      const viewed = await this.prisma.academicYear.findFirst({ where: { id: scope.yearId, schoolId }, select: { startsOn: true } });
+      return viewed ? { year: { startsOn: { lt: viewed.startsOn } } } : {};
+    }
+    return { OR: [{ academicYearId: scope.yearId }, { academicYearId: null, feePlan: { yearId: scope.yearId } }] };
   }
 
   /** Everything the invoice document needs: the invoice itself, the school letterhead, and the guardian. */

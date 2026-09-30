@@ -6,6 +6,7 @@ import { assertWritableSchool, firstPeriodClassIds, firstTeachingPeriod, teacher
 import type { CurrentUser } from "../common/current-user";
 import type { SchoolScope } from "../common/school-scope";
 import { PrismaService } from "../prisma/prisma.service";
+import { yearLockMessage } from "../common/year-lock";
 import { dayLockReason, loadHolidays, loadSettings, type AttendanceCtx } from "./rules";
 
 export const classLabel = (cls: { name: string; section: string }) => `${cls.name} ${cls.section}`.trim();
@@ -34,7 +35,7 @@ export class AttendanceService {
       const own = (await teacherClassIds(this.prisma, ctx.user)) ?? [];
       if (!own.includes(classId)) throw new ForbiddenException("This class is not assigned to you");
     }
-    const lockReason = this.lockReason(ctx, classId, date, settings, holidays, firstPeriod);
+    const lockReason = this.lockReason(ctx, cls, date, settings, holidays, firstPeriod);
     return {
       records,
       students: enrollments.map((row) => row.student),
@@ -58,7 +59,7 @@ export class AttendanceService {
       this.teacherFirstPeriod(ctx, input.date),
       this.prisma.enrollment.findMany({ where: { schoolId, classId: input.classId }, select: { studentId: true } }),
     ]);
-    const reason = this.lockReason(ctx, input.classId, input.date, settings, holidays, firstPeriod);
+    const reason = this.lockReason(ctx, cls, input.date, settings, holidays, firstPeriod);
     if (reason) throw new ForbiddenException(reason);
     const inClass = new Set(roster.map((row) => row.studentId));
     if (input.records.some((row) => !inClass.has(row.studentId))) throw new ForbiddenException("Some students are not in this class");
@@ -140,24 +141,28 @@ export class AttendanceService {
   /** Teachers mark only the classes whose first period they teach that day, inside the edit window. */
   private lockReason(
     ctx: AttendanceCtx,
-    classId: string,
+    cls: { id: string; year: { name: string; status: string } },
     date: string,
     settings: Awaited<ReturnType<typeof loadSettings>>,
     holidays: Awaited<ReturnType<typeof loadHolidays>>,
     firstPeriod: string[],
   ) {
+    if (cls.year.status === "CLOSED") return yearLockMessage(cls.year);
     const dayReason = dayLockReason(date, karachiToday(), settings, holidays, ctx.isAdmin);
     if (dayReason) return dayReason;
     if (ctx.isAdmin) return null;
     if (!ctx.staff || (ctx.staff.status !== "ACTIVE" && ctx.staff.status !== "ON_LEAVE")) {
       return "Your staff record isn't active, so you can't mark attendance.";
     }
-    if (!firstPeriod.includes(classId)) return "Only the teacher of this class's first period can mark its attendance that day.";
+    if (!firstPeriod.includes(cls.id)) return "Only the teacher of this class's first period can mark its attendance that day.";
     return null;
   }
 
   private async classOrThrow(schoolId: string, classId: string) {
-    const cls = await this.prisma.class.findFirst({ where: { id: classId, schoolId }, select: { id: true, name: true, section: true, campusId: true } });
+    const cls = await this.prisma.class.findFirst({
+      where: { id: classId, schoolId },
+      select: { id: true, name: true, section: true, campusId: true, year: { select: { name: true, status: true } } },
+    });
     if (!cls) throw new NotFoundException("Class not found");
     return cls;
   }

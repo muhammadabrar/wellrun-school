@@ -36,6 +36,22 @@ export function FeesDashboardPage() {
           </div>
         }
       />
+      {data.previousYears?.invoices ? (
+        <Card>
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardDescription>Still owed from previous years</CardDescription>
+              <CardTitle className="font-display text-2xl">{pkr(data.previousYears.pkr)}</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                {data.previousYears.invoices} unpaid invoice{data.previousYears.invoices === 1 ? "" : "s"} — not counted above, but shown as arrears on new challans.
+              </p>
+            </div>
+            <Button variant="outline" render={<Link to="/fees/invoices?years=previous" />}>
+              View previous years
+            </Button>
+          </CardHeader>
+        </Card>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <Card key={card.label}>

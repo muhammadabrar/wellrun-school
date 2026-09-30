@@ -72,6 +72,7 @@ export function StudentFeesPanel({ studentId, studentName, canMutate }: { studen
                 ? "All paid up"
                 : `${unpaid.length} unpaid invoice${unpaid.length === 1 ? "" : "s"} · oldest ${oldest.periodLabel || oldest.title}${oldest.status === "OVERDUE" ? ", overdue" : ""}`}
             </p>
+            {data.previousYearsPkr ? <p className="text-sm text-orange">Includes {pkr(data.previousYearsPkr)} from previous years</p> : null}
           </CardHeader>
         </Card>
         <Card>

@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from "@nes
 import { SUBJECTS_BY_GRADE, generateTimetableSchema, lessonSchema, periodSchema } from "@wellrun/shared";
 import { audit } from "../common/audit";
 import { assertWritableSchool, teacherClassIds } from "../common/school";
+import { assertClassWritable, assertClassesWritable, assertYearOpen } from "../common/year-lock";
 import { PrismaService } from "../prisma/prisma.service";
 
 type ClassWithSubjects = { name: string; subjects: { subject: { name: string; enabled: boolean } }[] };
@@ -115,11 +116,13 @@ export class TimetableService {
     return [...new Set(this.resolveSubjects(cls, enabled))];
   }
 
-  private async conflicts(schoolId: string, input: { staffId?: string; weekday: number; periodId: string; classId: string; ignoreId?: string }) {
+  /** Double-bookings only count inside the same academic year — last year's timetable doesn't block this year's. */
+  private async conflicts(schoolId: string, yearId: string, input: { staffId?: string; weekday: number; periodId: string; classId: string; ignoreId?: string }) {
     if (!input.staffId) return [];
     return this.prisma.timetableLesson.findMany({
       where: {
         schoolId,
+        class: { yearId },
         staffId: input.staffId,
         weekday: input.weekday,
         periodId: input.periodId,
@@ -133,7 +136,10 @@ export class TimetableService {
   async upsertLesson(schoolId: string, actorId: string, body: unknown) {
     await assertWritableSchool(this.prisma, schoolId);
     const data = lessonSchema.parse(body);
-    const clashes = await this.conflicts(schoolId, data);
+    const cls = await this.prisma.class.findFirst({ where: { id: data.classId, schoolId }, select: { yearId: true, year: { select: { name: true, status: true } } } });
+    if (!cls) throw new NotFoundException("Class not found");
+    assertYearOpen(cls.year);
+    const clashes = await this.conflicts(schoolId, cls.yearId, data);
     if (clashes.length && !data.override) {
       const clash = clashes[0];
       throw new BadRequestException(
@@ -177,6 +183,7 @@ export class TimetableService {
     await assertWritableSchool(this.prisma, schoolId);
     const existing = await this.prisma.timetableLesson.findFirst({ where: { id, schoolId } });
     if (!existing) throw new NotFoundException("Lesson not found");
+    await assertClassWritable(this.prisma, schoolId, existing.classId);
     await this.prisma.timetableLesson.delete({ where: { id } });
     await audit(this.prisma, {
       schoolId,
@@ -197,6 +204,7 @@ export class TimetableService {
   async generate(schoolId: string, actorId: string, body: unknown) {
     await assertWritableSchool(this.prisma, schoolId);
     const data = generateTimetableSchema.parse(body);
+    await assertClassesWritable(this.prisma, schoolId, data.classIds);
     const weekdays = [...new Set(data.weekdays)].sort((a, b) => a - b);
 
     let periods = await this.periods(schoolId);
@@ -228,6 +236,7 @@ export class TimetableService {
           id: true,
           name: true,
           section: true,
+          yearId: true,
           subjects: { select: { subject: { select: { name: true, enabled: true } } } },
           assignments: { select: { staffId: true, subject: true } },
           _count: { select: { lessons: true } },
@@ -241,9 +250,10 @@ export class TimetableService {
     const targets = data.mode === "replace" ? classes : classes.filter((cls) => cls._count.lessons === 0);
     const targetIds = targets.map((cls) => cls.id);
 
-    // Teachers already booked by classes we are not touching stay booked.
+    // Teachers already booked by classes we are not touching (in the same year) stay booked.
+    const yearIds = [...new Set(classes.map((cls) => cls.yearId))];
     const kept = await this.prisma.timetableLesson.findMany({
-      where: { schoolId, staffId: { not: null }, classId: { notIn: targetIds } },
+      where: { schoolId, staffId: { not: null }, classId: { notIn: targetIds }, class: { yearId: { in: yearIds } } },
       select: { staffId: true, weekday: true, periodId: true },
     });
     const busy = new Set(kept.map((row) => `${row.staffId}|${row.weekday}|${row.periodId}`));

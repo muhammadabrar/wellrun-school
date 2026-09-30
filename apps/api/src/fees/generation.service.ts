@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { GenerateFeesInput } from "@wellrun/shared";
 import { audit } from "../common/audit";
+import { assertYearOpen } from "../common/year-lock";
 import type { SchoolScope } from "../common/school-scope";
 import { PrismaService } from "../prisma/prisma.service";
 import { buildInvoiceLines, frequencyScopeKey, type DiscountLine, type OverrideLine, type StructureLine } from "./billing";
@@ -139,6 +140,7 @@ export class FeeGenerationService {
       this.prisma.academicYear.findFirstOrThrow({ where: { id: academicYearId, schoolId } }),
       this.prisma.studentDiscount.findMany({ where: { schoolId, studentId, active: true } }),
     ]);
+    assertYearOpen(year);
     const discountByStudent = new Map<string, DiscountLine[]>([
       [studentId, discounts.map((row) => ({ type: row.type, value: row.value, feeHeadIds: asStringArray(row.feeHeadIds) }))],
     ]);
@@ -200,6 +202,7 @@ export class FeeGenerationService {
       this.prisma.schoolFeeSettings.upsert({ where: { schoolId }, create: { schoolId }, update: {} }),
       this.prisma.academicYear.findFirstOrThrow({ where: { id: yearId, schoolId } }),
     ]);
+    assertYearOpen(year);
     const dueOn = dueDateFromPeriod(input.billingPeriod, settings.defaultDueDay);
     const studentWhere = {
       schoolId,

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Suspense } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { AppSidebar } from "@/components/app-sidebar";
+import { ClosedYearBanner } from "@/components/closed-year-banner";
 import { PageSlide } from "@/components/motion";
 import {
   Breadcrumb,
@@ -69,6 +70,8 @@ const titles: [string, string][] = [
   ["/me/payslips/", "Payslip"],
   ["/me", "My portal"],
   ["/campuses", "Campuses"],
+  ["/academics/years/new", "New academic year"],
+  ["/academics/years", "Academic years"],
   ["/academics", "Classes & subjects"],
   ["/fee-structure", "Fee structure"],
   ["/profile", "Public profile"],
@@ -129,6 +132,7 @@ export function Shell() {
           </div>
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:px-8 md:pb-8">
+          <ClosedYearBanner />
           <Suspense fallback={<LoadingState variant="page" />}>
             <PageSlide pageKey={location.pathname}>
               <Outlet />

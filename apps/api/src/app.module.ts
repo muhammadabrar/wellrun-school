@@ -3,6 +3,7 @@ import { APP_INTERCEPTOR } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
 import { join } from "path";
+import { AcademicYearsModule } from "./academic-years/academic-years.module";
 import { AdminModule } from "./admin/admin.module";
 import { AiModule } from "./ai/ai.module";
 import { AdmissionsModule } from "./admissions/admissions.module";
@@ -40,6 +41,7 @@ import { TraceMiddleware } from "./trace/trace.middleware";
     StudentsModule,
     AdmissionsModule,
     AttendanceModule,
+    AcademicYearsModule,
     FeesModule,
     DashboardModule,
     SetupModule,
