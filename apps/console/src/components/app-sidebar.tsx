@@ -1,6 +1,7 @@
 import { BrandLogo } from "@wellrun/ui";
 import type { ComponentProps } from "react";
 import {
+  BanknoteIcon,
   BarChart3Icon,
   BookOpenIcon,
   CalendarRangeIcon,
@@ -13,12 +14,12 @@ import {
   TrophyIcon,
   Building2Icon,
   CalendarClockIcon,
-  CalendarDaysIcon,
   ClipboardCheckIcon,
   GlobeIcon,
   GraduationCapIcon,
   ShieldCheckIcon,
   SunIcon,
+  UserPlusIcon,
   UsersIcon,
   WalletIcon,
 } from "lucide-react";
@@ -29,22 +30,29 @@ import { NavMain, type NavItem } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } from "@/components/ui/sidebar";
 
+/**
+ * Sidebar order follows how an admin works, not how the database is laid out:
+ * look at the school (Overview), deal with people, run the school day, examine, handle money,
+ * and touch one-off setup last. Things used daily sit above things configured once.
+ */
+const overviewItems: NavItem[] = [{ title: "Dashboard", url: "/", icon: <LayoutDashboardIcon />, end: true }];
+
 const peopleItems: NavItem[] = [
   {
-    title: "Students",
-    url: "/students",
-    icon: <GraduationCapIcon />,
+    title: "Admissions",
+    url: "/admissions",
+    icon: <UserPlusIcon />,
     items: [
+      { title: "Applications", url: "/admissions" },
       { title: "New application", url: "/admissions/new", end: true },
-      { title: "Admissions", url: "/admissions" },
       { title: "Quick admission", url: "/admission", end: true },
-      { title: "Students", url: "/students" },
     ],
   },
+  { title: "Students", url: "/students", icon: <GraduationCapIcon /> },
+  { title: "Staff", url: "/staff", icon: <BriefcaseIcon /> },
 ];
 
-const dayItems: NavItem[] = [
-  { title: "Today", url: "/", icon: <CalendarDaysIcon />, end: true },
+const classroomItems: NavItem[] = [
   {
     title: "Attendance",
     url: "/attendance",
@@ -52,8 +60,8 @@ const dayItems: NavItem[] = [
     items: [
       { title: "Overview", url: "/attendance", end: true },
       { title: "Mark attendance", url: "/attendance/mark" },
-      { title: "Month register", url: "/attendance/register" },
       { title: "Absent list", url: "/attendance/absent" },
+      { title: "Month register", url: "/attendance/register" },
       { title: "Reports", url: "/attendance/reports" },
       { title: "Settings", url: "/attendance/settings" },
     ],
@@ -62,16 +70,14 @@ const dayItems: NavItem[] = [
 ];
 
 /** Teachers mark from their first period; no overview or settings. */
-const teacherDayItems: NavItem[] = dayItems
-  .filter((item) => item.url !== "/")
-  .map((item) =>
-    item.url === "/attendance"
-      ? { ...item, url: "/attendance/mark", items: item.items?.filter((sub) => sub.url !== "/attendance" && sub.url !== "/attendance/settings") }
-      : item,
-  );
+const teacherClassroomItems: NavItem[] = classroomItems.map((item) =>
+  item.url === "/attendance"
+    ? { ...item, url: "/attendance/mark", items: item.items?.filter((sub) => sub.url !== "/attendance" && sub.url !== "/attendance/settings") }
+    : item,
+);
 
 const examItems: NavItem[] = [
-  { title: "Dashboard", url: "/exams", icon: <LayoutDashboardIcon />, end: true },
+  { title: "Overview", url: "/exams", icon: <LayoutDashboardIcon />, end: true },
   {
     title: "Examinations",
     url: "/exams/list",
@@ -151,36 +157,32 @@ const teacherExamItems: NavItem[] = examItems
       : item,
   );
 
-const schoolItems: NavItem[] = [
-  {
-    title: "Staff",
-    url: "/staff",
-    icon: <BriefcaseIcon />,
-    items: [
-      { title: "Staff directory", url: "/staff", end: true },
-      { title: "Add staff", url: "/staff/new", end: true },
-      { title: "Payroll", url: "/payroll" },
-    ],
-  },
-  { title: "Campuses", url: "/campuses", icon: <Building2Icon /> },
-  { title: "Classes & subjects", url: "/academics", icon: <BookOpenIcon />, end: true },
-  { title: "Academic years", url: "/academics/years", icon: <CalendarRangeIcon /> },
+/** Money in, money out. Fees: day-to-day collection first, then reports, then one-time setup. */
+const financeItems: NavItem[] = [
   {
     title: "Fees",
     url: "/fees",
     icon: <WalletIcon />,
     items: [
       { title: "Overview", url: "/fees", end: true },
-      { title: "Generate monthly fees", url: "/fees/generate" },
       { title: "Invoices", url: "/fees/invoices" },
       { title: "Payments", url: "/fees/payments" },
+      { title: "Generate monthly fees", url: "/fees/generate" },
+      { title: "Reports", url: "/fees/reports" },
       { title: "Fee structures", url: "/fees/structures" },
       { title: "Fee Heads", url: "/fees/heads" },
       { title: "Discounts", url: "/fees/discounts" },
-      { title: "Reports", url: "/fees/reports" },
       { title: "Settings", url: "/fees/settings" },
     ],
   },
+  { title: "Payroll", url: "/payroll", icon: <BanknoteIcon /> },
+];
+
+/** Configured once per year or campus, so it sits last. Ordered the way setup happens. */
+const schoolItems: NavItem[] = [
+  { title: "Campuses", url: "/campuses", icon: <Building2Icon /> },
+  { title: "Academic years", url: "/academics/years", icon: <CalendarRangeIcon /> },
+  { title: "Classes & subjects", url: "/academics", icon: <BookOpenIcon />, end: true },
   { title: "Public profile", url: "/profile", icon: <GlobeIcon /> },
 ];
 
@@ -198,14 +200,16 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
         ? [
             { label: "Me", items: [{ title: "My portal", url: "/me", icon: <SunIcon /> }] },
             { label: "People", items: [{ title: "Students", url: "/students", icon: <UsersIcon /> }] },
-            { label: "Day", items: teacherDayItems },
+            { label: "Classroom", items: teacherClassroomItems },
             { label: "Exams", items: teacherExamItems },
           ]
         : [
+            { label: "Overview", items: overviewItems },
             { label: "People", items: peopleItems },
-            { label: "Day", items: dayItems },
+            { label: "Classroom", items: classroomItems },
             { label: "Exams", items: examItems },
-            { label: "School", items: schoolItems },
+            { label: "Finance", items: financeItems },
+            { label: "School setup", items: schoolItems },
           ];
 
   return (

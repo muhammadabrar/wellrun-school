@@ -26,6 +26,12 @@ function pathActive(pathname: string, to: string, end?: boolean) {
   return pathname === to || pathname.startsWith(`${to}/`);
 }
 
+/** The one sub-item that matches best, so "/admissions" doesn't light up beside "/admissions/new". */
+function bestSubUrl(items: NonNullable<NavItem["items"]>, pathname: string) {
+  const matches = items.filter((sub) => pathActive(pathname, sub.url, sub.end));
+  return matches.reduce<string | null>((best, sub) => (best === null || sub.url.length > best.length ? sub.url : best), null);
+}
+
 export function NavMain({
   groups,
 }: {
@@ -40,7 +46,8 @@ export function NavMain({
           <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
           <SidebarMenu>
             {group.items.map((item) => {
-              const childActive = item.items?.some((sub) => pathActive(location.pathname, sub.url, sub.end));
+              const activeSub = item.items ? bestSubUrl(item.items, location.pathname) : null;
+              const childActive = activeSub !== null;
               if (!item.items?.length) {
                 return (
                   <SidebarMenuItem key={item.title}>
@@ -73,7 +80,7 @@ export function NavMain({
                         <SidebarMenuSubItem key={subItem.title}>
                           <SidebarMenuSubButton
                             render={<NavLink to={subItem.url} end={subItem.end} />}
-                            isActive={pathActive(location.pathname, subItem.url, subItem.end)}
+                            isActive={subItem.url === activeSub}
                           >
                             <span>{subItem.title}</span>
                           </SidebarMenuSubButton>

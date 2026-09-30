@@ -1,7 +1,7 @@
 import { Controller, Get, Inject, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "../auth/auth.guard";
 import type { CurrentUser } from "../common/current-user";
-import { requireSchoolId } from "../common/roles";
+import { requireSchoolAdmin } from "../common/roles";
 import type { SchoolScope } from "../common/school-scope";
 import { DashboardService } from "./dashboard.service";
 
@@ -12,6 +12,6 @@ export class DashboardController {
 
   @Get()
   summary(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }) {
-    return this.dashboard.summary(requireSchoolId(req.user), req.schoolScope);
+    return this.dashboard.summary(requireSchoolAdmin(req.user), req.schoolScope);
   }
 }

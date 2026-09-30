@@ -78,7 +78,7 @@ const titles: [string, string][] = [
   ["/profile", "Public profile"],
   ["/fees", "Fees"],
   ["/admin", "Claims & schools"],
-  ["/", "Today"],
+  ["/", "Dashboard"],
 ];
 
 function pageTitle(pathname: string) {

@@ -1,3 +1,4 @@
+import type { SchoolDashboard } from "@wellrun/shared";
 import { ApiError } from "./query";
 import { defaultCampusId, readCampusId, writeCampusId } from "./campus";
 import { readYearId, type SchoolContext, writeSchoolContext } from "./school-context";
@@ -145,14 +146,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   schoolSession: () => request<SchoolContext>("/console/session"),
-  dashboard: () =>
-    request<{
-      schoolName: string;
-      absentToday: number;
-      collected: number;
-      outstanding: number;
-      invoiceCount: number;
-    }>("/console/dashboard"),
+  dashboard: () => request<SchoolDashboard>("/console/dashboard"),
   students: (query?: Record<string, string | number | undefined>) => {
     const params = new URLSearchParams();
     if (query) {
