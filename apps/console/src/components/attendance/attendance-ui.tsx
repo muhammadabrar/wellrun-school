@@ -83,34 +83,52 @@ export function MarkLegend() {
   );
 }
 
-/** Excel, CSV and Print buttons for a report. */
-export function ExportButtons({ onExcel, onCsv, disabled }: { onExcel: () => Promise<void> | void; onCsv: () => void; disabled?: boolean }) {
-  const [busy, setBusy] = useState(false);
+/** Excel, CSV and Print buttons for a report. Each may be async (they can fetch the full report first). */
+export function ExportButtons({
+  onExcel,
+  onCsv,
+  onPrint,
+  disabled,
+}: {
+  onExcel: () => Promise<void> | void;
+  onCsv: () => Promise<void> | void;
+  onPrint?: () => Promise<void> | void;
+  disabled?: boolean;
+}) {
+  const [busy, setBusy] = useState<"excel" | "csv" | "print" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  async function run(kind: "excel" | "csv" | "print", action: () => Promise<void> | void) {
+    setBusy(kind);
+    setError(null);
+    try {
+      await action();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not prepare the download.");
+    } finally {
+      setBusy(null);
+    }
+  }
   return (
-    <div className="flex flex-wrap gap-2 print:hidden">
-      <Button
-        variant="outline"
-        size="sm"
-        icon={<FileSpreadsheet />}
-        loading={busy}
-        disabled={disabled}
-        onClick={async () => {
-          setBusy(true);
-          try {
-            await onExcel();
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        Excel
-      </Button>
-      <Button variant="outline" size="sm" icon={<Download />} disabled={disabled} onClick={onCsv}>
-        CSV
-      </Button>
-      <Button variant="outline" size="sm" icon={<Printer />} disabled={disabled} onClick={() => window.print()}>
-        Print / PDF
-      </Button>
+    <div className="flex flex-col items-end gap-1 print:hidden">
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" icon={<FileSpreadsheet />} loading={busy === "excel"} disabled={disabled || Boolean(busy)} onClick={() => void run("excel", onExcel)}>
+          Excel
+        </Button>
+        <Button variant="outline" size="sm" icon={<Download />} loading={busy === "csv"} disabled={disabled || Boolean(busy)} onClick={() => void run("csv", onCsv)}>
+          CSV
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          icon={<Printer />}
+          loading={busy === "print"}
+          disabled={disabled || Boolean(busy)}
+          onClick={() => void run("print", onPrint ?? (() => window.print()))}
+        >
+          Print / PDF
+        </Button>
+      </div>
+      {error ? <p className="text-xs text-danger" role="alert">{error}</p> : null}
     </div>
   );
 }

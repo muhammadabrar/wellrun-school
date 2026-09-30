@@ -55,7 +55,7 @@ export class AttendanceReportsService {
   }
 
   async report(ctx: AttendanceCtx, query: unknown): Promise<AttendanceReport> {
-    const { classId, from, to } = attendanceReportQuery.parse(query);
+    const { classId, from, to, below, limit, offset, register: withRegister } = attendanceReportQuery.parse(query);
     if (daysBetween(from, to) > 400) throw new BadRequestException("Pick a range of about a year or less");
     const classes = await this.scopedClasses(ctx, classId);
     const today = karachiToday();
@@ -65,29 +65,21 @@ export class AttendanceReportsService {
       loadHolidays(this.prisma, ctx.schoolId, from, to, campusId),
       classRoster(this.prisma, ctx.schoolId, classes.map((c) => c.id)),
     ]);
-    const studentIds = roster.map((s) => s.id);
     const range = { gte: dateOnly(from), lte: dateOnly(to) };
-    const [grouped, detail] = studentIds.length
-      ? await Promise.all([
-          this.prisma.attendanceRecord.groupBy({
-            by: ["studentId", "status"],
-            where: { schoolId: ctx.schoolId, studentId: { in: studentIds }, date: range },
-            _count: { _all: true },
-          }),
-          classId
-            ? this.prisma.attendanceRecord.findMany({
-                where: { schoolId: ctx.schoolId, studentId: { in: studentIds }, date: range },
-                select: { studentId: true, date: true, status: true },
-              })
-            : Promise.resolve([]),
-        ])
-      : [[], []];
+    // Counts are aggregated in the database for everyone so the totals cover the whole report; only one page of rows is sent.
+    const grouped = roster.length
+      ? await this.prisma.attendanceRecord.groupBy({
+          by: ["studentId", "status"],
+          where: { schoolId: ctx.schoolId, studentId: { in: roster.map((s) => s.id) }, date: range },
+          _count: { _all: true },
+        })
+      : [];
 
     const byStudent = new Map<string, AttendanceCounts>();
     for (const row of grouped) addCounts(byStudent.get(row.studentId) ?? byStudent.set(row.studentId, emptyCounts()).get(row.studentId)!, row);
     const labels = new Map(classes.map((c) => [c.id, classLabel(c)]));
     const totals = emptyCounts();
-    const rows = roster.map((s) => {
+    const all = roster.map((s) => {
       const counts = byStudent.get(s.id) ?? emptyCounts();
       for (const key of Object.keys(totals) as AttendanceStatus[]) totals[key] += counts[key];
       const pct = attendancePct(counts, settings);
@@ -103,11 +95,26 @@ export class AttendanceReportsService {
         below: pct !== null && pct < settings.lowThresholdPct,
       };
     });
-    if (!classId) rows.sort((a, b) => a.className.localeCompare(b.className, "en", { numeric: true }) || 0);
-    const pcts = rows.map((r) => r.pct).filter((p): p is number => p !== null);
+    // Class, then roll number, then name; the id makes the order total so pages never repeat or skip a student.
+    const order = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+    all.sort(
+      (a, b) =>
+        order.compare(a.className, b.className) ||
+        order.compare(a.rollNo ?? "~", b.rollNo ?? "~") ||
+        a.name.localeCompare(b.name) ||
+        a.id.localeCompare(b.id),
+    );
+    const pcts = all.map((r) => r.pct).filter((p): p is number => p !== null);
+    const filtered = below === "1" ? all.filter((r) => r.below) : all;
+    const rows = filtered.slice(offset, offset + limit);
+
     const days = buildDays(from, to, settings, holidays);
     let register: AttendanceReport["register"] = null;
-    if (classId) {
+    if (classId && withRegister === "1" && rows.length) {
+      const detail = await this.prisma.attendanceRecord.findMany({
+        where: { schoolId: ctx.schoolId, studentId: { in: rows.map((r) => r.id) }, date: range },
+        select: { studentId: true, date: true, status: true },
+      });
       const marks: Record<string, Record<string, AttendanceStatus>> = {};
       for (const row of detail) (marks[row.studentId] ??= {})[isoOf(row.date)] = row.status as AttendanceStatus;
       register = { days, marks };
@@ -118,10 +125,11 @@ export class AttendanceReportsService {
       workingDays: days.filter((d) => d.working && d.date <= today).length,
       settings,
       rows,
+      page: { total: filtered.length, offset, limit, hasMore: offset + rows.length < filtered.length },
       totals: {
-        students: rows.length,
+        students: all.length,
         avgPct: pcts.length ? Math.round((pcts.reduce((a, b) => a + b, 0) / pcts.length) * 10) / 10 : null,
-        below: rows.filter((r) => r.below).length,
+        below: all.filter((r) => r.below).length,
         counts: totals,
       },
       register,

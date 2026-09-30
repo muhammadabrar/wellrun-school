@@ -10,7 +10,6 @@ const listKeys = [
   queryKeys.dashboard,
   ["admissions"],
   ["attendance"],
-  ["absent"],
   queryKeys.invoices,
   ["fees"],
   ["timetable"],

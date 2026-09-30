@@ -96,7 +96,6 @@ export async function refreshSchoolContext() {
     queryKeys.dashboard,
     ["admissions"],
     ["attendance"],
-    ["absent"],
     queryKeys.invoices,
     ["fees"],
     ["timetable"],

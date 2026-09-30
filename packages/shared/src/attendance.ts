@@ -49,11 +49,21 @@ export type SaveRegisterInput = z.infer<typeof saveRegisterSchema>;
 
 export const monthRegisterQuery = z.object({ classId: z.string().min(1), month: isoMonth });
 
+/** Rows per report page. Exports ask for everything with `EXPORT_LIMIT`. */
+export const REPORT_PAGE_SIZE = 40;
+export const REPORT_EXPORT_LIMIT = 5000;
+
 export const attendanceReportQuery = z
   .object({
     classId: z.string().optional(),
     from: isoDate,
     to: isoDate,
+    /** Only students under the low-attendance threshold. */
+    below: z.enum(["0", "1"]).optional(),
+    limit: z.coerce.number().int().min(1).max(REPORT_EXPORT_LIMIT).default(REPORT_PAGE_SIZE),
+    offset: z.coerce.number().int().min(0).default(0),
+    /** Include day-by-day marks (single class only) for the Excel register sheets. */
+    register: z.enum(["0", "1"]).optional(),
   })
   .refine((v) => v.from <= v.to, { message: "Start date must be before end date", path: ["to"] });
 export type AttendanceReportQuery = z.infer<typeof attendanceReportQuery>;
@@ -202,9 +212,12 @@ export type AttendanceReport = {
   to: string;
   workingDays: number;
   settings: AttendanceSettingsView;
+  /** One page of students. */
   rows: AttendanceReportRow[];
+  page: { total: number; offset: number; limit: number; hasMore: boolean };
+  /** Over every student in the report, not just this page. */
   totals: { students: number; avgPct: number | null; below: number; counts: AttendanceCounts };
-  /** Day-by-day marks, only when the report is for a single class. */
+  /** Day-by-day marks, only when asked for on a single-class report. */
   register: { days: AttendanceDay[]; marks: Record<string, Record<string, AttendanceStatus>> } | null;
 };
 

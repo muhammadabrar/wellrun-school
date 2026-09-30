@@ -19,7 +19,6 @@ import {
   GraduationCapIcon,
   ShieldCheckIcon,
   SunIcon,
-  UserXIcon,
   UsersIcon,
   WalletIcon,
 } from "lucide-react";
@@ -54,11 +53,11 @@ const dayItems: NavItem[] = [
       { title: "Overview", url: "/attendance", end: true },
       { title: "Mark attendance", url: "/attendance/mark" },
       { title: "Month register", url: "/attendance/register" },
+      { title: "Absent list", url: "/attendance/absent" },
       { title: "Reports", url: "/attendance/reports" },
       { title: "Settings", url: "/attendance/settings" },
     ],
   },
-  { title: "Absent list", url: "/absent", icon: <UserXIcon /> },
   { title: "Timetable", url: "/timetable", icon: <CalendarClockIcon /> },
 ];
 

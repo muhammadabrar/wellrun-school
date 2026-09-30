@@ -54,6 +54,7 @@ const titles: [string, string][] = [
   ["/admission", "Quick admission"],
   ["/students/", "Student"],
   ["/students", "Students"],
+  ["/attendance/absent", "Absent list"],
   ["/attendance/mark", "Mark attendance"],
   ["/attendance/register", "Month register"],
   ["/attendance/reports", "Attendance reports"],

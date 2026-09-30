@@ -26,7 +26,7 @@ const MarkAttendancePage = lazyPage(() => import("./pages/attendance/Mark"), "Ma
 const AttendanceRegisterPage = lazyPage(() => import("./pages/attendance/Register"), "RegisterPage");
 const AttendanceReportsPage = lazyPage(() => import("./pages/attendance/Reports"), "AttendanceReportsPage");
 const AttendanceSettingsPage = lazyPage(() => import("./pages/attendance/Settings"), "AttendanceSettingsPage");
-const AbsentPage = lazyPage(() => import("./pages/Absent"), "AbsentPage");
+const AbsentPage = lazyPage(() => import("./pages/attendance/Absent"), "AbsentPage");
 const TimetablePage = lazyPage(() => import("./pages/Timetable"), "TimetablePage");
 const StaffListPage = lazyPage(() => import("./pages/staff/List"), "StaffListPage");
 const StaffNewPage = lazyPage(() => import("./pages/staff/New"), "StaffNewPage");
@@ -131,7 +131,8 @@ export function App() {
         <Route path="/attendance/register" element={<AttendanceRegisterPage />} />
         <Route path="/attendance/reports" element={<AttendanceReportsPage />} />
         <Route path="/attendance/settings" element={<AttendanceSettingsPage />} />
-        <Route path="/absent" element={<AbsentPage />} />
+        <Route path="/attendance/absent" element={<AbsentPage />} />
+        <Route path="/absent" element={<Navigate to="/attendance/absent" replace />} />
         <Route path="/timetable" element={<TimetablePage />} />
         <Route path="/staff" element={<StaffListPage />} />
         <Route path="/staff/new" element={<StaffNewPage />} />

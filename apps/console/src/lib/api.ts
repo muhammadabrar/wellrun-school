@@ -239,7 +239,6 @@ export const api = {
     date: string;
     records: { studentId: string; status: "PRESENT" | "ABSENT" | "LATE" | "LEAVE" | "EXCUSED" }[];
   }) => request("/console/attendance", { method: "POST", body: JSON.stringify(payload) }),
-  absent: (date: string) => request<AbsentRow[]>(`/console/attendance/absent?date=${date}`),
   feesDashboard: () => request<FeesDashboard>("/console/fees/dashboard"),
   feeHeads: () => request<FeeHead[]>("/console/fees/heads"),
   createFeeHead: (payload: Record<string, unknown>) =>

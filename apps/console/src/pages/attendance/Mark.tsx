@@ -123,7 +123,7 @@ export function MarkAttendancePage() {
                 Month register
               </Button>
             ) : null}
-            <Button variant="ghost" size="sm" render={<Link to="/absent" />}>
+            <Button variant="ghost" size="sm" render={<Link to="/attendance/absent" />}>
               Absent list
             </Button>
           </div>

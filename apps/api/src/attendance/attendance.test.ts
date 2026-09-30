@@ -1,5 +1,8 @@
 import {
   DEFAULT_ATTENDANCE_SETTINGS,
+  REPORT_EXPORT_LIMIT,
+  REPORT_PAGE_SIZE,
+  attendanceReportQuery,
   attendancePct,
   countStatuses,
   isWorkingDay,
@@ -67,5 +70,20 @@ describe("edit window and locks", () => {
     expect(dayLockReason("2026-03-24", today, settings, [], true)).toBeNull();
     expect(dayLockReason("2026-03-24", today, settings, [], false)).toMatch(/today/);
     expect(dayLockReason("2026-03-24", today, { ...settings, teacherEditDays: 1 }, [], false)).toBeNull();
+  });
+});
+
+describe("report paging query", () => {
+  const base = { from: "2026-09-01", to: "2026-09-30" };
+
+  it("defaults to one page from the start", () => {
+    expect(attendanceReportQuery.parse(base)).toMatchObject({ limit: REPORT_PAGE_SIZE, offset: 0 });
+  });
+
+  it("reads paging from query strings and caps the size", () => {
+    expect(attendanceReportQuery.parse({ ...base, limit: "40", offset: "80", below: "1" })).toMatchObject({ limit: 40, offset: 80, below: "1" });
+    expect(attendanceReportQuery.parse({ ...base, limit: String(REPORT_EXPORT_LIMIT) }).limit).toBe(REPORT_EXPORT_LIMIT);
+    expect(() => attendanceReportQuery.parse({ ...base, limit: String(REPORT_EXPORT_LIMIT + 1) })).toThrow();
+    expect(() => attendanceReportQuery.parse({ ...base, offset: "-1" })).toThrow();
   });
 });
