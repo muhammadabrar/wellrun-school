@@ -40,5 +40,183 @@
     "markAbsent": "Absent",
     "saveAttendance": "Save attendance",
     "admissionNo": "Admission no."
+  },
+  "parent": {
+    "common": {
+      "back": "Back",
+      "retry": "Try again",
+      "loading": "Loading…",
+      "offline": "No internet connection. Please try again.",
+      "wrong": "Something went wrong. Please try again.",
+      "today": "Today",
+      "previous": "Previous",
+      "next": "Next",
+      "close": "Close",
+      "signOut": "Sign out",
+      "language": "Language",
+      "moreTitle": "More"
+    },
+    "login": {
+      "welcome": "Welcome",
+      "intro": "Enter your mobile number to see your child's school updates.",
+      "phoneLabel": "Your mobile number",
+      "phonePlaceholder": "0300 1234567",
+      "sendCode": "Send me a code",
+      "codeTitle": "Enter the code",
+      "codeIntro": "We sent a 6-digit code to {phone}.",
+      "codeLabel": "6-digit code",
+      "continue": "Continue",
+      "resend": "Send the code again",
+      "resendIn": "Send again in {seconds} seconds",
+      "changeNumber": "Use a different number",
+      "registeredHint": "You will get a code if this number is registered with your child's school.",
+      "invalidPhone": "Please enter a valid mobile number.",
+      "wrongCode": "That code is not right. Please check it and try again.",
+      "expiredCode": "That code has expired. Please ask for a new one.",
+      "tooMany": "Too many tries. Please wait a little and try again.",
+      "sendFailed": "We could not send the code right now. Please try again later."
+    },
+    "home": {
+      "hello": "Hello",
+      "yourChildren": "Your children",
+      "chooseChild": "Tap a child to see their school updates.",
+      "noChildren": "We could not find any children for this number.",
+      "noChildrenHelp": "Please ask your child's school to add this number to your child's record, then sign in again.",
+      "classLabel": "Class {class}"
+    },
+    "tiles": {
+      "attendance": "Attendance",
+      "homework": "Homework",
+      "fees": "Fees",
+      "results": "Results",
+      "notices": "Notices",
+      "timetable": "Timetable"
+    },
+    "status": {
+      "PRESENT": "Present",
+      "ABSENT": "Absent",
+      "LATE": "Late",
+      "LEAVE": "On leave",
+      "EXCUSED": "Excused",
+      "OFF": "Off",
+      "NONE": "Not marked yet"
+    },
+    "summary": {
+      "attendanceToday": "Attendance today",
+      "closedToday": "School is closed today",
+      "holiday": "Holiday: {name}",
+      "thisMonth": "This month: {pct}% present",
+      "noMonthYet": "Nothing marked this month yet",
+      "absentDays": "Days absent this month: {n}",
+      "feesTitle": "Fees",
+      "allPaid": "Nothing to pay. Thank you!",
+      "overdue": "{n} past the due date",
+      "nextDue": "Next due date {date}",
+      "nextExam": "Next exam",
+      "noExam": "No exam coming up",
+      "examLine": "{subject}, {date}",
+      "homeworkToday": "{n} homework and notes today",
+      "noHomeworkToday": "Nothing set today",
+      "dueSoon": "{n} homework due this week",
+      "latestNotice": "Latest notice"
+    },
+    "attendance": {
+      "title": "Attendance",
+      "percent": "{pct}% present",
+      "noPercent": "No attendance marked yet",
+      "present": "Present",
+      "absent": "Absent",
+      "late": "Late",
+      "leave": "Leave",
+      "legend": "What the colours mean",
+      "dayOff": "Off"
+    },
+    "diary": {
+      "title": "Homework",
+      "forDay": "For {date}",
+      "nothing": "Nothing was set for this day.",
+      "dueSoon": "Homework due soon",
+      "due": "Due {date}",
+      "general": "For everyone",
+      "kindHOMEWORK": "Homework",
+      "kindCLASSWORK": "Classwork",
+      "kindNOTE": "Note",
+      "by": "By {name}",
+      "photo": "Photo from the teacher"
+    },
+    "fees": {
+      "title": "Fees",
+      "totalDue": "Total to pay",
+      "nothingDue": "All paid",
+      "invoices": "Fee bills",
+      "payments": "Payments received",
+      "due": "Due {date}",
+      "paidOf": "Paid {paid} of {total}",
+      "balance": "Left to pay: {amount}",
+      "challan": "Open fee slip",
+      "receipt": "Open receipt",
+      "status_ISSUED": "Unpaid",
+      "status_PARTIALLY_PAID": "Part paid",
+      "status_PAID": "Paid",
+      "status_OVERDUE": "Past due date",
+      "noInvoices": "No fee bills yet.",
+      "noPayments": "No payments yet.",
+      "method": "Paid by {method}",
+      "openFailed": "We could not open that file. Please try again.",
+      "methods": {
+        "cash": "cash",
+        "bank": "bank",
+        "cheque": "cheque",
+        "online": "online",
+        "other": "other"
+      }
+    },
+    "results": {
+      "title": "Results",
+      "none": "No results have been shared yet.",
+      "score": "{obtained} out of {max}",
+      "grade": "Grade {grade}",
+      "position": "Position {rank}",
+      "passed": "Passed",
+      "failed": "Not passed",
+      "subjects": "Subjects",
+      "remarks": "Teacher's note",
+      "principalNote": "Principal's note",
+      "reportCard": "Open report card",
+      "attendance": "Attendance {pct}%"
+    },
+    "notices": {
+      "title": "Notices",
+      "none": "There are no notices right now.",
+      "pinned": "Important"
+    },
+    "timetable": {
+      "title": "Timetable",
+      "none": "The timetable has not been set up yet.",
+      "freeDay": "No lessons on this day.",
+      "break": "Break",
+      "days": {
+        "1": "Mon",
+        "2": "Tue",
+        "3": "Wed",
+        "4": "Thu",
+        "5": "Fri",
+        "6": "Sat"
+      }
+    },
+    "more": {
+      "title": "More",
+      "language": "Language",
+      "signOutHelp": "Sign out of this phone.",
+      "devices": "Phones signed in",
+      "thisDevice": "This phone",
+      "lastUsed": "Last used {date}",
+      "signOutDevice": "Sign out",
+      "switchTo": "Read in {language}"
+    },
+    "languageNames": {
+      "en": "English",
+      "ur": "اردو"
+    }
   }
 }
