@@ -210,6 +210,35 @@ The dashboard is one request (`GET /console/dashboard`) and every number links t
 
 ---
 
+### 5.3 Diary and notices
+
+Teachers write the diary for their own classes; admins read it and can take an entry down. Notices are written by admins and read by teachers.
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| D1 | Teacher opens **Diary** | Only the classes they teach are listed; the first is selected; today's entries (if any) show |
+| D2 | Teacher with no class assignment | "No classes assigned to you yet" empty state, no composer |
+| D3 | Add homework for a subject they teach, with a due date and a photo | Saved; appears in the list with subject, type, due date and photo; toast shown |
+| D4 | Subject list in the composer | Only subjects this teacher teaches in this class, plus "General (whole class)" |
+| D5 | Subject teacher posts a General **Homework** | Refused with a clear message; a General **Note** is accepted |
+| D6 | Class teacher (assigned with no subject) posts for any subject in their class | Accepted |
+| D7 | Due date before the diary date | Refused: "Due date can't be before the diary date" |
+| D8 | Diary date two days ago, or more than a month ahead | Refused with a message about the allowed range |
+| D9 | Edit and delete own entry written today | Works. Entries more than a day old show no Edit or Delete, and the API refuses if called directly |
+| D10 | Try to edit another teacher's entry (API call) | 403 "You can change only your own diary entries" |
+| D11 | **Copy to sections** on an entry for 5A | Lists only other sections of the same grade where they teach that subject; copies appear for the same day |
+| D12 | Write Urdu text in the title and body | Text aligns right-to-left in the box and in the list |
+| D13 | Closed academic year | Posting and editing are refused with the closed-year message |
+| D14 | **My portal** (teacher) | "Today's diary" lists today's lessons; "Write diary" opens the composer for that class and day; classes already written show "Written"; on a holiday it says so |
+| D15 | Admin opens **Diary** | No composer. Overview shows "X of Y classes have a diary"; clicking a class under "Nothing written yet" selects it; admin can remove any entry |
+| D16 | Admin opens the overview on a Sunday or a holiday | Shows that the school is closed, not a list of missing classes |
+| D17 | Page, campus and year switchers | List refreshes; page number clamps after deleting the last entry on a page |
+| N1 | Admin posts a notice for everyone | Appears at the top of the list; teachers see it |
+| N2 | Admin posts a notice for chosen classes | Teachers of those classes see it; teachers of other classes do not |
+| N3 | Choosing "Chosen classes" with none selected | Refused: "Pick at least one class, or send it to everyone" |
+| N4 | Pin, edit and delete a notice | Pinned notices sort first; edits show; delete asks for confirmation |
+| N5 | Teacher opens **Notices** | Read-only: no New, Pin, Edit or Delete |
+
 ## 6. Exams
 
 | # | Scenario | Steps | Expected |
@@ -316,6 +345,8 @@ Try each row; the "No" cells matter most.
 | Students | All | Own classes | No | No |
 | Staff / Payroll | Yes | Own portal + payslips only | No | No |
 | Attendance | All + settings | Own classes, edit window applies | No | No |
+| Diary | Read all, remove any | Write for own classes and subjects | No | Reads it in the parent portal |
+| Notices | Write, pin, delete | Read those that reach their classes | No | Reads them in the parent portal |
 | Exams | Everything | Own subjects: marks + correction requests | No | No |
 | Fees | Yes | No | No | No |
 | School setup | Yes | No | No | No |

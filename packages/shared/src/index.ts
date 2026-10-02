@@ -740,6 +740,7 @@ export * from "./templates";
 export * from "./exams";
 export * from "./syllabus";
 export * from "./question-papers";
+export * from "./diary";
 export * from "./attendance";
 export * from "./dashboard";
 export * from "./paging";

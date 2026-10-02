@@ -67,6 +67,8 @@ const titles: [string, string][] = [
   ["/attendance", "Attendance"],
   ["/absent", "Absent list"],
   ["/timetable", "Timetable"],
+  ["/diary", "Diary"],
+  ["/notices", "Notices"],
   ["/staff/new", "Add staff"],
   ["/staff/", "Staff member"],
   ["/staff", "Staff"],

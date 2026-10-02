@@ -11,9 +11,11 @@ import { AttendanceModule } from "./attendance/attendance.module";
 import { AuthModule } from "./auth/auth.module";
 import { ClaimsModule } from "./claims/claims.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { DiaryModule } from "./diary/diary.module";
 import { ExamsModule } from "./exams/exams.module";
 import { FeesModule } from "./fees/fees.module";
 import { HealthController } from "./health.controller";
+import { NoticesModule } from "./notices/notices.module";
 import { PayrollModule } from "./payroll/payroll.module";
 import { QuestionPapersModule } from "./question-papers/question-papers.module";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -51,6 +53,8 @@ import { TraceMiddleware } from "./trace/trace.middleware";
     ExamsModule,
     SyllabusModule,
     QuestionPapersModule,
+    DiaryModule,
+    NoticesModule,
     PayrollModule,
     ClaimsModule,
     AdminModule,

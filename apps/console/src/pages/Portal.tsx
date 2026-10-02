@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { EmptyState, ErrorState, LoadingState } from "@wellrun/ui";
-import { CheckCircle2, ClipboardCheck } from "lucide-react";
+import { CheckCircle2, ClipboardCheck, NotebookText } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { diaryApi, diaryKeys } from "@/lib/diary-api";
 import { formatClock } from "@/components/form/time-picker";
 import { CONTRACT_TYPES, PayslipStatusBadge, SalaryLine, StaffStatusBadge, StaffWeekGrid, formatDay, periodName } from "@/components/staff/staff-ui";
 import { WEEKDAYS } from "@/components/timetable/lesson-sheet";
@@ -13,6 +14,7 @@ import { queryKeys } from "@/lib/query";
 
 export function PortalPage() {
   const { data, isPending, isError, refetch } = useQuery({ queryKey: queryKeys.portal, queryFn: api.portal });
+  const diary = useQuery({ queryKey: diaryKeys.today, queryFn: diaryApi.today, enabled: Boolean(data?.staff) });
 
   if (isPending) return <LoadingState variant="page" />;
   if (isError || !data) {
@@ -108,6 +110,36 @@ export function PortalPage() {
           )}
         </Panel>
       </div>
+
+      <Panel title="Today's diary" icon={<NotebookText className="size-5 text-primary" aria-hidden />}>
+        {diary.isPending ? (
+          <p className="text-sm text-muted-foreground">Checking your classes…</p>
+        ) : !diary.data || diary.isError ? (
+          <p className="text-sm text-muted-foreground">Couldn't load your diary. Open the Diary page to write an entry.</p>
+        ) : !diary.data.working ? (
+          <p className="text-sm text-muted-foreground">{diary.data.holiday ? `Today is a holiday (${diary.data.holiday}).` : "The school is closed today."} No diary to write.</p>
+        ) : !diary.data.lessons.length ? (
+          <p className="text-sm text-muted-foreground">You have no lessons on your timetable today.</p>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {diary.data.lessons.map((lesson) => (
+              <li key={`${lesson.classId}-${lesson.subject}`} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line p-4">
+                <div>
+                  <p className="font-medium">{lesson.label}</p>
+                  <p className="text-sm text-muted-foreground">{lesson.subject || "Whole class"}</p>
+                </div>
+                {lesson.posted ? (
+                  <span className="inline-flex items-center gap-1 text-sm text-success">
+                    <CheckCircle2 className="size-4" aria-hidden /> Written
+                  </span>
+                ) : (
+                  <Button render={<Link to={`/diary?classId=${lesson.classId}&date=${diary.data.date}`} />}>Write diary</Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
 
       <Panel title="My weekly timetable">
         <StaffWeekGrid week={timetable} today={today.weekday} emptyText="You have no periods on the timetable yet. Your school admin places you from the Timetable page." />

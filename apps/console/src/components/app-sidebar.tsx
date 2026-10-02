@@ -12,6 +12,8 @@ import {
   FilePenLineIcon,
   LayoutDashboardIcon,
   ListChecksIcon,
+  MegaphoneIcon,
+  NotebookTextIcon,
   NotebookPenIcon,
   SettingsIcon,
   TrophyIcon,
@@ -70,6 +72,8 @@ const classroomItems: NavItem[] = [
     ],
   },
   { title: "Timetable", url: "/timetable", icon: <CalendarClockIcon /> },
+  { title: "Diary", url: "/diary", icon: <NotebookTextIcon /> },
+  { title: "Notices", url: "/notices", icon: <MegaphoneIcon /> },
 ];
 
 /** Teachers mark from their first period; no overview or settings. */
