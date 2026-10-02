@@ -167,13 +167,18 @@ export function writePdfFile(schoolId: string, receiptNumber: string, bytes: Buf
   return `/uploads/${name}`;
 }
 
-export function logoFilePath(url?: string | null) {
+/** Uploads are stored either as "/uploads/x" or, for school media, as "http://host/uploads/x" — both resolve to the same file. */
+export function uploadPathOf(url?: string | null) {
   if (!url) return null;
-  if (url.startsWith("/uploads/")) {
-    const path = join(process.cwd(), url.replace(/^\//, ""));
-    return existsSync(path) ? path : null;
-  }
-  return null;
+  const match = /^(?:https?:\/\/[^/]+)?(\/uploads\/[^?#]+)/.exec(url.trim());
+  return match && !match[1].includes("..") ? match[1] : null;
+}
+
+export function logoFilePath(url?: string | null) {
+  const rel = uploadPathOf(url);
+  if (!rel) return null;
+  const path = join(process.cwd(), rel.replace(/^\//, ""));
+  return existsSync(path) ? path : null;
 }
 
 export function readUploadBytes(url: string) {

@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 
-type Kind = "ADM" | "APP" | "INV" | "PAY" | "REC" | "PSL";
+type Kind = "ADM" | "APP" | "INV" | "PAY" | "REC" | "PSL" | "VCH" | "CERT" | "LVE";
 
 async function numberTaken(tx: Prisma.TransactionClient, schoolId: string, kind: Kind, value: string) {
   if (kind === "REC") return Boolean(await tx.payment.findFirst({ where: { schoolId, receiptNo: value }, select: { id: true } }));

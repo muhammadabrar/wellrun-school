@@ -54,7 +54,7 @@ export class DashboardService {
     const viaStudent = campusId ? { OR: [{ campusId }, { campusId: null, student: { campusId } }] } : {};
     const classWhere: Prisma.ClassWhereInput = { schoolId, yearId: yearId ?? "none", ...(campusId ? { campusId } : {}) };
 
-    const paymentWhere: Prisma.PaymentWhereInput = { schoolId, status: "COMPLETED", ...viaStudent };
+    const paymentWhere: Prisma.PaymentWhereInput = { schoolId, status: "COMPLETED", method: { not: "credit" }, ...viaStudent };
     const invoiceWhere: Prisma.InvoiceWhereInput = {
       schoolId,
       status: { in: ["ISSUED", "PARTIALLY_PAID", "OVERDUE"] },

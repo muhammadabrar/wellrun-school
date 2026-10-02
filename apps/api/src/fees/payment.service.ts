@@ -430,7 +430,7 @@ export class FeePaymentService {
     const usedCredit = existing.credits.find((row) => row.remainingAmountPkr < row.amountPkr);
     if (usedCredit) throw new BadRequestException("Reverse applied credit before voiding this payment");
     await this.prisma.$transaction(async (tx) => {
-      await tx.payment.update({ where: { id }, data: { status: mode } });
+      await tx.payment.update({ where: { id }, data: { status: mode, reversedAt: new Date() } });
       await tx.studentCredit.updateMany({
         where: { sourcePaymentId: id, remainingAmountPkr: { gt: 0 } },
         data: { status: "REFUNDED", remainingAmountPkr: 0 },
@@ -463,7 +463,7 @@ export class FeePaymentService {
     const updated = await this.prisma.$transaction(async (tx) => {
       // Credit that was carried onto this invoice goes back to the student.
       for (const row of completed) {
-        await tx.payment.update({ where: { id: row.payment.id }, data: { status: "VOIDED" } });
+        await tx.payment.update({ where: { id: row.payment.id }, data: { status: "VOIDED", reversedAt: new Date() } });
         if (invoice.studentId && row.amountPkr > 0) {
           await tx.studentCredit.create({
             data: {

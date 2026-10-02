@@ -18,6 +18,7 @@ export class FeeReportService {
     const paymentWhere = {
       schoolId,
       status: "COMPLETED" as const,
+      method: { not: "credit" },
       ...(scope.campusId
         ? { OR: [{ campusId: scope.campusId }, { campusId: null, student: { campusId: scope.campusId } }] }
         : {}),
@@ -189,11 +190,11 @@ export class FeeReportService {
     const where: Prisma.PaymentWhereInput = {
       schoolId,
       status: "COMPLETED",
+      method: query.method ? query.method : { not: "credit" },
       paymentDate: { gte: from, lte: to },
       ...(scope.campusId
         ? { OR: [{ campusId: scope.campusId }, { campusId: null, student: { campusId: scope.campusId } }] }
         : {}),
-      ...(query.method ? { method: query.method } : {}),
       ...(query.feeHeadId ? { allocations: { some: { invoice: { items: { some: { feeHeadId: query.feeHeadId } } } } } } : {}),
       ...(query.className || query.section
         ? {

@@ -31,6 +31,6 @@ import { FeeSettingsService } from "./settings.service";
     FeeSettingsService,
     FbrInvoiceService,
   ],
-  exports: [FeesService, FeeGenerationService, FeeAssignmentService, FeeCatalogService],
+  exports: [FeesService, FeeGenerationService, FeeAssignmentService, FeeCatalogService, FeeReportService, ChallanService, FeeReceiptService],
 })
 export class FeesModule {}
