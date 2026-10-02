@@ -78,6 +78,8 @@ export type ExamPaperRow = {
   canMark: boolean;
   /** Syllabus topics this paper covers (locked in the syllabus). */
   topics: { id: string; title: string; unit: string }[];
+  /** The question paper for this grade + subject, when there is one you may see. */
+  questionPaper: { id: string; status: "DRAFT" | "SUBMITTED" | "APPROVED" | "RETURNED" } | null;
 };
 
 export type ExamDetail = {
@@ -104,6 +106,7 @@ export type ExamDashboard = {
   upcoming: { id: string; date: string; startTime: string; className: string; subject: string; exam: { id: string; name: string; kind: ExamKind } }[];
   papers: { notStarted: number; draft: number; submitted: number; returned: number; approved: number };
   pendingCorrections: number;
+  pendingQuestionPapers: number;
   myPapers: { toMark: number } | null;
   activeExams: { id: string; name: string; status: ExamStatus; startsOn: string; endsOn: string; total: number; approved: number; submitted: number }[];
   published: { id: string; name: string; kind: ExamKind; publishedAt: string }[];

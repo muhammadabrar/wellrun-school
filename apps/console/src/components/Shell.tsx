@@ -23,6 +23,8 @@ const titles: [string, string][] = [
   ["/syllabus/list", "Scheme of work"],
   ["/syllabus/", "Syllabus"],
   ["/syllabus", "Syllabus"],
+  ["/exams/question-papers/", "Question paper"],
+  ["/exams/question-papers", "Question papers"],
   ["/exams/new", "Create exam"],
   ["/exams/list", "All exams"],
   ["/exams/calendar", "Exam calendar"],

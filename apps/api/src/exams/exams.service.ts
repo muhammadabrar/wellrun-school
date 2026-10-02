@@ -160,6 +160,8 @@ export class ExamsService {
     const papers = scope ? exam.papers.filter((p) => scope.classIds.has(p.classId)) : exam.papers;
     if (scope && !papers.length) throw new ForbiddenException("This exam has none of your classes");
     const strength = await this.classStrength(schoolId, [...new Set(papers.map((p) => p.classId))]);
+    const questionPapers = await this.prisma.questionPaper.findMany({ where: { examId: id, schoolId }, select: { id: true, gradeName: true, subjectId: true, status: true } });
+    const qpByKey = new Map(questionPapers.map((q) => [`${q.gradeName}|${q.subjectId}`, { id: q.id, status: q.status }]));
     const rows = papers.map((p) => ({
       id: p.id,
       classId: p.classId,
@@ -182,6 +184,8 @@ export class ExamsService {
       canMark: canMarkPaper(scope, p),
       /** Syllabus coverage: topics this paper tests (they are locked in the syllabus). */
       topics: p.topics.map((t) => ({ id: t.topic.id, title: t.topic.title, unit: t.topic.unit.title })),
+      /** The question paper for this grade + subject (teachers see only the ones they teach). */
+      questionPaper: canMarkPaper(scope, p) ? (qpByKey.get(`${p.class.name}|${p.subjectId}`) ?? null) : null,
     }));
     return {
       id: exam.id,
@@ -558,7 +562,7 @@ export class ExamsService {
     const today = dateOnly(new Date().toISOString());
     const inWeeks = new Date(today.getTime() + 21 * 86400000);
     const classFilter = scope ? { classId: { in: [...scope.classIds] } } : {};
-    const [upcoming, statusGroups, activeExams, corrections, published, examCount] = await Promise.all([
+    const [upcoming, statusGroups, activeExams, corrections, published, examCount, pendingQuestionPapers] = await Promise.all([
       this.prisma.examPaper.findMany({
         where: { schoolId, exam: { yearId }, date: { gte: today, lte: inWeeks }, ...classFilter },
         orderBy: [{ date: "asc" }, { startTime: "asc" }],
@@ -580,6 +584,7 @@ export class ExamsService {
         select: { id: true, name: true, kind: true, publishedAt: true },
       }),
       this.prisma.exam.count({ where: { schoolId, yearId } }),
+      scope ? Promise.resolve(0) : this.prisma.questionPaper.count({ where: { schoolId, status: "SUBMITTED", exam: { yearId } } }),
     ]);
     const byStatus = Object.fromEntries(statusGroups.map((g) => [g.status, g._count._all])) as Record<string, number>;
     let myPapers: { toMark: number } | null = null;
@@ -601,6 +606,7 @@ export class ExamsService {
         approved: byStatus.APPROVED ?? 0,
       },
       pendingCorrections: corrections,
+      pendingQuestionPapers,
       myPapers,
       activeExams: activeExams.map((e) => {
         const papers = scope ? e.papers.filter((p) => scope.classIds.has(p.classId)) : e.papers;

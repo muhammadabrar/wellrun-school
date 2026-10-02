@@ -5,8 +5,8 @@
  */
 import "reflect-metadata";
 import { randomUUID } from "node:crypto";
-import { Prisma, PrismaClient } from "@prisma/client";
-import { DEFAULT_GRADE_BANDS, SUBJECTS_BY_GRADE } from "@wellrun/shared";
+import { Prisma, PrismaClient, type QuestionPaperStatus, type QuestionType } from "@prisma/client";
+import { DEFAULT_GRADE_BANDS, SUBJECTS_BY_GRADE, paperMarks } from "@wellrun/shared";
 import { ResultsService } from "../src/exams/results.service";
 import { ExamSettingsService } from "../src/exams/settings.service";
 import type { PrismaService } from "../src/prisma/prisma.service";
@@ -1061,7 +1061,7 @@ export async function seedDemoSchool(ctx: Ctx) {
     roster: currentRoster,
     dateFor: examDay("2026-10-12"),
   });
-  await createExam({
+  const finalTerm = await createExam({
     name: "Final Term Examination",
     yearId: year.id,
     termId: term2.id,
@@ -1090,6 +1090,354 @@ export async function seedDemoSchool(ctx: Ctx) {
   await cover(midTerm.papers, year.id, (units) => [...units[0].topicIds, ...units[1].topicIds]);
   await cover(septTest.papers, year.id, (units) => units[2].topicIds.slice(0, 3));
   await cover(octTest.papers, year.id, (units) => units[3].topicIds.slice(0, 2));
+
+  // Question papers ---------------------------------------------------------------------------------------------
+  console.log("  demo: question papers");
+  type Q = { text: string; marks: number; options?: unknown; answer?: string; answerLines?: number };
+  type Sec = { title: string; type: QuestionType; instructions?: string; passage?: string; rtl?: boolean; attempt?: number; questions: Q[] };
+  const mc = (text: string, options: string[], correct: number, marks = 1): Q => ({ text, marks, options, answer: String(correct) });
+  const tf = (text: string, truth: boolean): Q => ({ text, marks: 1, answer: truth ? "TRUE" : "FALSE" });
+  const fb = (text: string, answer: string): Q => ({ text, marks: 1, answer });
+  const sq = (text: string, marks: number, lines: number, answer = ""): Q => ({ text, marks, answerLines: lines, answer });
+  const makePaper = async (input: {
+    examId: string;
+    gradeName: string;
+    subject: string;
+    status: QuestionPaperStatus;
+    durationMinutes: number;
+    instructions?: string;
+    createdById: string;
+    reviewNote?: string;
+    sections: Sec[];
+    prints?: { classId: string; classLabel: string; copies: number; answerKey?: boolean }[];
+  }) => {
+    const sections = input.sections.map((sec) => ({ attemptCount: sec.attempt ?? null, questions: sec.questions }));
+    const reviewed = input.status === "APPROVED" || input.status === "RETURNED";
+    await prisma.questionPaper.create({
+      data: {
+        schoolId,
+        examId: input.examId,
+        gradeName: input.gradeName,
+        subjectId: subjectId.get(input.subject)!,
+        title: `${input.gradeName} ${input.subject}`,
+        instructions: input.instructions ?? "",
+        durationMinutes: input.durationMinutes,
+        status: input.status,
+        totalMarks: paperMarks(sections),
+        createdById: input.createdById,
+        updatedById: input.createdById,
+        submittedAt: input.status === "DRAFT" ? null : new Date(),
+        reviewedById: reviewed ? adminId : null,
+        reviewedAt: reviewed ? new Date() : null,
+        reviewNote: input.reviewNote ?? "",
+        sections: {
+          create: input.sections.map((sec, i) => ({
+            title: sec.title,
+            type: sec.type,
+            instructions: sec.instructions ?? "",
+            passage: sec.passage ?? "",
+            rtl: sec.rtl ?? false,
+            attemptCount: sec.attempt ?? null,
+            sortOrder: i,
+            questions: { create: sec.questions.map((q, qi) => ({ text: q.text, marks: q.marks, options: (q.options ?? []) as Prisma.InputJsonValue, answer: q.answer ?? "", answerLines: q.answerLines ?? 0, sortOrder: qi })) },
+          })),
+        },
+        prints: { create: (input.prints ?? []).map((p) => ({ schoolId, classId: p.classId, classLabel: p.classLabel, copies: p.copies, answerKey: p.answerKey ?? false, printedById: adminId })) },
+      },
+    });
+  };
+
+  const g5a = classByLabel(5, "A");
+  const g5b = classByLabel(5, "B");
+  const g7a = classByLabel(7, "A");
+  const g7b = classByLabel(7, "B");
+
+  // Grade 5 English: complete, approved and printed — one of every kind of question (100 marks).
+  await makePaper({
+    examId: finalTerm.examId,
+    gradeName: "Grade 5",
+    subject: "English",
+    status: "APPROVED",
+    durationMinutes: 180,
+    instructions: "Attempt all sections. Write neatly. Use a blue or black pen only.",
+    createdById: farahId!,
+    prints: [
+      { classId: g5a.id, classLabel: "Grade 5 A", copies: 13 },
+      { classId: g5b.id, classLabel: "Grade 5 B", copies: 13 },
+      { classId: g5a.id, classLabel: "Grade 5 A", copies: 3 },
+    ],
+    sections: [
+      {
+        title: "Section A: Multiple choice questions",
+        type: "MCQ",
+        instructions: "Choose the correct answer. Each question carries 1 mark.",
+        questions: [
+          mc("She ____ to school every day.", ["go", "goes", "going", "gone"], 1),
+          mc("Choose the plural of 'child'.", ["childs", "childes", "children", "childrens"], 2),
+          mc("Which word is a noun?", ["quickly", "happy", "table", "run"], 2),
+          mc("The opposite of 'brave' is:", ["strong", "coward", "kind", "clever"], 1),
+          mc("'They ____ playing in the garden.' Fill in the correct word.", ["is", "am", "are", "be"], 2),
+          mc("Which is a proper noun?", ["city", "Lahore", "river", "boy"], 1),
+          mc("The past tense of 'write' is:", ["writed", "wrote", "written", "writing"], 1),
+          mc("Which article goes before 'apple'?", ["a", "an", "the", "no article"], 1),
+          mc("Choose the adjective: 'The tall boy ran fast.'", ["boy", "ran", "tall", "fast"], 2),
+          mc("A word with the same meaning as 'big' is:", ["small", "huge", "thin", "short"], 1),
+        ],
+      },
+      {
+        title: "Section B: True or false",
+        type: "TRUE_FALSE",
+        instructions: "Write True or False against each statement.",
+        questions: [
+          tf("A sentence always begins with a capital letter.", true),
+          tf("'Quickly' is an adjective.", false),
+          tf("A full stop comes at the end of a question.", false),
+          tf("'Books' is a plural noun.", true),
+          tf("'I am' can be shortened to 'I'm'.", true),
+        ],
+      },
+      {
+        title: "Section C: Fill in the blanks",
+        type: "FILL_BLANK",
+        instructions: "Fill in the blanks with suitable words.",
+        questions: [
+          fb("The sun ____ in the east.", "rises"),
+          fb("We drink ____ when we are thirsty.", "water"),
+          fb("Ali ____ his homework yesterday. (do)", "did"),
+          fb("There are seven ____ in a week.", "days"),
+          fb("She is ____ than her sister. (tall)", "taller"),
+        ],
+      },
+      {
+        title: "Section D: Short questions",
+        type: "SHORT",
+        instructions: "Attempt any SIX questions. Each question carries 3 marks.",
+        attempt: 6,
+        questions: [
+          sq("What is a noun? Give two examples.", 3, 3, "A naming word, e.g. boy, Karachi."),
+          sq("Write the plural of: mouse, leaf, box.", 3, 2, "mice, leaves, boxes"),
+          sq("Make a sentence using the word 'because'.", 3, 2),
+          sq("What is the difference between 'a' and 'an'?", 3, 3),
+          sq("Write three opposites: hot, early, empty.", 3, 2, "cold, late, full"),
+          sq("Rewrite in the past tense: 'He plays cricket.'", 3, 2, "He played cricket."),
+          sq("Why do we use capital letters?", 3, 3),
+          sq("Write two sentences about your school.", 3, 3),
+        ],
+      },
+      {
+        title: "Section E: Comprehension",
+        type: "COMPREHENSION",
+        instructions: "Read the passage carefully and answer the questions.",
+        passage:
+          "Hamza lives in a small village near Multan. Every morning he wakes up early and helps his father feed the cows. After breakfast he walks two kilometres to school with his friends. On the way they pass green fields of wheat and a shady mango orchard. Hamza likes science best, and he dreams of becoming a doctor so that he can serve the people of his village.",
+        questions: [
+          sq("Where does Hamza live?", 3, 2, "In a small village near Multan."),
+          sq("What does Hamza do before breakfast?", 3, 2, "He helps his father feed the cows."),
+          sq("What can Hamza see on the way to school?", 3, 3),
+          sq("What does Hamza want to become and why?", 3, 3),
+        ],
+      },
+      {
+        title: "Section F: Translation",
+        type: "TRANSLATION",
+        instructions: "Translate the following sentences into Urdu.",
+        questions: [
+          sq("Honesty is the best policy.", 4, 3),
+          sq("We should respect our teachers and elders.", 4, 3),
+          sq("Pakistan is our beloved homeland.", 4, 3),
+        ],
+      },
+      {
+        title: "Section G: Long questions",
+        type: "LONG",
+        instructions: "Attempt any TWO questions. Each question carries 7 marks.",
+        attempt: 2,
+        questions: [
+          sq("Write a paragraph of about 80 words on 'My Best Friend'.", 7, 10),
+          sq("Describe your daily routine in 8–10 sentences.", 7, 10),
+          sq("Write a paragraph on 'The Importance of Trees'.", 7, 10),
+        ],
+      },
+      {
+        title: "Section H: Story writing",
+        type: "WRITING",
+        instructions: "Write a story of about 120 words on the given outline.",
+        questions: [sq("A woodcutter loses his axe in the river → a fairy appears with a golden axe → he refuses it and tells the truth → the fairy rewards his honesty. (Title: The Honest Woodcutter)", 14, 18)],
+      },
+      {
+        title: "Section I: Letter writing",
+        type: "WRITING",
+        instructions: "Write a letter on the given topic.",
+        questions: [sq("Write a letter to your friend inviting him to your birthday party.", 10, 14)],
+      },
+    ],
+  });
+
+  // Grade 5 Mathematics: finished by the teacher, waiting for the admin to approve.
+  await makePaper({
+    examId: finalTerm.examId,
+    gradeName: "Grade 5",
+    subject: "Mathematics",
+    status: "SUBMITTED",
+    durationMinutes: 180,
+    instructions: "Show all working. Calculators are not allowed.",
+    createdById: bilalId!,
+    sections: [
+      {
+        title: "Section A: Multiple choice questions",
+        type: "MCQ",
+        instructions: "Choose the correct answer.",
+        questions: [
+          mc("What is 7 × 8?", ["54", "56", "58", "64"], 1),
+          mc("The place value of 5 in 4,582 is:", ["5", "50", "500", "5000"], 2),
+          mc("Which fraction is equal to 1/2?", ["2/3", "3/6", "2/5", "4/9"], 1),
+          mc("The perimeter of a square with side 6 cm is:", ["12 cm", "24 cm", "36 cm", "18 cm"], 1),
+          mc("What is 1000 − 375?", ["625", "635", "725", "575"], 0),
+          mc("How many minutes are in 2 hours?", ["100", "120", "180", "90"], 1),
+          mc("Round 463 to the nearest ten.", ["460", "470", "500", "400"], 0),
+          mc("Which number is a multiple of 9?", ["28", "45", "52", "64"], 1),
+          mc("0.5 is the same as:", ["1/5", "1/2", "5/100", "5/1"], 1),
+          mc("The LCM of 4 and 6 is:", ["10", "12", "24", "2"], 1),
+        ],
+      },
+      {
+        title: "Section B: True or false",
+        type: "TRUE_FALSE",
+        questions: [tf("An angle of 90° is called a right angle.", true), tf("12 is a prime number.", false), tf("All squares are rectangles.", true), tf("3/4 is greater than 7/8.", false), tf("1 kilometre equals 100 metres.", false)],
+      },
+      {
+        title: "Section C: Fill in the blanks",
+        type: "FILL_BLANK",
+        questions: [fb("The sum of angles in a triangle is ____ degrees.", "180"), fb("25% of 80 is ____.", "20"), fb("9 × ____ = 72", "8"), fb("The next number in 5, 10, 15, ____ is 20.", "20"), fb("A polygon with 6 sides is called a ____.", "hexagon")],
+      },
+      {
+        title: "Section D: Short questions",
+        type: "SHORT",
+        instructions: "Attempt all questions. Each carries 3 marks.",
+        questions: Array.from({ length: 10 }, (_, i) => sq(`Solve: ${120 + i * 17} ÷ ${i + 2}. Write the quotient and remainder.`, 3, 2)),
+      },
+      {
+        title: "Section E: Long questions",
+        type: "LONG",
+        instructions: "Show all steps. Each question carries 6 marks.",
+        questions: [
+          sq("Find the HCF and LCM of 24 and 36.", 6, 8),
+          sq("Add: 3/4 + 5/8 + 1/2. Write the answer in simplest form.", 6, 8),
+          sq("Draw a rectangle of length 8 cm and width 5 cm. Find its area and perimeter.", 6, 8),
+          sq("A shopkeeper buys 12 pens at Rs. 35 each and sells them at Rs. 42 each. Find his total profit.", 6, 8),
+          sq("Convert 3.5 kg into grams and 2 hours 15 minutes into minutes.", 6, 6),
+        ],
+      },
+      {
+        title: "Section F: Word problems",
+        type: "CUSTOM",
+        instructions: "Solve the following word problems. Each carries 5 marks.",
+        questions: [
+          sq("A train covers 240 km in 4 hours. What is its speed per hour?", 5, 6),
+          sq("Sara has Rs. 500. She buys 3 notebooks at Rs. 85 each. How much money is left?", 5, 6),
+          sq("A tank holds 600 litres. If 3/5 of it is filled, how many litres are in the tank?", 5, 6),
+          sq("The ages of 4 friends are 10, 12, 11 and 11. Find their average age.", 5, 6),
+        ],
+      },
+    ],
+  });
+
+  // Grade 6 English: still being written.
+  await makePaper({
+    examId: finalTerm.examId,
+    gradeName: "Grade 6",
+    subject: "English",
+    status: "DRAFT",
+    durationMinutes: 180,
+    createdById: farahId!,
+    sections: [
+      {
+        title: "Section A: Multiple choice questions",
+        type: "MCQ",
+        instructions: "Choose the correct answer.",
+        questions: [mc("Which sentence is in the passive voice?", ["Ali ate the apple.", "The apple was eaten by Ali.", "Ali is eating.", "Ali will eat."], 1), mc("A synonym of 'rapid' is:", ["slow", "quick", "weak", "late"], 1), mc("Choose the correct spelling.", ["recieve", "receive", "receeve", "receve"], 1)],
+      },
+      { title: "Section B: Short questions", type: "SHORT", instructions: "Attempt any FIVE questions.", attempt: 5, questions: [sq("Define a simile and give an example.", 3, 3), sq("What is the difference between 'their' and 'there'?", 3, 3)] },
+    ],
+  });
+
+  // Grade 6 Science: returned by the admin with a note.
+  await makePaper({
+    examId: finalTerm.examId,
+    gradeName: "Grade 6",
+    subject: "Science",
+    status: "RETURNED",
+    durationMinutes: 180,
+    createdById: adminId,
+    reviewNote: "Section C should say 'attempt any 8', and MCQ 4 has two correct options. Please fix and resubmit.",
+    sections: [
+      {
+        title: "Section A: Multiple choice questions",
+        type: "MCQ",
+        questions: Array.from({ length: 10 }, (_, i) => mc(`Science MCQ ${i + 1}: which statement is correct?`, ["Option one", "Option two", "Option three", "Option four"], i % 4)),
+      },
+      { title: "Section B: True or false", type: "TRUE_FALSE", questions: Array.from({ length: 10 }, (_, i) => tf(`Statement ${i + 1} about plants and animals.`, i % 2 === 0)) },
+      { title: "Section C: Short questions", type: "SHORT", instructions: "Attempt any SEVEN questions.", attempt: 7, questions: Array.from({ length: 10 }, (_, i) => sq(`Short question ${i + 1}: explain briefly.`, 3, 3)) },
+      { title: "Section D: Long questions", type: "LONG", instructions: "Attempt any THREE questions.", attempt: 3, questions: Array.from({ length: 4 }, (_, i) => sq(`Long question ${i + 1}: describe in detail with a labelled diagram.`, 8, 12)) },
+      { title: "Section E: Diagrams and practical", type: "CUSTOM", instructions: "Draw and label neatly.", questions: Array.from({ length: 4 }, (_, i) => sq(`Draw a neat labelled diagram of item ${i + 1}.`, 8, 10)) },
+    ],
+  });
+
+  // Grade 7 Urdu monthly test: right-to-left, approved and printed for both sections (25 marks).
+  await makePaper({
+    examId: octTest.examId,
+    gradeName: "Grade 7",
+    subject: "Urdu",
+    status: "APPROVED",
+    durationMinutes: 60,
+    instructions: "تمام سوالات حل کیجیے۔ صاف اور خوش خط لکھیے۔",
+    createdById: adminId,
+    prints: [
+      { classId: g7a.id, classLabel: "Grade 7 A", copies: 13 },
+      { classId: g7b.id, classLabel: "Grade 7 B", copies: 13 },
+    ],
+    sections: [
+      {
+        title: "سوال نمبر 1: درست جواب کا انتخاب کیجیے",
+        type: "MCQ",
+        rtl: true,
+        instructions: "ہر سوال کا ایک نمبر ہے۔",
+        questions: [
+          mc("علامہ اقبال کا تعلق کس شہر سے تھا؟", ["لاہور", "سیالکوٹ", "کراچی", "ملتان"], 1),
+          mc("پاکستان کا قومی پھول کون سا ہے؟", ["گلاب", "چنبیلی", "سورج مکھی", "گیندا"], 1),
+          mc("'صبح' کا متضاد لفظ ہے:", ["رات", "شام", "دوپہر", "سویرا"], 1),
+          mc("'کتاب' کی جمع ہے:", ["کتابیں", "کتابے", "کتابان", "کتابات"], 0),
+          mc("اردو کا رسم الخط کون سا ہے؟", ["دیوناگری", "نستعلیق", "رومن", "گرمکھی"], 1),
+        ],
+      },
+      {
+        title: "سوال نمبر 2: مختصر جوابات لکھیے",
+        type: "SHORT",
+        rtl: true,
+        instructions: "کوئی سے چار سوالات حل کیجیے۔ ہر سوال کے دو نمبر ہیں۔",
+        attempt: 4,
+        questions: [
+          sq("اپنے وطن پاکستان کے بارے میں دو جملے لکھیے۔", 2, 3),
+          sq("'محنت' کا مطلب لکھیے۔", 2, 2),
+          sq("واحد لکھیے: کتابیں، بچے", 2, 2),
+          sq("اپنے پسندیدہ کھیل کا نام اور ایک وجہ لکھیے۔", 2, 3),
+          sq("اس جملے میں فعل پہچانیے: 'بچے باغ میں کھیل رہے ہیں۔'", 2, 2),
+        ],
+      },
+      {
+        title: "سوال نمبر 3: انگریزی جملوں کا اردو ترجمہ کیجیے",
+        type: "TRANSLATION",
+        instructions: "ہر سوال کے تین نمبر ہیں۔",
+        questions: [sq("Honesty is the best policy.", 3, 3), sq("We should respect our teachers.", 3, 3)],
+      },
+      {
+        title: "سوال نمبر 4: خط لکھیے",
+        type: "WRITING",
+        rtl: true,
+        questions: [sq("اپنے دوست کو سالگرہ کی دعوت کا خط لکھیے۔", 6, 12)],
+      },
+    ],
+  });
 
   // Results via the real results engine.
   const settings = new ExamSettingsService(prisma as unknown as PrismaService);

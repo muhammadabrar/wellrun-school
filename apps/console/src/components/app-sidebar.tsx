@@ -3,6 +3,7 @@ import type { ComponentProps } from "react";
 import {
   BanknoteIcon,
   BookMarkedIcon,
+  FileTextIcon,
   ListTreeIcon,
   BarChart3Icon,
   BookOpenIcon,
@@ -107,6 +108,7 @@ const examItems: NavItem[] = [
       { title: "Viva", url: "/exams/assessments/viva" },
     ],
   },
+  { title: "Question papers", url: "/exams/question-papers", icon: <FileTextIcon /> },
   {
     title: "Marks",
     url: "/exams/marks",

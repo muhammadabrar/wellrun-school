@@ -15,6 +15,7 @@ import { ExamsModule } from "./exams/exams.module";
 import { FeesModule } from "./fees/fees.module";
 import { HealthController } from "./health.controller";
 import { PayrollModule } from "./payroll/payroll.module";
+import { QuestionPapersModule } from "./question-papers/question-papers.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { SchoolsModule } from "./schools/schools.module";
 import { SessionModule } from "./session/session.module";
@@ -49,6 +50,7 @@ import { TraceMiddleware } from "./trace/trace.middleware";
     StaffModule,
     ExamsModule,
     SyllabusModule,
+    QuestionPapersModule,
     PayrollModule,
     ClaimsModule,
     AdminModule,

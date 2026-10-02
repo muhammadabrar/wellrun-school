@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EXAM_KIND_LABELS } from "@wellrun/shared";
 import { Badge, Dialog, EmptyState, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
-import { BookMarkedIcon, CalendarCog, CircleAlert, ClipboardPen, Copy, Pencil, Plus, Printer, Trash2, Trophy } from "lucide-react";
+import { BookMarkedIcon, FileTextIcon, CalendarCog, CircleAlert, ClipboardPen, Copy, Pencil, Plus, Printer, Trash2, Trophy } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ExamStatusBadge, MarkingProgress, PaperStatusBadge, dateRange, formatDayShort, isExamAdmin } from "@/components/exams/exam-ui";
@@ -15,7 +15,9 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { QuestionPaperStatusBadge } from "@/components/question-papers/status";
 import { examKeys, examsApi, type ExamContext, type ExamDetail, type ExamPaperRow } from "@/lib/exams-api";
+import { questionPaperKeys, questionPapersApi } from "@/lib/question-papers-api";
 
 const TABS = [
   { id: "overview", label: "Overview" },
@@ -528,6 +530,7 @@ function PapersTab({ exam, onToast }: { exam: ExamDetail; onToast: (message: str
                 </div>
                 <div className="flex items-center gap-2">
                   <PaperStatusBadge status={p.status} />
+                  {p.canMark || admin ? <QuestionPaperButton paper={p} /> : null}
                   {p.canMark || admin ? (
                     <Button size="sm" variant="ghost" icon={<BookMarkedIcon />} onClick={() => setCoveragePaper(p.id)}>
                       {p.topics.length ? "Syllabus" : admin ? "Add syllabus" : "Syllabus"}
@@ -547,5 +550,33 @@ function PapersTab({ exam, onToast }: { exam: ExamDetail; onToast: (message: str
       {!admin ? <FieldDescription>You can enter marks only for subjects you teach.</FieldDescription> : null}
       <PaperCoverageSheet paperId={coveragePaper} canEdit={admin} onClose={() => setCoveragePaper(null)} onSaved={onToast} />
     </div>
+  );
+}
+
+/** Opens this grade + subject's question paper, or starts one (every section of the grade shares it). */
+function QuestionPaperButton({ paper }: { paper: ExamPaperRow }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const start = useMutation({
+    mutationFn: () => questionPapersApi.create({ examPaperId: paper.id }),
+    onSuccess: async (out) => {
+      await queryClient.invalidateQueries({ queryKey: questionPaperKeys.root });
+      navigate(`/exams/question-papers/${out.id}`);
+    },
+  });
+  if (paper.questionPaper) {
+    return (
+      <span className="flex items-center gap-1.5">
+        <QuestionPaperStatusBadge status={paper.questionPaper.status} />
+        <Button size="sm" variant="ghost" icon={<FileTextIcon />} render={<Link to={`/exams/question-papers/${paper.questionPaper.id}`} />}>
+          Question paper
+        </Button>
+      </span>
+    );
+  }
+  return (
+    <Button size="sm" variant="ghost" icon={<FileTextIcon />} loading={start.isPending} onClick={() => start.mutate()} title={start.isError ? (start.error as Error).message : undefined}>
+      Write question paper
+    </Button>
   );
 }

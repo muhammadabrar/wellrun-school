@@ -55,6 +55,9 @@ const FeeSettingsPage = lazyPage(() => import("./pages/fees/Settings"), "FeeSett
 const SyllabusOverviewPage = lazyPage(() => import("./pages/syllabus/Overview"), "SyllabusOverviewPage");
 const SyllabusListPage = lazyPage(() => import("./pages/syllabus/List"), "SyllabusListPage");
 const SyllabusEditorPage = lazyPage(() => import("./pages/syllabus/Editor"), "SyllabusEditorPage");
+const QuestionPapersPage = lazyPage(() => import("./pages/exams/QuestionPapers"), "QuestionPapersPage");
+const QuestionPaperEditorPage = lazyPage(() => import("./pages/exams/QuestionPaperEditor"), "QuestionPaperEditorPage");
+const QuestionPaperPrintPage = lazyPage(() => import("./pages/exams/QuestionPaperPrint"), "QuestionPaperPrintPage");
 const ExamsDashboardPage = lazyPage(() => import("./pages/exams/Dashboard"), "ExamsDashboardPage");
 const ExamsListPage = lazyPage(() => import("./pages/exams/List"), "ExamsListPage");
 const ExamCreatePage = lazyPage(() => import("./pages/exams/New"), "ExamCreatePage");
@@ -157,6 +160,9 @@ export function App() {
         <Route path="/exams" element={<ExamsDashboardPage />} />
         <Route path="/exams/list" element={<ExamsListPage />} />
         <Route path="/exams/new" element={<ExamCreatePage />} />
+        <Route path="/exams/question-papers" element={<QuestionPapersPage />} />
+        <Route path="/exams/question-papers/:id" element={<QuestionPaperEditorPage />} />
+        <Route path="/exams/question-papers/:id/print" element={<QuestionPaperPrintPage />} />
         <Route path="/exams/calendar" element={<ExamCalendarPage />} />
         <Route path="/exams/assessments" element={<Navigate to="/exams/assessments/quizzes" replace />} />
         <Route path="/exams/assessments/:kind" element={<AssessmentsPage />} />

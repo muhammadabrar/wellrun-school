@@ -229,6 +229,7 @@ model School {
   attendanceSettings  AttendanceSettings?
   holidays            Holiday[]
   syllabi             Syllabus[]
+  questionPapers      QuestionPaper[]
 }
 
 model SchoolProfile {
@@ -1026,17 +1027,18 @@ model CampusMembership {
 }
 
 model Subject {
-  id         String         @id @default(cuid())
-  schoolId   String
-  school     School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  name       String
-  code       String         @default("")
-  enabled    Boolean        @default(true)
-  classes    ClassSubject[]
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-  examPapers ExamPaper[]
-  syllabi    Syllabus[]
+  id             String          @id @default(cuid())
+  schoolId       String
+  school         School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name           String
+  code           String          @default("")
+  enabled        Boolean         @default(true)
+  classes        ClassSubject[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  examPapers     ExamPaper[]
+  syllabi        Syllabus[]
+  questionPapers QuestionPaper[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -1463,6 +1465,7 @@ model Exam {
   results             StudentResult[]
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
+  questionPapers      QuestionPaper[]
 
   @@index([schoolId, yearId, kind])
   @@index([schoolId, startsOn])
@@ -1660,4 +1663,111 @@ model ExamPaperTopic {
 
   @@id([paperId, topicId])
   @@index([topicId])
+}
+
+enum QuestionPaperStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  RETURNED
+}
+
+enum QuestionType {
+  MCQ
+  TRUE_FALSE
+  FILL_BLANK
+  SHORT
+  LONG
+  TRANSLATION
+  WRITING
+  COMPREHENSION
+  MATCH
+  CUSTOM
+}
+
+/// The question paper for one exam, grade and subject. Every section of the grade sits the same paper.
+model QuestionPaper {
+  id              String               @id @default(cuid())
+  schoolId        String
+  school          School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  examId          String
+  exam            Exam                 @relation(fields: [examId], references: [id], onDelete: Cascade)
+  gradeName       String
+  subjectId       String
+  subject         Subject              @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  title           String               @default("")
+  instructions    String               @default("")
+  durationMinutes Int                  @default(60)
+  status          QuestionPaperStatus  @default(DRAFT)
+  /// Marks a student can score: recalculated on every change (attempt-any-N sections count N questions).
+  totalMarks      Float                @default(0)
+  createdById     String?
+  updatedById     String?
+  submittedAt     DateTime?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  reviewNote      String               @default("")
+  sections        QuestionSection[]
+  prints          QuestionPaperPrint[]
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@unique([examId, gradeName, subjectId])
+  @@index([schoolId, status])
+}
+
+model QuestionSection {
+  id           String        @id @default(cuid())
+  paperId      String
+  paper        QuestionPaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  title        String
+  type         QuestionType
+  instructions String        @default("")
+  /// Reading passage for COMPREHENSION sections.
+  passage      String        @default("")
+  /// Right-to-left text (Urdu, Arabic).
+  rtl          Boolean       @default(false)
+  /// "Attempt any N": students answer N of the questions.
+  attemptCount Int?
+  sortOrder    Int           @default(0)
+  questions    Question[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([paperId, sortOrder])
+}
+
+model Question {
+  id          String          @id @default(cuid())
+  sectionId   String
+  section     QuestionSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  text        String
+  marks       Float           @default(1)
+  /// MCQ: string[] of options. MATCH: [{ left, right }] pairs.
+  options     Json            @default("[]")
+  /// MCQ: option index ("0", "1", …). TRUE_FALSE: "TRUE" or "FALSE". Others: model answer for the answer key.
+  answer      String          @default("")
+  /// Ruled answer lines printed under the question (0 = none).
+  answerLines Int             @default(0)
+  sortOrder   Int             @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([sectionId, sortOrder])
+}
+
+/// Every time an admin prints a paper: who, how many copies, for which class.
+model QuestionPaperPrint {
+  id          String        @id @default(cuid())
+  schoolId    String
+  paperId     String
+  paper       QuestionPaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  classId     String?
+  classLabel  String        @default("")
+  copies      Int
+  answerKey   Boolean       @default(false)
+  printedById String
+  createdAt   DateTime      @default(now())
+
+  @@index([paperId])
 }

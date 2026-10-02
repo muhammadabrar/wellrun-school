@@ -87,6 +87,15 @@ export function ExamsDashboardPage() {
             )}
           </dl>
 
+          {admin && data.pendingQuestionPapers ? (
+            <p className="rounded-2xl bg-orange/10 p-3 text-sm text-orange" role="status">
+              {data.pendingQuestionPapers} question {data.pendingQuestionPapers === 1 ? "paper is" : "papers are"} waiting for your approval.{" "}
+              <Link to="/exams/question-papers?status=SUBMITTED" className="underline">
+                Review {data.pendingQuestionPapers === 1 ? "it" : "them"}
+              </Link>
+            </p>
+          ) : null}
+
           <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
             <section className="rounded-3xl bg-surface p-5" aria-labelledby="active-exams">
               <div className="flex items-center justify-between gap-3">
