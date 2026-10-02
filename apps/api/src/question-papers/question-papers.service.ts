@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Inject, Inj
 import type { Prisma, QuestionType } from "@prisma/client";
 import {
   classSortIndex,
+  normalizeQuestion,
   paginate,
   paperMarks,
   questionOrderSchema,
@@ -30,7 +31,6 @@ import { assertCanEditSyllabus, canEditSyllabus, syllabusScope } from "../syllab
 const isoDate = (value: Date | null) => (value ? value.toISOString().slice(0, 10) : null);
 const classLabel = (c: { name: string; section: string }) => (c.section ? `${c.name} ${c.section}` : c.name);
 
-type QuestionLike = { text: string; marks: number; options?: unknown; answer?: string; answerLines?: number };
 
 export type QuestionPaperListQuery = { examId?: string; status?: string; q?: string; page?: string; pageSize?: string };
 
@@ -98,24 +98,6 @@ export class QuestionPapersService {
   private async recalc(tx: Prisma.TransactionClient | PrismaService, paperId: string, actorId?: string) {
     const sections = await tx.questionSection.findMany({ where: { paperId }, select: { attemptCount: true, questions: { select: { marks: true } } } });
     await tx.questionPaper.update({ where: { id: paperId }, data: { totalMarks: paperMarks(sections), ...(actorId ? { updatedById: actorId } : {}) }, select: { id: true } });
-  }
-
-  /** Keeps option/answer shapes right for the section's type, so a stray field never leaks into the printed paper. */
-  private normalize(type: QuestionType, q: QuestionLike) {
-    const base = { text: q.text.trim(), marks: q.marks, answerLines: q.answerLines ?? 0 };
-    if (type === "MCQ") {
-      const options = ((q.options as unknown[]) ?? []).map((o) => (typeof o === "string" ? o.trim() : "")).slice(0, 6);
-      return { ...base, options, answer: q.answer ?? "", answerLines: 0 };
-    }
-    if (type === "MATCH") {
-      const pairs = ((q.options as { left?: string; right?: string }[]) ?? [])
-        .filter((p) => p && typeof p === "object")
-        .map((p) => ({ left: String(p.left ?? "").trim(), right: String(p.right ?? "").trim() }))
-        .slice(0, 12);
-      return { ...base, options: pairs, answer: "", answerLines: 0 };
-    }
-    if (type === "TRUE_FALSE") return { ...base, options: [], answer: q.answer === "TRUE" || q.answer === "FALSE" ? q.answer : "", answerLines: 0 };
-    return { ...base, options: [], answer: (q.answer ?? "").trim() };
   }
 
   /** Who may change a paper, and whether its status allows it. Approved papers are locked until an admin reopens them. */
@@ -459,7 +441,7 @@ export class QuestionPapersService {
     const start = (last._max.sortOrder ?? -1) + 1;
     await this.prisma.question.createMany({
       data: questions.map((q, i) => {
-        const n = this.normalize(section.type, q);
+        const n = normalizeQuestion(section.type, q);
         return { sectionId, text: n.text, marks: n.marks, options: n.options as Prisma.InputJsonValue, answer: n.answer, answerLines: n.answerLines, sortOrder: start + i };
       }),
     });
@@ -471,7 +453,7 @@ export class QuestionPapersService {
     await assertWritableSchool(this.prisma, schoolId);
     const patch = questionUpdateSchema.parse(body);
     const question = await this.questionForWrite(schoolId, questionId, user, teacher);
-    const merged = this.normalize(question.section.type, {
+    const merged = normalizeQuestion(question.section.type, {
       text: patch.text ?? question.text,
       marks: patch.marks ?? question.marks,
       options: patch.options ?? question.options,

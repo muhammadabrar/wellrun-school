@@ -1,4 +1,4 @@
-import { paperMarks, questionPaperPrintSchema, questionPaperReviewSchema, questionsCreateSchema, sectionMarks, seededOrder, suggestedCopies, validatePaper, type PaperSection } from "@wellrun/shared";
+import { normalizeQuestion, paperMarks, questionPaperPrintSchema, questionPaperReviewSchema, questionsCreateSchema, sectionMarks, seededOrder, suggestedCopies, validatePaper, type PaperSection } from "@wellrun/shared";
 import { describe, expect, it } from "vitest";
 
 const mcq = (marks = 1, answer = "1", options: unknown = ["a", "b", "c", "d"]) => ({ text: "Q", marks, options, answer });
@@ -86,5 +86,24 @@ describe("schemas", () => {
     expect(() => questionsCreateSchema.parse({ questions: [] })).toThrow();
     expect(() => questionsCreateSchema.parse({ questions: [{ text: "Q", marks: 0 }] })).toThrow();
     expect(questionsCreateSchema.parse({ questions: [{ text: "Q", marks: 2 }] }).questions[0].options).toEqual([]);
+  });
+});
+
+describe("normalizeQuestion", () => {
+  it("keeps only the fields that belong to the question type", () => {
+    const mcq = normalizeQuestion("MCQ", { text: " Capital of Pakistan? ", marks: 1, options: [" Lahore ", "Islamabad", 5], answer: "1", answerLines: 3 });
+    expect(mcq).toEqual({ text: "Capital of Pakistan?", marks: 1, options: ["Lahore", "Islamabad", ""], answer: "1", answerLines: 0 });
+
+    const match = normalizeQuestion("MATCH", { text: "Match", marks: 2, options: [{ left: " a ", right: "1" }, null as never], answer: "stray" });
+    expect(match.options).toEqual([{ left: "a", right: "1" }]);
+    expect(match.answer).toBe("");
+
+    expect(normalizeQuestion("TRUE_FALSE", { text: "Sky is blue", marks: 1, answer: "maybe" }).answer).toBe("");
+    expect(normalizeQuestion("TRUE_FALSE", { text: "Sky is blue", marks: 1, answer: "TRUE" }).answer).toBe("TRUE");
+  });
+
+  it("keeps answer lines for written types and drops options", () => {
+    const short = normalizeQuestion("SHORT", { text: "Define a noun.", marks: 2, options: ["x"], answer: " A naming word ", answerLines: 4 });
+    expect(short).toEqual({ text: "Define a noun.", marks: 2, options: [], answer: "A naming word", answerLines: 4 });
   });
 });

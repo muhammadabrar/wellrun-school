@@ -99,6 +99,26 @@ export const questionPaperPrintSchema = z.object({
   answerKey: z.boolean().default(false),
 });
 
+export type QuestionLike = { text: string; marks: number; options?: unknown; answer?: string; answerLines?: number };
+
+/** Keeps option/answer shapes right for a section's type, so a stray field never leaks into a printed paper or the question bank. */
+export function normalizeQuestion(type: QuestionType, q: QuestionLike) {
+  const base = { text: q.text.trim(), marks: q.marks, answerLines: q.answerLines ?? 0 };
+  if (type === "MCQ") {
+    const options = ((q.options as unknown[]) ?? []).map((o) => (typeof o === "string" ? o.trim() : "")).slice(0, 6);
+    return { ...base, options, answer: q.answer ?? "", answerLines: 0 };
+  }
+  if (type === "MATCH") {
+    const pairs = ((q.options as { left?: string; right?: string }[]) ?? [])
+      .filter((p) => p && typeof p === "object")
+      .map((p) => ({ left: String(p.left ?? "").trim(), right: String(p.right ?? "").trim() }))
+      .slice(0, 12);
+    return { ...base, options: pairs, answer: "", answerLines: 0 };
+  }
+  if (type === "TRUE_FALSE") return { ...base, options: [], answer: q.answer === "TRUE" || q.answer === "FALSE" ? q.answer : "", answerLines: 0 };
+  return { ...base, options: [], answer: (q.answer ?? "").trim() };
+}
+
 // Marks and validation — used by the server and by the builder so both agree --------------------------------
 
 export type PaperQuestion = { id?: string; text: string; marks: number; options?: unknown; answer?: string };
