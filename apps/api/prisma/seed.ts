@@ -252,6 +252,8 @@ async function main() {
       "OtpChallenge",
       "DiaryEntry",
       "Notice",
+      "StaffAttendance",
+      "StaffLeave",
       "AdmissionTestScore",
       "SchoolDocument",
       "CommunicationLog",

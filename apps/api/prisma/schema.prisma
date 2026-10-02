@@ -234,6 +234,8 @@ model School {
   questionPapers      QuestionPaper[]
   diaryEntries        DiaryEntry[]
   notices             Notice[]
+  staffAttendance     StaffAttendance[]
+  staffLeaves         StaffLeave[]
 }
 
 model SchoolProfile {
@@ -501,6 +503,9 @@ model Staff {
 
   diaryEntries DiaryEntry[]
 
+  attendance StaffAttendance[]
+  leaves     StaffLeave[]
+
   @@index([schoolId])
   @@index([schoolId, cnic])
   @@index([schoolId, status])
@@ -613,19 +618,22 @@ model AttendanceRecord {
 }
 
 model AttendanceSettings {
-  id                 String   @id @default(cuid())
-  schoolId           String   @unique
-  school             School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  id                    String   @id @default(cuid())
+  schoolId              String   @unique
+  school                School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   /// 0 = Sunday … 6 = Saturday.
-  workingWeekdays    Int[]    @default([1, 2, 3, 4, 5, 6])
-  lowThresholdPct    Float    @default(75)
+  workingWeekdays       Int[]    @default([1, 2, 3, 4, 5, 6])
+  lowThresholdPct       Float    @default(75)
   /// Days before today a teacher may still change marks. 0 = today only.
-  teacherEditDays    Int      @default(0)
-  lateCountsPresent  Boolean  @default(true)
+  teacherEditDays       Int      @default(0)
+  lateCountsPresent     Boolean  @default(true)
   /// When false, LEAVE/EXCUSED days are left out of the percentage instead of counting as absent.
-  leaveCountsPresent Boolean  @default(false)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  leaveCountsPresent    Boolean  @default(false)
+  /// When staff are expected in, HH:MM Pakistan time. A check-in after this plus the grace period is late.
+  staffStartTime        String   @default("08:00")
+  staffLateGraceMinutes Int      @default(15)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 model Holiday {
@@ -1902,4 +1910,78 @@ model OtpChallenge {
   createdAt  DateTime  @default(now())
 
   @@index([phoneNorm, createdAt])
+}
+
+enum StaffAttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  ON_LEAVE
+}
+
+enum StaffAttendanceSource {
+  /// Recorded automatically the first time the person used the system that day.
+  LOGIN
+  /// Written by the nightly job for a working day with no activity.
+  AUTO_ABSENT
+  /// Covered by approved leave.
+  LEAVE
+}
+
+/// One row per staff member per day. Nobody edits these by hand: they come from sign-in, the nightly job and approved leave.
+model StaffAttendance {
+  id          String                @id @default(cuid())
+  schoolId    String
+  school      School                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  staffId     String
+  staff       Staff                 @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  date        DateTime              @db.Date
+  checkInAt   DateTime?
+  status      StaffAttendanceStatus
+  source      StaffAttendanceSource
+  lateMinutes Int                   @default(0)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@unique([staffId, date])
+  @@index([schoolId, date])
+}
+
+enum LeaveType {
+  CASUAL
+  SICK
+  ANNUAL
+  UNPAID
+  OTHER
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// A leave request from a staff member, decided by an admin.
+model StaffLeave {
+  id           String      @id @default(cuid())
+  schoolId     String
+  school       School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  staffId      String
+  staff        Staff       @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  type         LeaveType
+  fromOn       DateTime    @db.Date
+  toOn         DateTime    @db.Date
+  /// School days the leave uses (weekends and holidays inside it are free). Fixed when it is requested.
+  workingDays  Int         @default(0)
+  reason       String
+  status       LeaveStatus @default(PENDING)
+  decidedById  String?
+  decidedAt    DateTime?
+  decisionNote String      @default("")
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([schoolId, status])
+  @@index([staffId, fromOn])
 }

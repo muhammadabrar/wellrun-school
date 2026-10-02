@@ -1559,6 +1559,51 @@ export async function seedDemoSchool(ctx: Ctx) {
     ],
   });
 
+  // Staff attendance and leave ------------------------------------------------------------------------------
+  console.log("  demo: staff attendance, leave");
+  const dayBefore = (n: number) => new Date(today.getTime() - n * 86_400_000);
+  const staffDays: Date[] = [];
+  for (let back = 1; staffDays.length < 12 && back < 30; back += 1) if (dayBefore(back).getUTCDay() !== 0) staffDays.push(dayBefore(back));
+  const person = (name: string) => byName.get(name)!.id;
+  const leaveRows: Prisma.StaffLeaveCreateManyInput[] = [
+    { schoolId, staffId: person("Hina Tariq"), type: "SICK", fromOn: staffDays[3], toOn: staffDays[2], workingDays: 2, reason: "Fever and a doctor's rest.", status: "APPROVED", decidedById: adminId, decidedAt: new Date(staffDays[4].getTime() + 12 * 3_600_000), decisionNote: "Get well soon." },
+    { schoolId, staffId: person("Nadia Perveen"), type: "CASUAL", fromOn: staffDays[7], toOn: staffDays[7], workingDays: 1, reason: "Family function.", status: "APPROVED", decidedById: adminId, decidedAt: new Date(staffDays[8].getTime() + 12 * 3_600_000) },
+    { schoolId, staffId: person("Kamran Ashraf"), type: "ANNUAL", fromOn: new Date(today.getTime() + 6 * 86_400_000), toOn: new Date(today.getTime() + 8 * 86_400_000), workingDays: 3, reason: "Travelling for a family wedding.", status: "APPROVED", decidedById: adminId, decidedAt: new Date(today.getTime() - 3_600_000) },
+    { schoolId, staffId: person("Waqar Ahmed"), type: "CASUAL", fromOn: new Date(today.getTime() + 2 * 86_400_000), toOn: new Date(today.getTime() + 2 * 86_400_000), workingDays: 1, reason: "Need to renew my passport.", status: "PENDING" },
+    { schoolId, staffId: person("Rubina Akhtar"), type: "SICK", fromOn: new Date(today.getTime() + 1 * 86_400_000), toOn: new Date(today.getTime() + 3 * 86_400_000), workingDays: 3, reason: "Dental surgery and recovery.", status: "PENDING" },
+    { schoolId, staffId: person("Usman Ghani"), type: "CASUAL", fromOn: staffDays[5], toOn: staffDays[5], workingDays: 1, reason: "Personal work.", status: "REJECTED", decidedById: adminId, decidedAt: new Date(staffDays[6].getTime() + 12 * 3_600_000), decisionNote: "Exams that day. Please pick another date." },
+  ];
+  await prisma.staffLeave.createMany({ data: leaveRows });
+  const away = leaveRows.filter((l) => l.status === "APPROVED");
+  const onLeave = (staffId: string, day: Date) => away.some((l) => l.staffId === staffId && (l.fromOn as Date) <= day && day <= (l.toOn as Date));
+  const staffAttendance: Prisma.StaffAttendanceCreateManyInput[] = [];
+  for (const day of staffDays) {
+    for (const s of staff) {
+      if (onLeave(s.id, day)) {
+        staffAttendance.push({ schoolId, staffId: s.id, date: day, status: "ON_LEAVE", source: "LEAVE" });
+        continue;
+      }
+      const roll = rand();
+      if (roll < 0.05) {
+        staffAttendance.push({ schoolId, staffId: s.id, date: day, status: "ABSENT", source: "AUTO_ABSENT" });
+        continue;
+      }
+      const late = roll > 0.92;
+      // Pakistan time is UTC+5: the instant is midnight UTC plus the local minutes minus five hours.
+      const minutes = late ? 8 * 60 + 20 + Math.floor(rand() * 35) : 7 * 60 + 35 + Math.floor(rand() * 40);
+      staffAttendance.push({
+        schoolId,
+        staffId: s.id,
+        date: day,
+        checkInAt: new Date(day.getTime() + minutes * 60_000 - 5 * 3_600_000),
+        status: minutes > 8 * 60 + 15 ? "LATE" : "PRESENT",
+        source: "LOGIN",
+        lateMinutes: minutes > 8 * 60 + 15 ? minutes - 8 * 60 : 0,
+      });
+    }
+  }
+  await chunked(staffAttendance, 500, (part) => prisma.staffAttendance.createMany({ data: part }));
+
   // Notes, documents, audit, sequences ---------------------------------------------------------------------------
   const first = students[0];
   await prisma.communicationLog.createMany({
