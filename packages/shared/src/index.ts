@@ -742,6 +742,7 @@ export * from "./syllabus";
 export * from "./question-papers";
 export * from "./diary";
 export * from "./parent";
+export * from "./reports";
 export * from "./attendance";
 export * from "./dashboard";
 export * from "./paging";

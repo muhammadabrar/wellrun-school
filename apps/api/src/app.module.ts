@@ -19,6 +19,7 @@ import { NoticesModule } from "./notices/notices.module";
 import { ParentModule } from "./parent/parent.module";
 import { PayrollModule } from "./payroll/payroll.module";
 import { QuestionPapersModule } from "./question-papers/question-papers.module";
+import { ReportsModule } from "./reports/reports.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { SchoolsModule } from "./schools/schools.module";
 import { SessionModule } from "./session/session.module";
@@ -57,6 +58,7 @@ import { TraceMiddleware } from "./trace/trace.middleware";
     DiaryModule,
     NoticesModule,
     ParentModule,
+    ReportsModule,
     PayrollModule,
     ClaimsModule,
     AdminModule,

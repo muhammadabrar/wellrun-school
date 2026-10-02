@@ -134,6 +134,33 @@ The dashboard is one request (`GET /console/dashboard`) and every number links t
 
 ---
 
+## 3b. Reports hub (`/reports`, school admin only)
+
+Open **Reports** in the sidebar. Every report takes its own dates and class, and can be printed or downloaded.
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| R1 | Open **Reports** | Ratio analysis card on top, then reports grouped as Students, Attendance, Fees, Exams, Staff and payroll; the search box filters by word |
+| R2 | Teacher opens `/reports` or calls the API | Refused (403): reports are for the school admin |
+| R3 | Open **Strength by class** | One row per class with boys, girls and total; totals row; bar for each class; matches the Students list counts |
+| R4 | Open **Fee collection**, switch By month / By day / By payment method / By class | Rows regroup; amounts add up to the same total each time; credit applied from a student's balance is not counted as money received |
+| R5 | Void or refund a payment, then open **Voided and refunded payments** for today | It appears with its reversal date; **Fee collection** no longer counts it |
+| R6 | **Outstanding fees by age** | Five age bands; the total equals the unpaid amount on the Fees overview; unpaid bills not yet due sit in "Not yet due" |
+| R7 | **Defaulters** with a class chosen | Only that class; biggest balance first; guardian phone shown; days overdue match the oldest due date |
+| R8 | **Students below the attendance line** with the limit left blank, then 90 | Blank uses the school's attendance limit; a higher limit lists more students; lowest attendance first |
+| R9 | **Attendance by class** for a month | Percentages follow the school's rules for late and leave days (same as the Attendance reports page) |
+| R10 | **Class results** and **Subject results** | Open on the newest exam; choosing another exam or term updates both; with no results yet, a clear "No results have been calculated yet" |
+| R11 | **Payroll cost by month** for the last six months | A row per month even with no payslips; Not yet paid = net pay minus paid |
+| R12 | **Payroll by department** for a month | One row per department; staff with no department appear as "No department" |
+| R13 | Download **Excel** and **CSV** on a long report (for example Guardian directory) | The file has every row, not just the 50 on screen; numbers are numbers in Excel; the CSV opens with Urdu names intact |
+| R14 | **Print / PDF** | Only the report prints (no sidebar), with its title, dates and every row, not just the current page |
+| R15 | A range whose start is after its end, or over two years | A clear message, not a blank page |
+| R16 | Switch the campus or academic year in the header | Reports refresh for that campus and year |
+| R17 | **Ratio analysis** for this month | Nine cards; each shows the value, a Good / Watch / Needs attention label, and the working (for example "Students 840 ÷ Teachers 20"); a brand-new school shows dashes, never NaN |
+| R18 | Cross-check ratios | Students per teacher equals active students divided by teachers who have a class or lesson this year; Fee collection equals paid divided by billed for bills issued in the range |
+| R19 | Presets (This month, Last month, Last 3 months, This year) | Dates change and the cards refresh |
+| R20 | Export an audited report | Settings → audit shows "report_exported" with the row count |
+
 ## 4. People
 
 ### 4.1 Admissions
@@ -345,6 +372,7 @@ Try each row; the "No" cells matter most.
 | Students | All | Own classes | No | No |
 | Staff / Payroll | Yes | Own portal + payslips only | No | No |
 | Attendance | All + settings | Own classes, edit window applies | No | No |
+| Reports and ratio analysis | Yes | No (refused) | No | No |
 | Diary | Read all, remove any | Write for own classes and subjects | No | Reads it in the parent portal |
 | Notices | Write, pin, delete | Read those that reach their classes | No | Reads them in the parent portal |
 | Exams | Everything | Own subjects: marks + correction requests | No | No |

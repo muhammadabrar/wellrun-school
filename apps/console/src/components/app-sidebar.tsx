@@ -4,6 +4,7 @@ import {
   BanknoteIcon,
   BookMarkedIcon,
   FileTextIcon,
+  FileChartColumnIcon as FileBarChartIcon,
   ListTreeIcon,
   BarChart3Icon,
   BookOpenIcon,
@@ -40,7 +41,18 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } fr
  * look at the school (Overview), deal with people, run the school day, examine, handle money,
  * and touch one-off setup last. Things used daily sit above things configured once.
  */
-const overviewItems: NavItem[] = [{ title: "Dashboard", url: "/", icon: <LayoutDashboardIcon />, end: true }];
+const overviewItems: NavItem[] = [
+  { title: "Dashboard", url: "/", icon: <LayoutDashboardIcon />, end: true },
+  {
+    title: "Reports",
+    url: "/reports",
+    icon: <FileBarChartIcon />,
+    items: [
+      { title: "All reports", url: "/reports", end: true },
+      { title: "Ratio analysis", url: "/reports/ratios" },
+    ],
+  },
+];
 
 const peopleItems: NavItem[] = [
   {
