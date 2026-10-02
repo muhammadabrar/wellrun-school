@@ -145,6 +145,8 @@ model User {
   generatedReceipts Receipt[]              @relation("ReceiptGenerator")
   staff             Staff?
 
+  notices Notice[]
+
   @@index([schoolId])
 }
 
@@ -230,6 +232,8 @@ model School {
   holidays            Holiday[]
   syllabi             Syllabus[]
   questionPapers      QuestionPaper[]
+  diaryEntries        DiaryEntry[]
+  notices             Notice[]
 }
 
 model SchoolProfile {
@@ -328,6 +332,8 @@ model AcademicYear {
   studentResults StudentResult[]
   syllabi        Syllabus[]
 
+  diaryEntries DiaryEntry[]
+
   @@index([schoolId])
 }
 
@@ -351,6 +357,8 @@ model Class {
   updatedAt      DateTime               @updatedAt
   examPapers     ExamPaper[]
   studentResults StudentResult[]
+
+  diaryEntries DiaryEntry[]
 
   @@unique([schoolId, yearId, campusId, name, section])
   @@index([schoolId])
@@ -402,7 +410,14 @@ model Guardian {
   school       School                 @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   name         String
   phone        String
-  cnic         String                 @default("")
+  /**
+   * Digits-only, 92-prefixed form of phone. One guardian per number per school; parents log in with it.
+   */
+  phoneNorm    String
+  /**
+   * Canonical 00000-0000000-0 when 13 digits. Null when unknown; unique per school otherwise.
+   */
+  cnic         String?
   email        String?
   relation     String
   extra        Json                   @default("{}")
@@ -412,9 +427,10 @@ model Guardian {
   createdAt    DateTime               @default(now())
   updatedAt    DateTime               @updatedAt
 
+  @@unique([schoolId, phoneNorm])
+  @@unique([schoolId, cnic])
   @@index([schoolId])
-  @@index([schoolId, phone])
-  @@index([schoolId, cnic])
+  @@index([phoneNorm])
 }
 
 model StudentGuardian {
@@ -482,6 +498,8 @@ model Staff {
   statusChanges    StaffStatusChange[]
   payslips         Payslip[]
   invigilations    ExamPaper[]
+
+  diaryEntries DiaryEntry[]
 
   @@index([schoolId])
   @@index([schoolId, cnic])
@@ -892,6 +910,10 @@ model Payment {
   receiptNo       String
   requestId       String?
   paidAt          DateTime            @default(now())
+  /**
+   * When a completed payment was voided or refunded; null while it still stands.
+   */
+  reversedAt      DateTime?
   allocations     PaymentAllocation[]
   receipt         Receipt?
   credits         StudentCredit[]
@@ -1006,6 +1028,9 @@ model Campus {
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
 
+  diaryEntries DiaryEntry[]
+  notices      Notice[]
+
   @@unique([schoolId, code])
   @@index([schoolId])
 }
@@ -1039,6 +1064,8 @@ model Subject {
   examPapers     ExamPaper[]
   syllabi        Syllabus[]
   questionPapers QuestionPaper[]
+
+  diaryEntries DiaryEntry[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -1770,4 +1797,109 @@ model QuestionPaperPrint {
   createdAt   DateTime      @default(now())
 
   @@index([paperId])
+}
+
+enum DiaryKind {
+  HOMEWORK
+  CLASSWORK
+  NOTE
+}
+
+/// What a teacher wants a class (and its parents) to know for a day: homework, classwork or a note.
+model DiaryEntry {
+  id            String       @id @default(cuid())
+  schoolId      String
+  school        School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  campusId      String?
+  campus        Campus?      @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  yearId        String
+  year          AcademicYear @relation(fields: [yearId], references: [id], onDelete: Cascade)
+  classId       String
+  class         Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  /// Null for a class-wide note that is not about one subject.
+  subjectId     String?
+  subject       Subject?     @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  date          DateTime     @db.Date
+  kind          DiaryKind    @default(HOMEWORK)
+  title         String       @default("")
+  body          String
+  dueOn         DateTime?    @db.Date
+  imageUrl      String       @default("")
+  authorStaffId String?
+  author        Staff?       @relation(fields: [authorStaffId], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([schoolId, classId, date])
+  @@index([schoolId, date])
+  @@index([authorStaffId, date])
+}
+
+enum NoticeAudience {
+  ALL
+  CLASSES
+}
+
+/// A school notice for everyone, or for chosen classes. Parents read these in their portal.
+model Notice {
+  id          String         @id @default(cuid())
+  schoolId    String
+  school      School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  /// Null means every campus.
+  campusId    String?
+  campus      Campus?        @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  title       String
+  body        String
+  audience    NoticeAudience @default(ALL)
+  /// Class ids when audience is CLASSES.
+  classIds    Json           @default("[]")
+  pinned      Boolean        @default(false)
+  publishedAt DateTime       @default(now())
+  createdById String?
+  createdBy   User?          @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([schoolId, publishedAt])
+}
+
+/// A parent or guardian who signs in with their phone number. One per phone, across every school.
+/// Their children are every student linked to a Guardian with the same normalized phone.
+model ParentUser {
+  id         String         @id @default(cuid())
+  phoneNorm  String         @unique
+  name       String         @default("")
+  locale     String         @default("en")
+  lastSeenAt DateTime?
+  devices    ParentDevice[]
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+}
+
+/// A phone or browser that has proved it owns the number. The token is shown once; only its hash is kept.
+model ParentDevice {
+  id         String     @id @default(cuid())
+  parentId   String
+  parent     ParentUser @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  tokenHash  String     @unique
+  label      String     @default("")
+  lastSeenAt DateTime   @default(now())
+  revokedAt  DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([parentId])
+}
+
+/// One sign-in code sent to a phone. `sent` is false when the number belongs to no guardian, so it still counts toward rate limits.
+model OtpChallenge {
+  id         String    @id @default(cuid())
+  phoneNorm  String
+  codeHash   String
+  sent       Boolean   @default(true)
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([phoneNorm, createdAt])
 }
