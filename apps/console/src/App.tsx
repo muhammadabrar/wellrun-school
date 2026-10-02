@@ -32,6 +32,9 @@ const NoticesPage = lazyPage(() => import("./pages/notices/Notices"), "NoticesPa
 const ReportsHubPage = lazyPage(() => import("./pages/reports/Hub"), "ReportsHubPage");
 const ReportPage = lazyPage(() => import("./pages/reports/Report"), "ReportPage");
 const RatiosPage = lazyPage(() => import("./pages/reports/Ratios"), "RatiosPage");
+const StaffAttendancePage = lazyPage(() => import("./pages/staff/Attendance"), "StaffAttendancePage");
+const StaffLeavePage = lazyPage(() => import("./pages/staff/Leave"), "StaffLeavePage");
+const MyLeavePage = lazyPage(() => import("./pages/MyLeave"), "MyLeavePage");
 const TimetablePage = lazyPage(() => import("./pages/Timetable"), "TimetablePage");
 const StaffListPage = lazyPage(() => import("./pages/staff/List"), "StaffListPage");
 const StaffNewPage = lazyPage(() => import("./pages/staff/New"), "StaffNewPage");
@@ -151,12 +154,15 @@ export function App() {
         <Route path="/diary" element={<DiaryPage />} />
         <Route path="/notices" element={<NoticesPage />} />
         <Route path="/staff" element={<StaffListPage />} />
+        <Route path="/staff/attendance" element={<StaffAttendancePage />} />
+        <Route path="/staff/leave" element={<StaffLeavePage />} />
         <Route path="/staff/new" element={<StaffNewPage />} />
         <Route path="/staff/:id" element={<StaffDetailPage />} />
         <Route path="/teachers" element={<Navigate to="/staff" replace />} />
         <Route path="/payroll" element={<PayrollPage />} />
         <Route path="/payroll/payslips/:id" element={<PayslipPage />} />
         <Route path="/me" element={<PortalPage />} />
+        <Route path="/me/leave" element={<MyLeavePage />} />
         <Route path="/me/payslips/:id" element={<MyPayslipPage />} />
         <Route path="/campuses" element={<CampusesPage />} />
         <Route path="/academics" element={<AcademicsPage />} />

@@ -57,6 +57,8 @@ export function AttendanceSettingsPage() {
         teacherEditDays: Number(form.get("teacherEditDays")),
         lateCountsPresent: value.lateCountsPresent,
         leaveCountsPresent: value.leaveCountsPresent,
+        staffStartTime: String(form.get("staffStartTime") || value.staffStartTime),
+        staffLateGraceMinutes: Number(form.get("staffLateGraceMinutes")),
       });
       setMessage({ tone: "ok", text: "Attendance settings saved." });
     } catch (err) {
@@ -107,6 +109,28 @@ export function AttendanceSettingsPage() {
                 <span className="text-sm text-muted-foreground">previous day(s)</span>
               </div>
               <FieldDescription>0 means today only. After that, marks are locked for teachers.</FieldDescription>
+            </Field>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Staff arrival</CardTitle>
+            <CardDescription>Staff are checked in automatically the first time they use the system on a school day. This sets when that counts as late.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <Field>
+              <FieldLabel htmlFor="staff-start">Staff are expected by</FieldLabel>
+              <Input id="staff-start" name="staffStartTime" type="time" required defaultValue={data.staffStartTime} className="max-w-36" />
+              <FieldDescription>Pakistan time.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="staff-grace">Grace period</FieldLabel>
+              <div className="flex items-center gap-2">
+                <Input id="staff-grace" name="staffLateGraceMinutes" type="number" min={0} max={120} step={1} required defaultValue={data.staffLateGraceMinutes} className="max-w-24" />
+                <span className="text-sm text-muted-foreground">minutes</span>
+              </div>
+              <FieldDescription>Arriving within this time after the start is still on time. After it, the person is late, counted from the start time.</FieldDescription>
             </Field>
           </CardContent>
         </Card>

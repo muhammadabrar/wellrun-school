@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { EmptyState, ErrorState, LoadingState } from "@wellrun/ui";
-import { CheckCircle2, ClipboardCheck, NotebookText } from "lucide-react";
+import { CheckCircle2, ClipboardCheck, NotebookText, UserCheck } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { diaryApi, diaryKeys } from "@/lib/diary-api";
+import { staffAttendanceApi, staffAttendanceKeys } from "@/lib/staff-attendance-api";
+import { DayBadge, clock12 } from "@/components/staff/leave-ui";
 import { formatClock } from "@/components/form/time-picker";
 import { CONTRACT_TYPES, PayslipStatusBadge, SalaryLine, StaffStatusBadge, StaffWeekGrid, formatDay, periodName } from "@/components/staff/staff-ui";
 import { WEEKDAYS } from "@/components/timetable/lesson-sheet";
@@ -15,6 +17,7 @@ import { queryKeys } from "@/lib/query";
 export function PortalPage() {
   const { data, isPending, isError, refetch } = useQuery({ queryKey: queryKeys.portal, queryFn: api.portal });
   const diary = useQuery({ queryKey: diaryKeys.today, queryFn: diaryApi.today, enabled: Boolean(data?.staff) });
+  const checkIn = useQuery({ queryKey: staffAttendanceKeys.mine, queryFn: staffAttendanceApi.mine, enabled: Boolean(data?.staff) });
 
   if (isPending) return <LoadingState variant="page" />;
   if (isError || !data) {
@@ -110,6 +113,36 @@ export function PortalPage() {
           )}
         </Panel>
       </div>
+
+      <Panel title="My attendance today" icon={<UserCheck className="size-5 text-primary" aria-hidden />}>
+        {checkIn.isPending ? (
+          <p className="text-sm text-muted-foreground">Checking…</p>
+        ) : !checkIn.data?.today || checkIn.isError ? (
+          <p className="text-sm text-muted-foreground">Couldn't load your attendance right now.</p>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              {checkIn.data.today.working ? (
+                <>
+                  <DayBadge status={checkIn.data.today.status} />
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {checkIn.data.today.checkIn
+                      ? `You were checked in at ${clock12(checkIn.data.today.checkIn)}${checkIn.data.today.lateMinutes ? `, ${checkIn.data.today.lateMinutes} minutes after the ${clock12(checkIn.data.today.startTime)} start.` : "."}`
+                      : checkIn.data.today.status === "ON_LEAVE"
+                        ? "You are on approved leave today."
+                        : "You are checked in automatically the first time you use the system each school day."}
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">{checkIn.data.today.holiday ? `Today is a holiday (${checkIn.data.today.holiday}).` : "The school is closed today."} No attendance to record.</p>
+              )}
+            </div>
+            <Button variant="outline" render={<Link to="/me/leave" />}>
+              My leave
+            </Button>
+          </div>
+        )}
+      </Panel>
 
       <Panel title="Today's diary" icon={<NotebookText className="size-5 text-primary" aria-hidden />}>
         {diary.isPending ? (

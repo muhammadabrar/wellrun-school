@@ -15,6 +15,7 @@ import {
   ListChecksIcon,
   MegaphoneIcon,
   NotebookTextIcon,
+  PlaneIcon,
   NotebookPenIcon,
   SettingsIcon,
   TrophyIcon,
@@ -66,7 +67,16 @@ const peopleItems: NavItem[] = [
     ],
   },
   { title: "Students", url: "/students", icon: <GraduationCapIcon /> },
-  { title: "Staff", url: "/staff", icon: <BriefcaseIcon /> },
+  {
+    title: "Staff",
+    url: "/staff",
+    icon: <BriefcaseIcon />,
+    items: [
+      { title: "All staff", url: "/staff", end: true },
+      { title: "Attendance", url: "/staff/attendance" },
+      { title: "Leave requests", url: "/staff/leave" },
+    ],
+  },
 ];
 
 const classroomItems: NavItem[] = [
@@ -224,7 +234,13 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
         ]
       : user?.role === "TEACHER"
         ? [
-            { label: "Me", items: [{ title: "My portal", url: "/me", icon: <SunIcon /> }] },
+            {
+              label: "Me",
+              items: [
+                { title: "My portal", url: "/me", icon: <SunIcon />, end: true },
+                { title: "My leave", url: "/me/leave", icon: <PlaneIcon /> },
+              ],
+            },
             { label: "People", items: [{ title: "Students", url: "/students", icon: <UsersIcon /> }] },
             { label: "Classroom", items: teacherClassroomItems },
             { label: "Syllabus", items: syllabusItems },

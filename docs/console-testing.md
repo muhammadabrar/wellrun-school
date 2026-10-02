@@ -206,6 +206,38 @@ Open **Reports** in the sidebar. Every report takes its own dates and class, and
 - [ ] Create a login for a staff member / send an **invite**; the invite link works once
 - [ ] Teacher cannot open other staff records or the directory
 
+### 4.4 Staff attendance and leave
+
+Staff are checked in automatically the first time they use the system on a school day. An admin reads attendance and decides leave; nobody edits a mark.
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| SA1 | A teacher signs in on a school day before the start time, then opens **My portal** | "My attendance today" shows Present and the check-in time |
+| SA2 | A teacher's first activity is after the start time plus grace (for example 8:20 with an 8:00 start and 15 minutes grace) | Late, "20 minutes after the 8:00 am start" |
+| SA3 | Arrival exactly at start plus grace (8:15) | Still on time |
+| SA4 | Sign in again, or keep using the system, later the same day | The check-in time does not change |
+| SA5 | A teacher who stays signed in for days (the session lasts a week) uses the system the next morning | A new check-in for the new day, without signing in again |
+| SA6 | Sign in on a Sunday or a holiday | Nothing is recorded; the portal says the school is closed |
+| SA7 | Admin opens **Staff → Attendance** | Today's list: status, check-in time and minutes late per person; chips count present, late, absent, on leave and not in yet; people who haven't used the system today show "Not in yet" |
+| SA8 | Admin looks at a past day where someone never signed in | Absent, even before the nightly job has run |
+| SA9 | Next morning after 00:15 | Past days with no activity are saved as Absent (check the Whole month view and the report; nothing changes in the list) |
+| SA10 | **Whole month** view | One row per person with on time, late, absent, on leave and a percentage; only finished days are counted; leave days never lower the percentage |
+| SA11 | Admin tries to change a mark (API call to edit) | No such action exists |
+| SA12 | Excel and CSV on both views | Files contain every person |
+| SA13 | Change the start time or grace in **Attendance settings** | The day view note and new check-ins use the new values; earlier check-ins keep their saved status |
+| SA14 | A staff member whose login isn't linked to a staff record | Their portal says to ask the admin; nothing is recorded |
+| LV1 | A teacher asks for leave from **My leave** (kind, dates, reason) | Request appears as "Waiting for approval"; the admin sees it in **Staff → Leave requests** with the number of school days |
+| LV2 | Leave starting more than 7 days ago, longer than 60 days, or covering only a Sunday or holiday | Refused with a plain reason |
+| LV3 | A second request overlapping an existing waiting or approved one | Refused: "You already have leave on some of those days" |
+| LV4 | Admin approves with a note | The teacher sees "Approved" and the note; those days show "On leave" in attendance and are left out of the percentage |
+| LV5 | Admin approves leave that includes a day already saved as absent | That day becomes On leave |
+| LV6 | Admin declines with a reason | The teacher sees "Not approved" and the reason; days stay absent if they don't attend |
+| LV7 | Deciding the same request twice (second tab) | "This request has already been decided" |
+| LV8 | A teacher withdraws a waiting request, or an approved one that hasn't started | Status becomes Cancelled; withdrawing approved leave that has started is refused |
+| LV9 | A teacher calls the admin's leave list or decision endpoint | Refused (403) |
+| LV10 | A teacher on approved leave signs in that day | Recorded as On leave, not Present |
+| LV11 | **Reports → Staff attendance** and **Ratio analysis → Staff attendance** | Report matches the Whole month view for the same dates; the ratio shows the working and a Good, Watch or Needs attention label |
+
 ---
 
 ## 5. Classroom
@@ -371,6 +403,8 @@ Try each row; the "No" cells matter most.
 | Admissions | Yes | No | No | No |
 | Students | All | Own classes | No | No |
 | Staff / Payroll | Yes | Own portal + payslips only | No | No |
+| Staff attendance | Read-only | Own check-in on My portal | No | No |
+| Leave | Approve or decline all | Ask for and withdraw own | No | No |
 | Attendance | All + settings | Own classes, edit window applies | No | No |
 | Reports and ratio analysis | Yes | No (refused) | No | No |
 | Diary | Read all, remove any | Write for own classes and subjects | No | Reads it in the parent portal |
