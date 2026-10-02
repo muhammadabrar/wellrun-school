@@ -6,5 +6,6 @@ export { FetchingIndicator } from "./FetchingIndicator";
 export { EmptyState, ErrorState } from "./States";
 export { LoadingState, Skeleton } from "./LoadingState";
 export { PageHeader } from "./PageHeader";
+export { Pagination } from "./Pagination";
 export { Spinner } from "./Spinner";
 export { TabPanel, Tabs } from "./Tabs";

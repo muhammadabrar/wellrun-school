@@ -1,4 +1,4 @@
-import type { SchoolDashboard } from "@wellrun/shared";
+import type { Paged, SchoolDashboard } from "@wellrun/shared";
 import { ApiError } from "./query";
 import { defaultCampusId, readCampusId, writeCampusId } from "./campus";
 import { readYearId, type SchoolContext, writeSchoolContext } from "./school-context";
@@ -283,17 +283,17 @@ export const api = {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) if (value) params.set(key, value);
     const qs = params.toString();
-    return request<FeeInvoiceRow[]>(`/console/fees/invoices${qs ? `?${qs}` : ""}`);
+    return request<Paged<FeeInvoiceRow> & { balancePkr: number }>(`/console/fees/invoices${qs ? `?${qs}` : ""}`);
   },
   feeInvoice: (id: string) => request<FeeInvoiceDetail>(`/console/fees/invoices/${id}`),
   cancelFeeInvoice: (id: string, notes?: string) =>
     request(`/console/fees/invoices/${id}/cancel`, { method: "POST", body: JSON.stringify({ notes }) }),
   studentFees: (studentId: string) => request<StudentFees>(`/console/students/${studentId}/fees`),
-  feePayments: (query: { studentId?: string; q?: string } = {}) => {
+  feePayments: (query: { studentId?: string; q?: string; page?: string; pageSize?: string } = {}) => {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) if (value) params.set(key, value);
     const qs = params.toString();
-    return request<FeePaymentRow[]>(`/console/fees/payments${qs ? `?${qs}` : ""}`);
+    return request<Paged<FeePaymentRow> & { todayPkr: number }>(`/console/fees/payments${qs ? `?${qs}` : ""}`);
   },
   collectFeePayment: (payload: CollectPaymentPayload) =>
     request<PaymentResult>("/console/fees/payments", { method: "POST", body: JSON.stringify(payload) }),
@@ -401,12 +401,14 @@ export const api = {
   skipSetup: (step: number) => request(`/console/setup/skip?step=${step}`, { method: "POST" }),
   uploadMedia: (payload: { kind: "LOGO" | "COVER"; filename?: string; dataUrl: string }) =>
     request<{ url: string }>("/console/setup/media", { method: "POST", body: JSON.stringify(payload) }),
-  staff: (query: { status?: string; q?: string } = {}) => {
+  staff: (query: { status?: string; q?: string; page?: string; pageSize?: string } = {}) => {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) if (value) params.set(key, value);
     const qs = params.toString();
-    return request<Staff[]>(`/console/staff${qs ? `?${qs}` : ""}`);
+    return request<StaffPage>(`/console/staff${qs ? `?${qs}` : ""}`);
   },
+  /** Everyone, unpaged, for pickers such as the timetable's teacher list. */
+  staffRoster: () => request<Staff[]>("/console/staff/roster"),
   staffMember: (id: string) => request<StaffDetail>(`/console/staff/${id}`),
   staffTimetable: (id: string) => request<StaffWeek>(`/console/staff/${id}/timetable`),
   createStaff: (payload: Record<string, unknown>) =>
@@ -785,6 +787,8 @@ export type FeeInvoiceQuery = {
   className?: string;
   section?: string;
   years?: "this" | "previous" | "all";
+  page?: string;
+  pageSize?: string;
 };
 
 export type StudentFees = {
@@ -947,12 +951,14 @@ export type FeeDiscount = {
   _count?: { students: number };
 };
 
-export type FeeReportResult = {
+export type FeeReportRow = { id: string; paymentNumber: string; paymentDate: string; method: string; amountPkr: number; student: { firstName: string; lastName: string } | null };
+
+/** Totals cover the whole date range; `items` is the requested page of payments. */
+export type FeeReportResult = Paged<FeeReportRow> & {
   from: string;
   to: string;
   totalPkr: number;
   count: number;
-  rows: { id: string; paymentNumber: string; paymentDate: string; method: string; amountPkr: number; student: { firstName: string; lastName: string } | null }[];
 };
 
 export type FeeSettings = {
@@ -1008,6 +1014,11 @@ export type Staff = {
   login: { role: string; disabled: boolean } | null;
   contract: { type: ContractType; basicSalaryPkr: number; endDate: string | null } | null;
   assignments: StaffAssignment[];
+};
+
+export type StaffPage = Paged<Staff> & {
+  /** Headline numbers for current staff; null while a search is active. */
+  summary: { current: number; monthlyPkr: number; noLogin: number; noContract: number } | null;
 };
 
 export type StaffContract = {

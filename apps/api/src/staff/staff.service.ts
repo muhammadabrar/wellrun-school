@@ -3,6 +3,7 @@ import type { Prisma, StaffStatus } from "@prisma/client";
 import {
   cnicPattern,
   inviteSchema,
+  pageParams,
   staffAccountSchema,
   staffContractSchema,
   staffCreateSchema,
@@ -42,52 +43,86 @@ export function currentContract<T extends { startDate: Date; endDate: Date | nul
   return sorted.find((row) => row.startDate <= on && (!row.endDate || row.endDate >= on)) ?? sorted[0] ?? null;
 }
 
+const CURRENT_STATUSES: StaffStatus[] = ["ACTIVE", "ON_LEAVE"];
+
+const listSelect = {
+  id: true,
+  employeeNo: true,
+  name: true,
+  cnic: true,
+  title: true,
+  department: true,
+  status: true,
+  phone: true,
+  email: true,
+  joinDate: true,
+  campus: { select: { id: true, name: true } },
+  user: { select: { role: true, disabled: true } },
+  contracts: { select: { type: true, startDate: true, endDate: true, basicSalaryPkr: true } },
+  assignments: { select: { id: true, subject: true, class: { select: { id: true, name: true, section: true } } } },
+} satisfies Prisma.StaffSelect;
+
+function toListRow({ contracts, user, ...row }: Prisma.StaffGetPayload<{ select: typeof listSelect }>) {
+  const contract = currentContract(contracts);
+  return {
+    ...row,
+    login: user ? { role: user.role, disabled: user.disabled } : null,
+    contract: contract ? { type: contract.type, basicSalaryPkr: contract.basicSalaryPkr, endDate: contract.endDate } : null,
+  };
+}
+
 @Injectable()
 export class StaffService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async list(schoolId: string, query: { status?: string; q?: string } = {}) {
+  async list(schoolId: string, query: { status?: string; q?: string; page?: string; pageSize?: string } = {}) {
     const q = query.q?.trim();
-    const rows = await this.prisma.staff.findMany({
-      where: {
-        schoolId,
-        status: query.status && query.status !== "all" ? (query.status as StaffStatus) : undefined,
-        OR: q
-          ? [
-              { name: { contains: q, mode: "insensitive" } },
-              { employeeNo: { contains: q, mode: "insensitive" } },
-              { cnic: { contains: q } },
-              { phone: { contains: q } },
-              { email: { contains: q, mode: "insensitive" } },
-            ]
-          : undefined,
-      },
-      select: {
-        id: true,
-        employeeNo: true,
-        name: true,
-        cnic: true,
-        title: true,
-        department: true,
-        status: true,
-        phone: true,
-        email: true,
-        joinDate: true,
-        campus: { select: { id: true, name: true } },
-        user: { select: { role: true, disabled: true } },
-        contracts: { select: { type: true, startDate: true, endDate: true, basicSalaryPkr: true } },
-        assignments: { select: { id: true, subject: true, class: { select: { id: true, name: true, section: true } } } },
-      },
-      orderBy: [{ status: "asc" }, { name: "asc" }],
+    const { page, pageSize, skip, take } = pageParams(query);
+    const status: StaffStatus | { in: StaffStatus[] } | undefined =
+      query.status === "current" ? { in: CURRENT_STATUSES } : query.status && query.status !== "all" ? (query.status as StaffStatus) : undefined;
+    const where: Prisma.StaffWhereInput = {
+      schoolId,
+      status,
+      OR: q
+        ? [
+            { name: { contains: q, mode: "insensitive" } },
+            { employeeNo: { contains: q, mode: "insensitive" } },
+            { cnic: { contains: q } },
+            { phone: { contains: q } },
+            { email: { contains: q, mode: "insensitive" } },
+          ]
+        : undefined,
+    };
+    const [total, rows, summary] = await Promise.all([
+      this.prisma.staff.count({ where }),
+      this.prisma.staff.findMany({ where, select: listSelect, orderBy: [{ status: "asc" }, { name: "asc" }, { id: "asc" }], skip, take }),
+      // Headline numbers cover everyone current, not just this page; the list hides them while searching.
+      q ? Promise.resolve(null) : this.currentSummary(schoolId),
+    ]);
+    return { items: rows.map(toListRow), total, page, pageSize, summary };
+  }
+
+  /** Every staff member with their assignments, unpaged: for pickers (timetable lessons), not for browsing. */
+  async roster(schoolId: string) {
+    const rows = await this.prisma.staff.findMany({ where: { schoolId }, select: listSelect, orderBy: [{ status: "asc" }, { name: "asc" }, { id: "asc" }] });
+    return rows.map(toListRow);
+  }
+
+  private async currentSummary(schoolId: string) {
+    const current = await this.prisma.staff.findMany({
+      where: { schoolId, status: { in: CURRENT_STATUSES } },
+      select: { userId: true, contracts: { select: { startDate: true, endDate: true, basicSalaryPkr: true } } },
     });
-    return rows.map(({ contracts, user, ...row }) => {
-      const contract = currentContract(contracts);
-      return {
-        ...row,
-        login: user ? { role: user.role, disabled: user.disabled } : null,
-        contract: contract ? { type: contract.type, basicSalaryPkr: contract.basicSalaryPkr, endDate: contract.endDate } : null,
-      };
-    });
+    let monthlyPkr = 0;
+    let noLogin = 0;
+    let noContract = 0;
+    for (const row of current) {
+      const contract = currentContract(row.contracts);
+      if (contract) monthlyPkr += contract.basicSalaryPkr;
+      else noContract += 1;
+      if (!row.userId) noLogin += 1;
+    }
+    return { current: current.length, monthlyPkr, noLogin, noContract };
   }
 
   async detail(schoolId: string, id: string) {

@@ -6,9 +6,11 @@ import {
   holidayOn,
   isoOf,
   monthBounds,
+  REGISTER_EDIT_DAYS,
   monthRegisterQuery,
   saveRegisterSchema,
   weekdayOf,
+  withinRegisterEditWindow,
   type AttendanceDay,
   type AttendanceSettingsView,
   type AttendanceStatus,
@@ -106,7 +108,7 @@ export class RegisterService {
       marks,
       dailyPresent,
       settings,
-      editableDates: canEditGrid ? days.filter((d) => d.working && d.date <= today).map((d) => d.date) : [],
+      editableDates: canEditGrid ? days.filter((d) => d.working && withinRegisterEditWindow(d.date, today)).map((d) => d.date) : [],
       canEditGrid,
     };
   }
@@ -132,6 +134,9 @@ export class RegisterService {
     const today = karachiToday();
     for (const cell of input.cells) {
       if (!inClass.has(cell.studentId)) throw new BadRequestException("Some students are not in this class");
+      if (!withinRegisterEditWindow(cell.date, today)) {
+        throw new BadRequestException(`${cell.date}: the register can only be edited for the last ${REGISTER_EDIT_DAYS} days.`);
+      }
       const reason = dayLockReason(cell.date, today, settings, holidays, true);
       if (reason) throw new BadRequestException(`${cell.date}: ${reason}`);
     }

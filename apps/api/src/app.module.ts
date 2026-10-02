@@ -21,6 +21,7 @@ import { SessionModule } from "./session/session.module";
 import { SetupModule } from "./setup/setup.module";
 import { StaffModule } from "./staff/staff.module";
 import { StudentsModule } from "./students/students.module";
+import { SyllabusModule } from "./syllabus/syllabus.module";
 import { TimetableModule } from "./timetable/timetable.module";
 import { ScopeMiddleware } from "./common/scope.middleware";
 import { TraceController } from "./trace/trace.controller";
@@ -47,6 +48,7 @@ import { TraceMiddleware } from "./trace/trace.middleware";
     SetupModule,
     StaffModule,
     ExamsModule,
+    SyllabusModule,
     PayrollModule,
     ClaimsModule,
     AdminModule,

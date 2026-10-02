@@ -8,6 +8,7 @@ import {
   isWorkingDay,
   monthBounds,
   withinEditWindow,
+  withinRegisterEditWindow,
   workingDays,
 } from "@wellrun/shared";
 import { describe, expect, it } from "vitest";
@@ -85,5 +86,14 @@ describe("report paging query", () => {
     expect(attendanceReportQuery.parse({ ...base, limit: String(REPORT_EXPORT_LIMIT) }).limit).toBe(REPORT_EXPORT_LIMIT);
     expect(() => attendanceReportQuery.parse({ ...base, limit: String(REPORT_EXPORT_LIMIT + 1) })).toThrow();
     expect(() => attendanceReportQuery.parse({ ...base, offset: "-1" })).toThrow();
+  });
+});
+
+describe("register edit window", () => {
+  it("allows only today and yesterday", () => {
+    expect(withinRegisterEditWindow("2026-10-02", "2026-10-02")).toBe(true);
+    expect(withinRegisterEditWindow("2026-10-01", "2026-10-02")).toBe(true);
+    expect(withinRegisterEditWindow("2026-09-30", "2026-10-02")).toBe(false);
+    expect(withinRegisterEditWindow("2026-10-03", "2026-10-02")).toBe(false);
   });
 });

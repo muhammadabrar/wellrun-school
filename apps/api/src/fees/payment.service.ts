@@ -1,7 +1,8 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { CreatePaymentInput } from "@wellrun/shared";
+import { pageParams, type CreatePaymentInput } from "@wellrun/shared";
 import { audit } from "../common/audit";
+import { karachiToday } from "../common/date";
 import { schoolLetterhead } from "../common/school";
 import type { SchoolScope } from "../common/school-scope";
 import { nextSchoolNumber } from "../common/sequence";
@@ -23,6 +24,8 @@ export type InvoiceListQuery = {
   section?: string;
   /** Which academic years: the one being viewed (default), earlier ones only, or every year. */
   years?: "this" | "previous" | "all";
+  page?: string;
+  pageSize?: string;
 };
 
 @Injectable()
@@ -38,53 +41,61 @@ export class FeePaymentService {
           ? (query.status as never)
           : { not: "DRAFT" as const };
     const yearFilter = await this.yearFilter(schoolId, scope, query);
-    const rows = await this.prisma.invoice.findMany({
-      where: {
-        schoolId,
-        status,
-        ...(query.studentId ? { studentId: query.studentId } : {}),
-        ...(query.billingPeriod ? { billingPeriod: query.billingPeriod } : {}),
-        AND: [
-          scope.campusId
-            ? { OR: [{ campusId: scope.campusId }, { student: { campusId: scope.campusId } }, { application: { campusId: scope.campusId } }] }
-            : {},
-          yearFilter,
-          query.className || query.section
-            ? {
-                student: {
-                  enrollments: {
-                    some: {
-                      active: true,
-                      class: {
-                        ...(query.className ? { name: query.className } : {}),
-                        ...(query.section ? { section: query.section } : {}),
-                      },
+    const { page, pageSize, skip, take } = pageParams(query);
+    const where: Prisma.InvoiceWhereInput = {
+      schoolId,
+      status,
+      ...(query.studentId ? { studentId: query.studentId } : {}),
+      ...(query.billingPeriod ? { billingPeriod: query.billingPeriod } : {}),
+      AND: [
+        scope.campusId
+          ? { OR: [{ campusId: scope.campusId }, { student: { campusId: scope.campusId } }, { application: { campusId: scope.campusId } }] }
+          : {},
+        yearFilter,
+        query.className || query.section
+          ? {
+              student: {
+                enrollments: {
+                  some: {
+                    active: true,
+                    class: {
+                      ...(query.className ? { name: query.className } : {}),
+                      ...(query.section ? { section: query.section } : {}),
                     },
                   },
                 },
-              }
-            : {},
-          q
-            ? {
-                OR: [
-                  { invoiceNumber: { contains: q, mode: "insensitive" } },
-                  { student: { firstName: { contains: q, mode: "insensitive" } } },
-                  { student: { lastName: { contains: q, mode: "insensitive" } } },
-                  { student: { admissionNo: { contains: q, mode: "insensitive" } } },
-                ],
-              }
-            : {},
-        ],
-      },
-      include: invoiceViewInclude,
-      orderBy: [{ dueOn: "desc" }, { invoiceNumber: "desc" }],
-      take: 300,
-    });
+              },
+            }
+          : {},
+        q
+          ? {
+              OR: [
+                { invoiceNumber: { contains: q, mode: "insensitive" } },
+                { student: { firstName: { contains: q, mode: "insensitive" } } },
+                { student: { lastName: { contains: q, mode: "insensitive" } } },
+                { student: { admissionNo: { contains: q, mode: "insensitive" } } },
+              ],
+            }
+          : {},
+      ],
+    };
+    const [total, rows, owed] = await Promise.all([
+      this.prisma.invoice.count({ where }),
+      this.prisma.invoice.findMany({
+        where,
+        include: invoiceViewInclude,
+        orderBy: [{ dueOn: "desc" }, { invoiceNumber: "desc" }, { id: "desc" }],
+        skip,
+        take,
+      }),
+      // Owed across every page of this filter, so the headline figure doesn't change as you page.
+      this.prisma.invoice.aggregate({ where: { AND: [where, { status: { in: [...PAYABLE] } }] }, _sum: { balanceAmountPkr: true } }),
+    ]);
     const yearIds = [...new Set(rows.map((row) => row.academicYearId).filter((id): id is string => Boolean(id)))];
     const yearNames = new Map(
       (yearIds.length ? await this.prisma.academicYear.findMany({ where: { id: { in: yearIds } }, select: { id: true, name: true } }) : []).map((y) => [y.id, y.name]),
     );
-    return rows.map((row) => {
+    const items = rows.map((row) => {
       const view = toInvoiceView(row);
       return {
         id: view.id,
@@ -100,6 +111,7 @@ export class FeePaymentService {
         student: view.student,
       };
     });
+    return { items, total, page, pageSize, balancePkr: owed._sum.balanceAmountPkr ?? 0 };
   }
 
   private async yearFilter(schoolId: string, scope: SchoolScope, query: InvoiceListQuery): Promise<Prisma.InvoiceWhereInput> {
@@ -122,56 +134,73 @@ export class FeePaymentService {
     return { ...toInvoiceView(invoice), school, guardian };
   }
 
-  payments(schoolId: string, scope: SchoolScope = {}, query: { studentId?: string; q?: string } = {}) {
+  async payments(
+    schoolId: string,
+    scope: SchoolScope = {},
+    query: { studentId?: string; q?: string; page?: string; pageSize?: string } = {},
+  ) {
     const q = query.q?.trim();
-    return this.prisma.payment
-      .findMany({
-        where: {
-          schoolId,
-          method: { not: "credit" },
-          ...(query.studentId ? { studentId: query.studentId } : {}),
-          AND: [
-            scope.campusId ? { OR: [{ campusId: scope.campusId }, { campusId: null, student: { campusId: scope.campusId } }] } : {},
-            q
-              ? {
-                  OR: [
-                    { paymentNumber: { contains: q, mode: "insensitive" } },
-                    { receiptNo: { contains: q, mode: "insensitive" } },
-                    { student: { firstName: { contains: q, mode: "insensitive" } } },
-                    { student: { lastName: { contains: q, mode: "insensitive" } } },
-                    { student: { admissionNo: { contains: q, mode: "insensitive" } } },
-                  ],
-                }
-              : {},
-          ],
-        },
+    const { page, pageSize, skip, take } = pageParams(query);
+    const campus: Prisma.PaymentWhereInput = scope.campusId
+      ? { OR: [{ campusId: scope.campusId }, { campusId: null, student: { campusId: scope.campusId } }] }
+      : {};
+    const where: Prisma.PaymentWhereInput = {
+      schoolId,
+      method: { not: "credit" },
+      ...(query.studentId ? { studentId: query.studentId } : {}),
+      AND: [
+        campus,
+        q
+          ? {
+              OR: [
+                { paymentNumber: { contains: q, mode: "insensitive" } },
+                { receiptNo: { contains: q, mode: "insensitive" } },
+                { student: { firstName: { contains: q, mode: "insensitive" } } },
+                { student: { lastName: { contains: q, mode: "insensitive" } } },
+                { student: { admissionNo: { contains: q, mode: "insensitive" } } },
+              ],
+            }
+          : {},
+      ],
+    };
+    // Midnight in Pakistan, so late-evening payments count towards the right day.
+    const startOfToday = new Date(`${karachiToday()}T00:00:00+05:00`);
+    const [total, rows, today] = await Promise.all([
+      this.prisma.payment.count({ where }),
+      this.prisma.payment.findMany({
+        where,
         include: {
           student: { select: { id: true, firstName: true, lastName: true, admissionNo: true } },
           allocations: { include: { invoice: { select: { id: true, invoiceNumber: true, billingPeriod: true } } } },
           receipt: { select: { id: true, receiptNumber: true } },
         },
-        orderBy: { paidAt: "desc" },
-        take: 300,
-      })
-      .then((rows) =>
-        rows.map((row) => ({
-          id: row.id,
-          paymentNumber: row.paymentNumber,
-          paymentDate: row.paymentDate,
-          amountPkr: row.amountPkr,
-          method: row.method,
-          referenceNumber: row.referenceNumber,
-          status: row.status,
-          student: slimStudent(row.student),
-          receipt: row.receipt,
-          invoices: row.allocations.map((item) => ({
-            id: item.invoice.id,
-            invoiceNumber: item.invoice.invoiceNumber,
-            periodLabel: periodLabel(item.invoice.billingPeriod),
-            appliedPkr: item.amountPkr,
-          })),
-        })),
-      );
+        orderBy: [{ paidAt: "desc" }, { id: "desc" }],
+        skip,
+        take,
+      }),
+      this.prisma.payment.aggregate({
+        where: { schoolId, status: "COMPLETED", method: { not: "credit" }, paymentDate: { gte: startOfToday }, ...campus },
+        _sum: { amountPkr: true },
+      }),
+    ]);
+    const items = rows.map((row) => ({
+      id: row.id,
+      paymentNumber: row.paymentNumber,
+      paymentDate: row.paymentDate,
+      amountPkr: row.amountPkr,
+      method: row.method,
+      referenceNumber: row.referenceNumber,
+      status: row.status,
+      student: slimStudent(row.student),
+      receipt: row.receipt,
+      invoices: row.allocations.map((item) => ({
+        id: item.invoice.id,
+        invoiceNumber: item.invoice.invoiceNumber,
+        periodLabel: periodLabel(item.invoice.billingPeriod),
+        appliedPkr: item.amountPkr,
+      })),
+    }));
+    return { items, total, page, pageSize, todayPkr: today._sum.amountPkr ?? 0 };
   }
 
   schoolHeader(schoolId: string) {

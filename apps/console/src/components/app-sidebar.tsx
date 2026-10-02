@@ -2,6 +2,8 @@ import { BrandLogo } from "@wellrun/ui";
 import type { ComponentProps } from "react";
 import {
   BanknoteIcon,
+  BookMarkedIcon,
+  ListTreeIcon,
   BarChart3Icon,
   BookOpenIcon,
   CalendarRangeIcon,
@@ -75,6 +77,12 @@ const teacherClassroomItems: NavItem[] = classroomItems.map((item) =>
     ? { ...item, url: "/attendance/mark", items: item.items?.filter((sub) => sub.url !== "/attendance" && sub.url !== "/attendance/settings") }
     : item,
 );
+
+/** Annual scheme of work per class and subject. Teachers and admins both edit it; exams lock the topics they cover. */
+const syllabusItems: NavItem[] = [
+  { title: "Overview", url: "/syllabus", icon: <BookMarkedIcon />, end: true },
+  { title: "Scheme of work", url: "/syllabus/list", icon: <ListTreeIcon /> },
+];
 
 const examItems: NavItem[] = [
   { title: "Overview", url: "/exams", icon: <LayoutDashboardIcon />, end: true },
@@ -201,12 +209,14 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
             { label: "Me", items: [{ title: "My portal", url: "/me", icon: <SunIcon /> }] },
             { label: "People", items: [{ title: "Students", url: "/students", icon: <UsersIcon /> }] },
             { label: "Classroom", items: teacherClassroomItems },
+            { label: "Syllabus", items: syllabusItems },
             { label: "Exams", items: teacherExamItems },
           ]
         : [
             { label: "Overview", items: overviewItems },
             { label: "People", items: peopleItems },
             { label: "Classroom", items: classroomItems },
+            { label: "Syllabus", items: syllabusItems },
             { label: "Exams", items: examItems },
             { label: "Finance", items: financeItems },
             { label: "School setup", items: schoolItems },

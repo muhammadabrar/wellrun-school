@@ -123,6 +123,8 @@ export const examPaperInputSchema = z.object({
   endTime: timeString.optional(),
   room: z.string().default("").optional(),
   invigilatorId: z.string().nullable().optional(),
+  /** Syllabus topics this paper covers. Covered topics become locked in the syllabus. */
+  topicIds: z.array(z.string().min(1)).max(500).optional(),
 });
 
 const examBasics = {

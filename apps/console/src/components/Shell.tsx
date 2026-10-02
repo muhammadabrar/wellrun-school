@@ -20,6 +20,9 @@ import { readSchoolContext, writeSchoolContext } from "@/lib/school-context";
 
 const titles: [string, string][] = [
   ["/admissions/new", "New application"],
+  ["/syllabus/list", "Scheme of work"],
+  ["/syllabus/", "Syllabus"],
+  ["/syllabus", "Syllabus"],
   ["/exams/new", "Create exam"],
   ["/exams/list", "All exams"],
   ["/exams/calendar", "Exam calendar"],

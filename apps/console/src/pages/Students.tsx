@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Badge, Dialog, EmptyState, ErrorState, PageHeader, Skeleton } from "@wellrun/ui";
-import { ChevronLeft, ChevronRight, Eye, MessageCircle, Pencil, Phone, SlidersHorizontal, UserPlus, Wallet } from "lucide-react";
+import { Badge, Dialog, EmptyState, ErrorState, PageHeader, Pagination, Skeleton } from "@wellrun/ui";
+import { Eye, MessageCircle, Pencil, Phone, SlidersHorizontal, UserPlus, Wallet } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { DatePicker } from "@/components/form/date-picker";
@@ -59,7 +59,7 @@ export function StudentsPage() {
     page: Number(params.get("page") || 1),
     pageSize: 20,
   };
-  const { data, isPending, isError, refetch } = useQuery({
+  const { data, isPending, isFetching, isError, refetch } = useQuery({
     queryKey: queryKeys.students(filters),
     queryFn: () => api.students(filters),
     enabled: Boolean(campusId),
@@ -105,8 +105,6 @@ export function StudentsPage() {
     [classes, filters.className],
   );
 
-  const pages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.pageSize ?? 20)));
-  const page = data?.page ?? 1;
   const advancedCount = [filters.guardian, filters.address, filters.dateOfBirth, filters.topScorer, filters.perfectAttendance].filter(Boolean).length;
   const allIds = useMemo(() => data?.items.map((row) => row.id) ?? [], [data]);
 
@@ -366,17 +364,7 @@ export function StudentsPage() {
         </div>
       ) : null}
 
-      <div className="mt-4 flex items-center justify-between text-sm">
-        <p className="text-muted-foreground">Page {page} of {pages}</p>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => setFilter("page", String(page - 1))}>
-            <ChevronLeft /> Previous
-          </Button>
-          <Button type="button" variant="outline" size="sm" disabled={page >= pages} onClick={() => setFilter("page", String(page + 1))}>
-            Next <ChevronRight />
-          </Button>
-        </div>
-      </div>
+      {data ? <Pagination page={data.page} pageSize={data.pageSize} total={data.total} noun="student" busy={isFetching} onPageChange={(next) => setFilter("page", String(next))} /> : null}
 
       <StudentQuickView
         student={quickView}

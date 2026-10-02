@@ -228,6 +228,7 @@ model School {
   reportCardTemplates ReportCardTemplate[]
   attendanceSettings  AttendanceSettings?
   holidays            Holiday[]
+  syllabi             Syllabus[]
 }
 
 model SchoolProfile {
@@ -324,6 +325,7 @@ model AcademicYear {
   updatedAt      DateTime               @updatedAt
   terms          Term[]
   studentResults StudentResult[]
+  syllabi        Syllabus[]
 
   @@index([schoolId])
 }
@@ -1034,6 +1036,7 @@ model Subject {
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
   examPapers ExamPaper[]
+  syllabi    Syllabus[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -1364,20 +1367,21 @@ enum ResultScope {
 }
 
 model Term {
-  id        String       @id @default(cuid())
-  schoolId  String
-  school    School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  yearId    String
-  year      AcademicYear @relation(fields: [yearId], references: [id], onDelete: Cascade)
-  name      String
-  startsOn  DateTime     @db.Date
-  endsOn    DateTime     @db.Date
-  sortOrder Int          @default(0)
+  id            String         @id @default(cuid())
+  schoolId      String
+  school        School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  yearId        String
+  year          AcademicYear   @relation(fields: [yearId], references: [id], onDelete: Cascade)
+  name          String
+  startsOn      DateTime       @db.Date
+  endsOn        DateTime       @db.Date
+  sortOrder     Int            @default(0)
   /// Share of this term in the annual result.
-  weight    Float        @default(50)
-  exams     Exam[]
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  weight        Float          @default(50)
+  exams         Exam[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  syllabusUnits SyllabusUnit[]
 
   @@index([schoolId, yearId])
 }
@@ -1491,6 +1495,7 @@ model ExamPaper {
   corrections   MarkCorrection[]
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
+  topics        ExamPaperTopic[]
 
   @@unique([examId, classId, subjectId])
   @@index([schoolId, status])
@@ -1574,4 +1579,85 @@ model StudentResult {
   @@index([schoolId, yearId, scope])
   @@index([studentId])
   @@index([classId])
+}
+
+enum TopicProgress {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+}
+
+/// Scheme of work / annual syllabus: one per grade + subject per academic year, shared by every section of the grade.
+model Syllabus {
+  id              String          @id @default(cuid())
+  schoolId        String
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  yearId          String
+  year            AcademicYear    @relation(fields: [yearId], references: [id], onDelete: Cascade)
+  /// Class name without the section, e.g. "Grade 5".
+  gradeName       String
+  subjectId       String
+  subject         Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  overview        String          @default("")
+  assessmentNotes String          @default("")
+  resources       String          @default("")
+  updatedById     String?
+  units           SyllabusUnit[]
+  topics          SyllabusTopic[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([yearId, gradeName, subjectId])
+  @@index([schoolId, yearId])
+}
+
+model SyllabusUnit {
+  id          String          @id @default(cuid())
+  syllabusId  String
+  syllabus    Syllabus        @relation(fields: [syllabusId], references: [id], onDelete: Cascade)
+  title       String
+  description String          @default("")
+  termId      String?
+  term        Term?           @relation(fields: [termId], references: [id], onDelete: SetNull)
+  plannedFrom DateTime?       @db.Date
+  plannedTo   DateTime?       @db.Date
+  sortOrder   Int             @default(0)
+  topics      SyllabusTopic[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([syllabusId, sortOrder])
+}
+
+model SyllabusTopic {
+  id             String           @id @default(cuid())
+  syllabusId     String
+  syllabus       Syllabus         @relation(fields: [syllabusId], references: [id], onDelete: Cascade)
+  unitId         String
+  unit           SyllabusUnit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  title          String
+  objectives     String           @default("")
+  resources      String           @default("")
+  plannedPeriods Int              @default(1)
+  sortOrder      Int              @default(0)
+  progress       TopicProgress    @default(PLANNED)
+  completedOn    DateTime?        @db.Date
+  /// A topic with any exam link is locked: it can't be edited, moved to another unit or deleted.
+  examLinks      ExamPaperTopic[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([unitId, sortOrder])
+  @@index([syllabusId])
+}
+
+/// Syllabus topics an exam paper covers. NoAction (not Restrict) so deleting a whole exam, year or school still cascades.
+model ExamPaperTopic {
+  paperId String
+  paper   ExamPaper     @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  topicId String
+  topic   SyllabusTopic @relation(fields: [topicId], references: [id], onDelete: NoAction)
+
+  @@id([paperId, topicId])
+  @@index([topicId])
 }

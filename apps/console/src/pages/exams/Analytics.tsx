@@ -1,11 +1,12 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Badge, EmptyState, ErrorState, FetchingIndicator, LoadingState, PageHeader } from "@wellrun/ui";
-import { useEffect, useMemo } from "react";
+import { Badge, EmptyState, ErrorState, FetchingIndicator, LoadingState, PageHeader, Pagination } from "@wellrun/ui";
+import { useCallback, useEffect, useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ClassSelect, GradeSpread, PercentBars, Stat, TrendLine, pct, scopeFromString, scopeToString } from "@/components/exams/exam-ui";
 import { FormSelect } from "@/components/form/form-select";
 import { Label } from "@/components/ui/label";
 import { examKeys, examsApi, type ResultScopeOption } from "@/lib/exams-api";
+import { useClampPage } from "@/lib/paging";
 
 /** Scope picker limited to result sets that have been calculated. */
 function useAnalyticsScope() {
@@ -221,13 +222,19 @@ export function StudentPerformancePage() {
   const studentId = params.get("studentId") ?? "";
   const classId = params.get("classId") ?? "";
   const context = useQuery({ queryKey: examKeys.context(), queryFn: examsApi.context });
-  const atRiskQuery = { classId: classId || undefined };
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const atRiskQuery = { classId: classId || undefined, page: page > 1 ? String(page) : undefined };
+  const setPage = useCallback(
+    (next: number) => setParams(() => ({ ...(classId ? { classId } : {}), ...(next > 1 ? { page: String(next) } : {}) }), { replace: true }),
+    [classId, setParams],
+  );
   const atRisk = useQuery({
     queryKey: examKeys.analytics("at-risk", atRiskQuery),
     queryFn: () => examsApi.atRisk(atRiskQuery),
     enabled: !studentId,
     placeholderData: keepPreviousData,
   });
+  useClampPage(atRisk.data, setPage);
   const trend = useQuery({ queryKey: examKeys.analytics("student", { studentId }), queryFn: () => examsApi.studentTrend(studentId), enabled: Boolean(studentId) });
   const trendPoints = useMemo(() => (trend.data?.trend ?? []).map((t) => ({ label: t.exam, value: t.percentage })), [trend.data]);
 
@@ -314,7 +321,7 @@ export function StudentPerformancePage() {
         <LoadingState variant="table" />
       ) : atRisk.isError || !atRisk.data ? (
         <ErrorState title="Couldn't load students" description="Check your connection and try again." onRetry={() => void atRisk.refetch()} />
-      ) : !atRisk.data.atRisk.length ? (
+      ) : !atRisk.data.items.length ? (
         <EmptyState title="No one needs attention" description={`No student is below ${atRisk.data.threshold}%, failing or dropping sharply in the latest exams.`} />
       ) : (
         <div className="overflow-x-auto rounded-3xl bg-surface p-2">
@@ -329,7 +336,7 @@ export function StudentPerformancePage() {
               </tr>
             </thead>
             <tbody>
-              {atRisk.data.atRisk.map((s) => (
+              {atRisk.data.items.map((s) => (
                 <tr key={s.studentId} className="border-t border-line align-top">
                   <td className="px-3 py-2.5">
                     <button type="button" className="font-medium hover:underline" onClick={() => setParams({ studentId: s.studentId })}>
@@ -360,6 +367,9 @@ export function StudentPerformancePage() {
           </table>
         </div>
       )}
+      {atRisk.data ? (
+        <Pagination page={atRisk.data.page} pageSize={atRisk.data.pageSize} total={atRisk.data.total} noun="student" busy={atRisk.isFetching} onPageChange={setPage} />
+      ) : null}
     </div>
   );
 }

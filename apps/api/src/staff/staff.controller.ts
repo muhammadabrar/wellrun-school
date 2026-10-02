@@ -10,8 +10,13 @@ export class StaffController {
   constructor(@Inject(StaffService) private readonly staff: StaffService) {}
 
   @Get("staff")
-  list(@Req() req: { user: CurrentUser }, @Query("status") status?: string, @Query("q") q?: string) {
-    return this.staff.list(requireSchoolAdmin(req.user), { status, q });
+  list(@Req() req: { user: CurrentUser }, @Query() query: { status?: string; q?: string; page?: string; pageSize?: string }) {
+    return this.staff.list(requireSchoolAdmin(req.user), query);
+  }
+
+  @Get("staff/roster")
+  roster(@Req() req: { user: CurrentUser }) {
+    return this.staff.roster(requireSchoolAdmin(req.user));
   }
 
   @Post("staff")

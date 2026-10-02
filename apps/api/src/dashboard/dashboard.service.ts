@@ -117,7 +117,11 @@ export class DashboardService {
         where: { schoolId, classId: { in: classIds }, date: { gte: dateOnly(trendFrom), lte: today } },
         _count: { _all: true },
       }),
-      this.prisma.payment.aggregate({ where: { ...paymentWhere, paymentDate: { gte: today } }, _sum: { amountPkr: true } }),
+      // Midnight in Pakistan, so an evening payment lands on the right day.
+      this.prisma.payment.aggregate({
+        where: { ...paymentWhere, paymentDate: { gte: new Date(`${date}T00:00:00+05:00`) } },
+        _sum: { amountPkr: true },
+      }),
       this.prisma.payment.findMany({
         where: { ...paymentWhere, paymentDate: { gte: dateOnly(`${firstMonth}-01`) } },
         select: { paymentDate: true, amountPkr: true },

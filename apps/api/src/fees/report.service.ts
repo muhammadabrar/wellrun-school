@@ -1,5 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { InvoiceStatus } from "@prisma/client";
+import type { InvoiceStatus, Prisma } from "@prisma/client";
+import { pageParams } from "@wellrun/shared";
 import type { SchoolScope } from "../common/school-scope";
 import { PrismaService } from "../prisma/prisma.service";
 import { invoiceLabel } from "./billing";
@@ -179,61 +180,55 @@ export class FeeReportService {
   async reports(
     schoolId: string,
     scope: SchoolScope = {},
-    query: { from?: string; to?: string; className?: string; section?: string; feeHeadId?: string; method?: string } = {},
+    query: { from?: string; to?: string; className?: string; section?: string; feeHeadId?: string; method?: string; page?: string; pageSize?: string } = {},
   ) {
-    const from = query.from ? new Date(query.from) : new Date(Date.now() - 30 * 86_400_000);
-    const to = query.to ? new Date(query.to) : new Date();
-    const payments = await this.prisma.payment.findMany({
-      where: {
-        schoolId,
-        status: "COMPLETED",
-        paymentDate: { gte: from, lte: to },
-        ...(scope.campusId
-          ? { OR: [{ campusId: scope.campusId }, { campusId: null, student: { campusId: scope.campusId } }] }
-          : {}),
-        ...(query.method ? { method: query.method } : {}),
-        ...(query.className || query.section
-          ? {
-              student: {
-                enrollments: {
-                  some: {
-                    active: true,
-                    class: {
-                      ...(query.className ? { name: query.className } : {}),
-                      ...(query.section ? { section: query.section } : {}),
-                    },
+    const { page, pageSize, skip, take } = pageParams(query);
+    // Date inputs are plain days: the range runs from the start of "from" to the end of "to", Pakistan time.
+    const from = query.from ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(query.from) ? `${query.from}T00:00:00+05:00` : query.from) : new Date(Date.now() - 30 * 86_400_000);
+    const to = query.to ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(query.to) ? `${query.to}T23:59:59.999+05:00` : query.to) : new Date();
+    const where: Prisma.PaymentWhereInput = {
+      schoolId,
+      status: "COMPLETED",
+      paymentDate: { gte: from, lte: to },
+      ...(scope.campusId
+        ? { OR: [{ campusId: scope.campusId }, { campusId: null, student: { campusId: scope.campusId } }] }
+        : {}),
+      ...(query.method ? { method: query.method } : {}),
+      ...(query.feeHeadId ? { allocations: { some: { invoice: { items: { some: { feeHeadId: query.feeHeadId } } } } } } : {}),
+      ...(query.className || query.section
+        ? {
+            student: {
+              enrollments: {
+                some: {
+                  active: true,
+                  class: {
+                    ...(query.className ? { name: query.className } : {}),
+                    ...(query.section ? { section: query.section } : {}),
                   },
                 },
               },
-            }
-          : {}),
-      },
-      include: {
-        student: { select: { id: true, firstName: true, lastName: true, admissionNo: true } },
-        allocations: {
-          include: {
-            invoice: {
-              include: {
-                items: { select: { feeHeadId: true, description: true, netAmountPkr: true } },
-              },
             },
-          },
-        },
-      },
-      orderBy: { paymentDate: "desc" },
-      take: 500,
-    });
-    const rows = query.feeHeadId
-      ? payments.filter((payment) =>
-          payment.allocations.some((row) => row.invoice.items.some((item) => item.feeHeadId === query.feeHeadId)),
-        )
-      : payments;
+          }
+        : {}),
+    };
+    // Totals cover the whole range; only the rows are paged.
+    const [total, sum, payments] = await Promise.all([
+      this.prisma.payment.count({ where }),
+      this.prisma.payment.aggregate({ where, _sum: { amountPkr: true } }),
+      this.prisma.payment.findMany({
+        where,
+        include: { student: { select: { id: true, firstName: true, lastName: true, admissionNo: true } } },
+        orderBy: [{ paymentDate: "desc" }, { id: "desc" }],
+        skip,
+        take,
+      }),
+    ]);
     return {
       from,
       to,
-      totalPkr: addPkr(...rows.map((row) => row.amountPkr)),
-      count: rows.length,
-      rows: rows.map((row) => ({
+      totalPkr: sum._sum.amountPkr ?? 0,
+      count: total,
+      items: payments.map((row) => ({
         id: row.id,
         paymentNumber: row.paymentNumber,
         paymentDate: row.paymentDate,
@@ -241,6 +236,9 @@ export class FeeReportService {
         amountPkr: row.amountPkr,
         student: slimStudent(row.student),
       })),
+      total,
+      page,
+      pageSize,
     };
   }
 

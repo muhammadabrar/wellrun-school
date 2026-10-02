@@ -161,6 +161,20 @@ function Grid({ sheet }: { sheet: MarksSheet }) {
         actions={<PaperStatusBadge status={paper.status} />}
       />
 
+      {paper.syllabus.length ? (
+        <details className="rounded-2xl bg-paper p-3 text-sm print:hidden">
+          <summary className="cursor-pointer font-medium">
+            Syllabus covered ({paper.syllabus.length} {paper.syllabus.length === 1 ? "topic" : "topics"})
+          </summary>
+          <ul className="mt-2 columns-1 gap-6 text-muted-foreground md:columns-2">
+            {paper.syllabus.map((t, i) => (
+              <li key={i} className="break-inside-avoid">
+                {t.title} <span className="text-xs">· {t.unit}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
       {paper.status === "RETURNED" && paper.reviewNote ? (
         <p className="rounded-2xl bg-danger/10 p-3 text-sm text-danger" role="status">
           Returned by the admin: “{paper.reviewNote}”. Fix the marks and submit again.

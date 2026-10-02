@@ -738,6 +738,8 @@ export type FeeSettingsInput = z.infer<typeof feeSettingsSchema>;
 
 export * from "./templates";
 export * from "./exams";
+export * from "./syllabus";
 export * from "./attendance";
 export * from "./dashboard";
+export * from "./paging";
 export * from "./academic-year";

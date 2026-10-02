@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { WEEKDAY_LABELS, attendancePct, countStatuses } from "@wellrun/shared";
+import { REGISTER_EDIT_DAYS, WEEKDAY_LABELS, attendancePct, countStatuses } from "@wellrun/shared";
 import { EmptyState, ErrorState, FetchingIndicator, LoadingState, PageHeader } from "@wellrun/ui";
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -188,7 +188,13 @@ export function RegisterPage() {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
             <MarkLegend />
-            {data?.canEditGrid ? <p className="text-xs text-muted-foreground">Click a cell to cycle P → A → L → Lv → E → blank.</p> : null}
+            {data?.canEditGrid ? (
+              <p className="text-xs text-muted-foreground">
+                {editable.size
+                  ? `Only the last ${REGISTER_EDIT_DAYS} days can be edited here: click a cell to cycle P → A → L → Lv → E → blank.`
+                  : `Read-only. Only the last ${REGISTER_EDIT_DAYS} days can be edited here.`}
+              </p>
+            ) : null}
           </div>
           <div className={cn("overflow-x-auto rounded-3xl bg-surface print:overflow-visible print:rounded-none", isFetching && "opacity-80")}>
             <table className="w-full border-separate border-spacing-0 text-xs print:text-[8px]">

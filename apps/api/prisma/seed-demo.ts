@@ -643,6 +643,204 @@ export async function seedDemoSchool(ctx: Ctx) {
   const term2 = await prisma.term.create({ data: { schoolId, yearId: year.id, name: "Term 2", startsOn: d("2026-10-01"), endsOn: d("2027-03-31"), weight: 60, sortOrder: 1 } });
   const prevTerm = await prisma.term.create({ data: { schoolId, yearId: prevYear.id, name: "Annual", startsOn: d("2025-04-01"), endsOn: d("2026-03-31"), weight: 100, sortOrder: 0 } });
 
+
+  // Syllabus / scheme of work ----------------------------------------------------------------------------------
+  console.log("  demo: syllabus");
+  type Bank = { unit: string; topics: string[] }[];
+  const u = (unit: string, ...topics: string[]) => ({ unit, topics });
+  const BANKS: Record<string, { all?: Bank; junior?: Bank; senior?: Bank }> = {
+    English: {
+      junior: [
+        u("Phonics & reading", "Letter sounds & blends", "Sight words", "Reading short passages", "Rhyming words"),
+        u("Nouns & pronouns", "Common and proper nouns", "Singular and plural", "Pronouns", "Articles a / an / the"),
+        u("Verbs & tenses", "Action words", "Present tense", "Past tense", "Future tense"),
+        u("Adjectives & adverbs", "Describing words", "Comparison", "Adverbs of manner", "Opposites & synonyms"),
+        u("Writing", "Sentence building", "Paragraph writing", "Picture composition", "Letter writing"),
+        u("Poetry & stories", "Poem recitation", "Story elements", "Moral stories", "Revision"),
+      ],
+      senior: [
+        u("Reading comprehension", "Skimming & scanning", "Inference questions", "Vocabulary in context", "Summarising"),
+        u("Grammar: parts of speech", "Nouns & pronouns", "Verbs & modals", "Adjectives & adverbs", "Prepositions & conjunctions"),
+        u("Tenses & voice", "Simple & continuous tenses", "Perfect tenses", "Active and passive voice", "Direct and indirect speech"),
+        u("Composition", "Paragraph writing", "Essay writing", "Story writing", "Dialogue writing"),
+        u("Letters & applications", "Formal letters", "Informal letters", "Applications", "Notices & emails"),
+        u("Literature", "Poetry appreciation", "Short story analysis", "Drama excerpt", "Revision & past papers"),
+      ],
+    },
+    Mathematics: {
+      junior: [
+        u("Numbers to 1000", "Place value", "Comparing & ordering", "Rounding", "Roman numerals"),
+        u("Addition & subtraction", "Adding with carrying", "Subtracting with borrowing", "Word problems", "Mental maths"),
+        u("Multiplication & division", "Times tables", "Multiplying by 2-digit numbers", "Division facts", "Word problems"),
+        u("Fractions", "Parts of a whole", "Equivalent fractions", "Adding like fractions", "Comparing fractions"),
+        u("Measurement", "Length & weight", "Time & calendar", "Money", "Perimeter"),
+        u("Shapes & data", "2D and 3D shapes", "Symmetry", "Pictographs", "Bar graphs"),
+      ],
+      senior: [
+        u("Whole numbers & factors", "HCF & LCM", "Divisibility rules", "Prime factorisation", "Squares & roots"),
+        u("Fractions & decimals", "Operations on fractions", "Decimals", "Fractions to decimals", "Word problems"),
+        u("Ratio & percentage", "Ratio and proportion", "Percentages", "Profit & loss", "Simple interest"),
+        u("Algebra basics", "Variables & expressions", "Simplifying", "Solving linear equations", "Word problems"),
+        u("Geometry", "Angles", "Triangles", "Circles", "Area & perimeter"),
+        u("Data handling", "Mean, median, mode", "Bar & line graphs", "Pie charts", "Probability basics"),
+      ],
+    },
+    Science: {
+      junior: [
+        u("Living things", "Living and non-living", "Needs of living things", "Life cycles", "Habitats"),
+        u("Plants", "Parts of a plant", "How plants make food", "Seeds & germination", "Uses of plants"),
+        u("Animals", "Animal groups", "Food chains", "Adaptation", "Pets & farm animals"),
+        u("Matter", "Solids, liquids, gases", "Changing state", "Materials & their uses", "Mixtures"),
+        u("Forces & energy", "Push and pull", "Light & shadows", "Sound", "Sources of energy"),
+        u("Earth & space", "Weather", "Water cycle", "Sun, moon, stars", "Our environment"),
+      ],
+      senior: [
+        u("Cells & life processes", "Cell structure", "Tissues & organs", "Nutrition", "Respiration"),
+        u("Plants & photosynthesis", "Photosynthesis", "Transpiration", "Reproduction in plants", "Plant adaptations"),
+        u("Matter & mixtures", "States of matter", "Elements & compounds", "Separation techniques", "Acids & bases"),
+        u("Forces & motion", "Speed & velocity", "Friction", "Gravity", "Simple machines"),
+        u("Energy & electricity", "Forms of energy", "Electric circuits", "Conductors & insulators", "Magnetism"),
+        u("Earth & environment", "Rocks & soil", "Atmosphere", "Pollution", "Conservation"),
+      ],
+    },
+    Urdu: {
+      all: [
+        u("Hamd, Naat aur nazmain", "Hamd", "Naat", "Qaumi nazm", "Nazm ka mafhoom"),
+        u("Nasr: kahaniyan", "Sabaq-amoz kahani", "Mutalia aur sawalat", "Mushkil alfaz", "Khulasa"),
+        u("Qawaid: ism aur fail", "Ism ki aqsam", "Fail ki aqsam", "Sifat", "Zameer"),
+        u("Qawaid: jumla sazi", "Mukammal jumla", "Wahid jama", "Mutzad alfaz", "Muhavare"),
+        u("Tehreer", "Mazmoon nigari", "Khat nawisi", "Darkhwast", "Kahani likhna"),
+        u("Imla aur khushkhati", "Imla", "Khushkhati", "Alfaz ki durusti", "Mushq"),
+      ],
+    },
+    Islamiyat: {
+      all: [
+        u("Iman and beliefs", "Tawhid", "Risalat", "Akhirah", "Angels and books"),
+        u("Pillars of Islam", "Salah", "Zakat", "Sawm", "Hajj"),
+        u("Seerah", "Life in Makkah", "Hijrah", "Life in Madinah", "Character of the Prophet (PBUH)"),
+        u("Quran", "Surah recitation", "Memorisation", "Translation", "Lessons from the Quran"),
+        u("Akhlaq", "Honesty", "Respect for parents", "Kindness to neighbours", "Cleanliness"),
+        u("Duas & manners", "Daily duas", "Etiquette of eating", "Etiquette of greeting", "Revision"),
+      ],
+    },
+    "Social Studies": {
+      all: [
+        u("Our family & community", "Family", "Neighbourhood", "Community helpers", "Rules & rights"),
+        u("Our country", "Pakistan's provinces", "Capital cities", "National symbols", "Quaid-e-Azam"),
+        u("Maps & directions", "Cardinal directions", "Reading a map", "Landforms", "Rivers & mountains"),
+        u("People & occupations", "Farming", "Industry", "Trade", "Transport"),
+        u("Culture & festivals", "Eid", "Independence Day", "Regional cultures", "Traditions"),
+        u("Our environment", "Natural resources", "Pollution", "Recycling", "Revision"),
+      ],
+    },
+    "Pakistan Studies": {
+      all: [
+        u("Geography of Pakistan", "Location & borders", "Mountains & plateaus", "Rivers & plains", "Climate"),
+        u("Pakistan Movement", "Two-Nation Theory", "Sir Syed Ahmad Khan", "Allama Iqbal", "Lahore Resolution"),
+        u("Quaid-e-Azam", "Early life", "Political struggle", "Creation of Pakistan", "Principles & legacy"),
+        u("Government & constitution", "Constitution of Pakistan", "Parliament", "Provincial governments", "Citizens' rights"),
+        u("Economy & resources", "Agriculture", "Industries", "Minerals & energy", "Trade"),
+        u("Culture & heritage", "Languages", "Heritage sites", "Festivals", "Revision"),
+      ],
+    },
+    Computer: {
+      all: [
+        u("Introduction to computers", "Parts of a computer", "Input & output devices", "Hardware & software", "Safe use"),
+        u("Operating system", "Desktop & icons", "Files & folders", "Paint basics", "Keyboard skills"),
+        u("Word processing", "Typing & formatting", "Inserting pictures", "Tables", "Printing"),
+        u("Presentations", "Creating slides", "Design & animation", "Presenting", "Project"),
+        u("Internet & safety", "Browsing", "Email basics", "Online safety", "Digital citizenship"),
+        u("Programming basics", "Algorithms", "Scratch blocks", "Loops", "Mini project"),
+      ],
+    },
+  };
+  const bankFor = (subject: string, grade: number): Bank => BANKS[subject].all ?? (grade <= 4 ? BANKS[subject].junior! : BANKS[subject].senior!);
+  const TEXTBOOKS: Record<string, string> = {
+    English: "Oxford Progressive English; graded readers",
+    Urdu: "Sindh/Punjab Textbook Board Urdu; Urdu qaida",
+    Mathematics: "Oxford New Syllabus Mathematics; worksheets",
+    Science: "Science Around Us; lab kits",
+    Islamiyat: "Islamiyat textbook; Noorani Qaida",
+    "Social Studies": "Social Studies textbook; atlas",
+    "Pakistan Studies": "Pakistan Studies textbook; atlas",
+    Computer: "Computer Studies textbook; lab sessions",
+  };
+  type SylUnit = { id: string; topicIds: string[] };
+  const syllabusTree = new Map<string, SylUnit[]>();
+  const sylRows: Prisma.SyllabusCreateManyInput[] = [];
+  const unitRows: Prisma.SyllabusUnitCreateManyInput[] = [];
+  const topicRows: Prisma.SyllabusTopicCreateManyInput[] = [];
+  const slice = (from: Date, to: Date, n: number, i: number) => ({
+    from: new Date(from.getTime() + ((to.getTime() - from.getTime()) * i) / n),
+    to: new Date(from.getTime() + ((to.getTime() - from.getTime()) * (i + 1)) / n - 86400000),
+  });
+  const behindSyllabi = new Set(["Grade 7|Science", "Grade 6|Mathematics"]);
+  const buildSyllabi = (list: Cls[], yearRow: { id: string; name: string }, plan: (unitIndex: number, units: number) => { termId: string; from: Date; to: Date }, archived: boolean) => {
+    const grades = new Map<string, number>();
+    list.forEach((c) => grades.set(c.name, c.grade));
+    for (const [gradeName, grade] of grades) {
+      for (const subject of subjectsOf(grade)) {
+        const bank = bankFor(subject, grade);
+        const syllabusId = randomUUID();
+        sylRows.push({
+          id: syllabusId,
+          schoolId,
+          yearId: yearRow.id,
+          gradeName,
+          subjectId: subjectId.get(subject)!,
+          overview: `Scheme of work for ${gradeName} ${subject}, ${yearRow.name}: ${bank.length} units covering ${bank.reduce((n, b) => n + b.topics.length, 0)} topics across the year.`,
+          assessmentNotes: "Monthly tests (25 marks), mid term and final term exams. Quizzes and assignments count towards the term result.",
+          resources: TEXTBOOKS[subject] ?? "",
+          updatedById: adminId,
+        });
+        const units: SylUnit[] = [];
+        bank.forEach((b, unitIndex) => {
+          const unitId = randomUUID();
+          const { termId, from, to } = plan(unitIndex, bank.length);
+          unitRows.push({ id: unitId, syllabusId, title: `Unit ${unitIndex + 1}: ${b.unit}`, termId, plannedFrom: from, plannedTo: to, sortOrder: unitIndex });
+          const topicIds: string[] = [];
+          b.topics.forEach((title, topicIndex) => {
+            const id = randomUUID();
+            topicIds.push(id);
+            let progress: "PLANNED" | "IN_PROGRESS" | "COMPLETED" = "PLANNED";
+            let completedOn: Date | null = null;
+            if (archived || to < today) {
+              progress = "COMPLETED";
+              completedOn = new Date(to.getTime() - 2 * 86400000);
+            } else if (from <= today) {
+              progress = topicIndex < b.topics.length / 2 ? "COMPLETED" : topicIndex === Math.floor(b.topics.length / 2) ? "IN_PROGRESS" : "PLANNED";
+              completedOn = progress === "COMPLETED" ? new Date(Math.min(today.getTime(), from.getTime() + (topicIndex + 1) * 5 * 86400000)) : null;
+            }
+            // A couple of syllabi are visibly behind: the last topic of the most recent finished unit was never taught.
+            if (!archived && behindSyllabi.has(`${gradeName}|${subject}`) && to < today && unitIndex === 2 && topicIndex === b.topics.length - 1) {
+              progress = "PLANNED";
+              completedOn = null;
+            }
+            topicRows.push({ id, syllabusId, unitId, title, objectives: `Students can explain and apply: ${title.toLowerCase()}.`, plannedPeriods: 2 + (topicIndex % 3), sortOrder: topicIndex, progress, completedOn });
+          });
+          units.push({ id: unitId, topicIds });
+        });
+        syllabusTree.set(`${yearRow.id}|${gradeName}|${subject}`, units);
+      }
+    }
+  };
+  buildSyllabi(
+    classes,
+    year,
+    (i, n) => {
+      const first = i < Math.ceil(n / 2);
+      const idx = first ? i : i - Math.ceil(n / 2);
+      const count = first ? Math.ceil(n / 2) : n - Math.ceil(n / 2);
+      const range = slice(first ? d("2026-04-01") : d("2026-10-01"), first ? d("2026-09-30") : d("2027-03-31"), count, idx);
+      return { termId: first ? term1.id : term2.id, ...range };
+    },
+    false,
+  );
+  buildSyllabi(prevClasses, prevYear, (i, n) => ({ termId: prevTerm.id, ...slice(d("2025-04-01"), d("2026-03-31"), n, i) }), true);
+  await prisma.syllabus.createMany({ data: sylRows });
+  await prisma.syllabusUnit.createMany({ data: unitRows });
+  await chunked(topicRows, 1000, (part) => prisma.syllabusTopic.createMany({ data: part }));
+
   const subjectBias = new Map<string, number>();
   for (const s of students) for (const sub of subjectNames) subjectBias.set(`${s.id}:${sub}`, between(-10, 10));
   const scoreFor = (s: Stu, subject: string, maxMarks: number, difficulty = 0) => {
@@ -850,7 +1048,7 @@ export async function seedDemoSchool(ctx: Ctx) {
   await createExam({ name: "Geometry quiz", kind: "QUIZ", yearId: year.id, termId: term1.id, status: "IN_PROGRESS", startsOn: "2026-09-25", endsOn: "2026-09-25", weight: 100, maxMarks: () => 15, papers: [{ cls: classByLabel(5, "A"), subject: "Mathematics", status: "NOT_STARTED" }], roster: currentRoster, createdById: bilalId });
 
   // Term 2: upcoming exams with a date sheet.
-  await createExam({
+  const octTest = await createExam({
     name: "October Monthly Test",
     yearId: year.id,
     termId: term2.id,
@@ -876,6 +1074,22 @@ export async function seedDemoSchool(ctx: Ctx) {
     roster: currentRoster,
     dateFor: examDay("2027-03-01"),
   });
+
+  // Which syllabus topics each exam covers. Covered topics are locked in the syllabus; the Final Term is left open.
+  const gradeOfClass = new Map([...classes, ...prevClasses].map((c) => [c.id, c.name]));
+  const subjectNameById = new Map<string, string>([...subjectId].map(([name, id]) => [id, name]));
+  const cover = async (papers: Prisma.ExamPaperCreateManyInput[], yearId: string, pick: (units: SylUnit[]) => string[]) => {
+    const rows = papers.flatMap((p) => {
+      const units = syllabusTree.get(`${yearId}|${gradeOfClass.get(p.classId)}|${subjectNameById.get(p.subjectId)}`);
+      return units ? pick(units).map((topicId) => ({ paperId: p.id as string, topicId })) : [];
+    });
+    await chunked(rows, 1000, (part) => prisma.examPaperTopic.createMany({ data: part }));
+  };
+  await cover(prevAnnual.papers, prevYear.id, (units) => units.flatMap((x) => x.topicIds));
+  await cover(mayTest.papers, year.id, (units) => units[0].topicIds.slice(0, 2));
+  await cover(midTerm.papers, year.id, (units) => [...units[0].topicIds, ...units[1].topicIds]);
+  await cover(septTest.papers, year.id, (units) => units[2].topicIds.slice(0, 3));
+  await cover(octTest.papers, year.id, (units) => units[3].topicIds.slice(0, 2));
 
   // Results via the real results engine.
   const settings = new ExamSettingsService(prisma as unknown as PrismaService);

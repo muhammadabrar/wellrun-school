@@ -102,7 +102,7 @@ export class MarksService {
   async sheet(schoolId: string, paperId: string, user: CurrentUser, scope: TeacherScope) {
     const paper = await this.ownedPaper(schoolId, paperId);
     if (scope && !scope.classIds.has(paper.classId)) throw new ForbiddenException("This class is not assigned to you");
-    const [enrollments, marks, exam, corrections] = await Promise.all([
+    const [enrollments, marks, exam, corrections, covered] = await Promise.all([
       this.prisma.enrollment.findMany({
         where: { schoolId, classId: paper.classId, active: true },
         select: { rollNo: true, student: { select: { id: true, firstName: true, lastName: true, admissionNo: true, extra: true } } },
@@ -113,6 +113,11 @@ export class MarksService {
       }),
       this.prisma.exam.findUnique({ where: { id: paper.examId }, select: { gradingScaleId: true } }),
       this.prisma.markCorrection.findMany({ where: { paperId, status: "PENDING" }, select: { studentId: true } }),
+      this.prisma.examPaperTopic.findMany({
+        where: { paperId },
+        orderBy: [{ topic: { unit: { sortOrder: "asc" } } }, { topic: { sortOrder: "asc" } }],
+        select: { topic: { select: { title: true, unit: { select: { title: true } } } } },
+      }),
     ]);
     const bands = await this.settings.bandsFor(schoolId, exam?.gradingScaleId);
     const byStudent = new Map(marks.map((m) => [m.studentId, m]));
@@ -157,6 +162,7 @@ export class MarksService {
         reviewNote: paper.reviewNote,
         submittedAt: paper.submittedAt,
         reviewedAt: paper.reviewedAt,
+        syllabus: covered.map((c) => ({ title: c.topic.title, unit: c.topic.unit.title })),
       },
       bands,
       permissions: {

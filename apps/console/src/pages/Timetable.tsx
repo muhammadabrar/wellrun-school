@@ -43,7 +43,7 @@ export function TimetablePage() {
     queryFn: () => api.timetable(cls?.id),
     enabled: Boolean(cls),
   });
-  const { data: staff = [] } = useQuery({ queryKey: queryKeys.staff, queryFn: () => api.staff(), enabled: admin });
+  const { data: staff = [] } = useQuery({ queryKey: queryKeys.staff, queryFn: api.staffRoster, enabled: admin });
 
   function selectClass(id: string) {
     const next = new URLSearchParams(params);

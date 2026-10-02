@@ -61,7 +61,7 @@ export class FeesController {
   ) {}
 
   @Get("invoices")
-  invoices(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }, @Query() query: { status?: string; q?: string }) {
+  invoices(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }, @Query() query: InvoiceListQuery) {
     return this.payments.invoices(assertFeeAccess(req.user, "fees.view"), req.schoolScope, query);
   }
 
@@ -214,7 +214,7 @@ export class FeesController {
   }
 
   @Get("fees/payments")
-  listPayments(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }, @Query() query: { studentId?: string; q?: string }) {
+  listPayments(@Req() req: { user: CurrentUser; schoolScope?: SchoolScope }, @Query() query: { studentId?: string; q?: string; page?: string; pageSize?: string }) {
     return this.payments.payments(assertFeeAccess(req.user, "fees.view"), req.schoolScope, query);
   }
 
@@ -274,7 +274,7 @@ export class FeesController {
   @Get("fees/reports")
   report(
     @Req() req: { user: CurrentUser; schoolScope?: SchoolScope },
-    @Query() query: { from?: string; to?: string; className?: string; section?: string; feeHeadId?: string; method?: string },
+    @Query() query: { from?: string; to?: string; className?: string; section?: string; feeHeadId?: string; method?: string; page?: string; pageSize?: string },
   ) {
     return this.reports.reports(assertFeeAccess(req.user, "fees.report.view"), req.schoolScope, query);
   }

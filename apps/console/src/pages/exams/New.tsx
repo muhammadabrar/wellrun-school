@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { todayIso } from "@/lib/format";
+import { WizardCoverageSheet } from "@/components/syllabus/coverage-picker";
 import { examKeys, examsApi, type ExamContext } from "@/lib/exams-api";
 
 const STEPS = ["Basics", "Classes", "Subjects & marks", "Date sheet"] as const;
@@ -62,6 +63,9 @@ function Wizard({ ctx }: { ctx: ExamContext }) {
   const [defaultMax, setDefaultMax] = useState(String(template?.maxMarks ?? 100));
   const [defaultPass, setDefaultPass] = useState(String(template?.passMarks ?? 33));
   const [overrides, setOverrides] = useState<Record<string, Partial<SubjectSetting>>>({});
+  // Syllabus topics each grade + subject paper covers (optional). Covered topics get locked in the syllabus.
+  const [coverage, setCoverage] = useState<Record<string, Set<string>>>({});
+  const [coverageFor, setCoverageFor] = useState<{ grade: string; subjectId: string } | null>(null);
   const subjectName = useMemo(() => new Map(ctx.subjects.map((s) => [s.id, s.name])), [ctx.subjects]);
   const selectedGrades = grades
     .map(([grade, sections]) => ({ grade, sections: sections.filter((s) => classIds.has(s.id)) }))
@@ -87,7 +91,8 @@ function Wizard({ ctx }: { ctx: ExamContext }) {
         .filter((subjectId) => setting(grade, subjectId).include)
         .map((subjectId) => {
           const s = setting(grade, subjectId);
-          return { classId: cls.id, subjectId, maxMarks: Number(s.max), passMarks: Number(s.pass) };
+          const topicIds = [...(coverage[`${grade}:${subjectId}`] ?? [])];
+          return { classId: cls.id, subjectId, maxMarks: Number(s.max), passMarks: Number(s.pass), ...(topicIds.length ? { topicIds } : {}) };
         }),
     ),
   );
@@ -363,6 +368,7 @@ function Wizard({ ctx }: { ctx: ExamContext }) {
                           <th scope="col" className="py-2 font-medium">Subject</th>
                           <th scope="col" className="w-28 py-2 font-medium">Max</th>
                           <th scope="col" className="w-28 py-2 font-medium">Pass</th>
+                          <th scope="col" className="w-40 py-2 pl-2 font-medium">Syllabus</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -381,6 +387,18 @@ function Wizard({ ctx }: { ctx: ExamContext }) {
                               <td className="py-2">
                                 <Input aria-label={`${label} pass marks`} type="number" min={0} value={s.pass} disabled={!s.include} onChange={(e) => setOverride(grade, subjectId, { pass: e.target.value })} />
                               </td>
+                              <td className="py-2 pl-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant={coverage[`${grade}:${subjectId}`]?.size ? "secondary" : "outline"}
+                                  disabled={!s.include}
+                                  aria-label={`Syllabus coverage for ${grade} ${label}`}
+                                  onClick={() => setCoverageFor({ grade, subjectId })}
+                                >
+                                  {coverage[`${grade}:${subjectId}`]?.size ? `${coverage[`${grade}:${subjectId}`].size} topics` : "Choose topics"}
+                                </Button>
+                              </td>
                             </tr>
                           );
                         })}
@@ -390,6 +408,9 @@ function Wizard({ ctx }: { ctx: ExamContext }) {
                 </section>
               );
             })}
+            <p className="text-xs text-muted-foreground">
+              Optional: pick the syllabus topics each paper covers. Covered topics are locked in the syllabus so what was examined can't be changed afterwards.
+            </p>
           </div>
         ) : (
           <div className="flex flex-col gap-6">
@@ -456,6 +477,16 @@ function Wizard({ ctx }: { ctx: ExamContext }) {
       </div>
 
       {error ? <FieldError>{error}</FieldError> : null}
+
+      <WizardCoverageSheet
+        open={Boolean(coverageFor)}
+        gradeName={coverageFor?.grade ?? ""}
+        subjectId={coverageFor?.subjectId ?? ""}
+        subjectName={subjectName.get(coverageFor?.subjectId ?? "") ?? ""}
+        value={coverageFor ? (coverage[`${coverageFor.grade}:${coverageFor.subjectId}`] ?? new Set()) : new Set()}
+        onSave={(next) => coverageFor && setCoverage((current) => ({ ...current, [`${coverageFor.grade}:${coverageFor.subjectId}`]: next }))}
+        onClose={() => setCoverageFor(null)}
+      />
 
       <div className="flex flex-wrap justify-between gap-2">
         <Button type="button" variant="outline" icon={<ArrowLeft />} disabled={step === 0} onClick={() => go(step - 1)}>

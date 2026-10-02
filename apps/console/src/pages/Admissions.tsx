@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Badge, EmptyState, ErrorState, FetchingIndicator, LoadingState, PageHeader } from "@wellrun/ui";
-import { ChevronLeft, ChevronRight, UserPlus } from "lucide-react";
+import { Badge, EmptyState, ErrorState, FetchingIndicator, LoadingState, PageHeader, Pagination } from "@wellrun/ui";
+import { UserPlus } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { admissionStatusLabel, admissionStatusTone } from "../components/admissions/status";
 import { FormSelect } from "@/components/form/form-select";
@@ -39,8 +39,6 @@ export function AdmissionsPage() {
     enabled: Boolean(campusId),
   });
   const summary = data?.summary;
-  const pages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.pageSize ?? 20)));
-  const page = data?.page ?? 1;
 
   function setFilter(key: string, value: string) {
     const next = new URLSearchParams(params);
@@ -213,19 +211,7 @@ export function AdmissionsPage() {
               </Link>
             ))}
           </div>
-          <div className="mt-4 flex items-center justify-between text-sm">
-            <p className="text-muted-foreground">
-              Page {page} of {pages}
-            </p>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => setFilter("page", String(page - 1))}>
-                <ChevronLeft /> Previous
-              </Button>
-              <Button type="button" variant="outline" size="sm" disabled={page >= pages} onClick={() => setFilter("page", String(page + 1))}>
-                Next <ChevronRight />
-              </Button>
-            </div>
-          </div>
+          {data ? <Pagination page={data.page} pageSize={data.pageSize} total={data.total} noun="application" busy={isFetching} onPageChange={(next) => setFilter("page", String(next))} /> : null}
         </>
       )}
     </div>

@@ -252,7 +252,7 @@ export class ExamAnalyticsController {
   }
 
   @Get("students")
-  async students(@Req() req: Req, @Query() query: { studentId?: string; classId?: string }) {
+  async students(@Req() req: Req, @Query() query: { studentId?: string; classId?: string; page?: string; pageSize?: string }) {
     const { schoolId, yearId, scope } = await examContext(this.prisma, req, "analytics.view");
     return this.analytics.studentPerformance(schoolId, yearId, query, scope);
   }

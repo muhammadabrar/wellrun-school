@@ -1,5 +1,6 @@
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type { ResultScope } from "@prisma/client";
+import { paginate } from "@wellrun/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { assertClassInScope, type TeacherScope } from "./access";
 import { classLabel } from "./exams.service";
@@ -156,7 +157,7 @@ export class ExamAnalyticsService {
    * Without a student: the at-risk list (below the school's threshold, failed, or dropped 10+ points between
    * their last two exams). With a student: their exam-by-exam trend per subject.
    */
-  async studentPerformance(schoolId: string, yearId: string, query: { studentId?: string; classId?: string }, teacher: TeacherScope) {
+  async studentPerformance(schoolId: string, yearId: string, query: { studentId?: string; classId?: string; page?: string; pageSize?: string }, teacher: TeacherScope) {
     if (query.classId) assertClassInScope(teacher, query.classId);
     const rules = await this.settings.rules(schoolId);
     const results = await this.prisma.studentResult.findMany({
@@ -224,6 +225,6 @@ export class ExamAnalyticsService {
       })
       .filter((r) => r.reasons.length)
       .sort((a, b) => a.percentage - b.percentage);
-    return { threshold: rules.atRiskPct, atRisk };
+    return { threshold: rules.atRiskPct, ...paginate(atRisk, query) };
   }
 }

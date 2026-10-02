@@ -1,38 +1,73 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Dialog, EmptyState, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Dialog, EmptyState, ErrorState, FetchingIndicator, LoadingState, PageHeader, Pagination } from "@wellrun/ui";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { FeeStatusBadge, formatDate, methodLabel } from "@/components/fees/fee-ui";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { api, currentUser, type FeePaymentRow } from "@/lib/api";
 import { pkr } from "@/lib/format";
+import { useClampPage } from "@/lib/paging";
 import { queryKeys } from "@/lib/query";
 
 export function FeePaymentsPage() {
   const canReverse = currentUser()?.role === "SCHOOL_ADMIN";
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
-  const [q, setQ] = useState("");
+  const [params, setParams] = useSearchParams();
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const q = params.get("q") ?? "";
+  const [search, setSearch] = useState(q);
   const [reverse, setReverse] = useState<{ row: FeePaymentRow; mode: "void" | "refund" } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setQ(search.trim()), 300);
-    return () => window.clearTimeout(timer);
-  }, [search]);
+  const setPage = useCallback(
+    (next: number) =>
+      setParams(
+        (current) => {
+          const out = new URLSearchParams(current);
+          if (next > 1) out.set("page", String(next));
+          else out.delete("page");
+          return out;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
 
-  const query = { q: q || undefined };
-  const { data, isPending, isError, refetch } = useQuery({ queryKey: queryKeys.feePayments(query), queryFn: () => api.feePayments(query) });
+  // Search as you type; a new search starts from page one.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const next = search.trim();
+      if (next === q) return;
+      setParams(
+        (current) => {
+          const out = new URLSearchParams(current);
+          if (next) out.set("q", next);
+          else out.delete("q");
+          out.delete("page");
+          return out;
+        },
+        { replace: true },
+      );
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search, q, setParams]);
+
+  const query = { q: q || undefined, page: page > 1 ? String(page) : undefined };
+  const { data, isPending, isFetching, isError, refetch } = useQuery({
+    queryKey: queryKeys.feePayments(query),
+    queryFn: () => api.feePayments(query),
+    placeholderData: keepPreviousData,
+  });
+  useClampPage(data, setPage);
   const reverseMut = useMutation({
     mutationFn: ({ id, mode }: { id: string; mode: "void" | "refund" }) => (mode === "void" ? api.voidFeePayment(id) : api.refundFeePayment(id)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["fees"] }),
   });
 
-  const rows = data ?? [];
-  const today = new Date().toDateString();
-  const todayTotal = rows.filter((row) => row.status === "COMPLETED" && new Date(row.paymentDate).toDateString() === today).reduce((sum, row) => sum + row.amountPkr, 0);
+  const rows = data?.items ?? [];
+  const todayTotal = data?.todayPkr ?? 0;
 
   return (
     <div className="space-y-6">
@@ -46,6 +81,7 @@ export function FeePaymentsPage() {
           Received today <span className="font-display text-xl text-foreground tabular-nums">{pkr(todayTotal)}</span>
         </p>
       </div>
+      <FetchingIndicator show={isFetching && !isPending} label="Updating payments" />
       {error ? (
         <p className="text-sm text-destructive" role="alert">
           {error}
@@ -135,6 +171,7 @@ export function FeePaymentsPage() {
           </table>
         </div>
       )}
+      {data ? <Pagination page={data.page} pageSize={data.pageSize} total={data.total} noun="payment" busy={isFetching} onPageChange={setPage} /> : null}
 
       <Dialog
         open={Boolean(reverse)}

@@ -52,6 +52,9 @@ const FeePaymentsPage = lazyPage(() => import("./pages/fees/Payments"), "FeePaym
 const FeeDiscountsPage = lazyPage(() => import("./pages/fees/Discounts"), "FeeDiscountsPage");
 const FeeReportsPage = lazyPage(() => import("./pages/fees/Reports"), "FeeReportsPage");
 const FeeSettingsPage = lazyPage(() => import("./pages/fees/Settings"), "FeeSettingsPage");
+const SyllabusOverviewPage = lazyPage(() => import("./pages/syllabus/Overview"), "SyllabusOverviewPage");
+const SyllabusListPage = lazyPage(() => import("./pages/syllabus/List"), "SyllabusListPage");
+const SyllabusEditorPage = lazyPage(() => import("./pages/syllabus/Editor"), "SyllabusEditorPage");
 const ExamsDashboardPage = lazyPage(() => import("./pages/exams/Dashboard"), "ExamsDashboardPage");
 const ExamsListPage = lazyPage(() => import("./pages/exams/List"), "ExamsListPage");
 const ExamCreatePage = lazyPage(() => import("./pages/exams/New"), "ExamCreatePage");
@@ -148,6 +151,9 @@ export function App() {
         <Route path="/academics/years/new" element={<NewYearPage />} />
         <Route path="/fee-structure" element={<FeeStructurePage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/syllabus" element={<SyllabusOverviewPage />} />
+        <Route path="/syllabus/list" element={<SyllabusListPage />} />
+        <Route path="/syllabus/:id" element={<SyllabusEditorPage />} />
         <Route path="/exams" element={<ExamsDashboardPage />} />
         <Route path="/exams/list" element={<ExamsListPage />} />
         <Route path="/exams/new" element={<ExamCreatePage />} />

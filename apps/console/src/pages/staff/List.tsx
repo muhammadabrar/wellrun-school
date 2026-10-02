@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { EmptyState, ErrorState, FetchingIndicator, LoadingState, PageHeader } from "@wellrun/ui";
+import { EmptyState, ErrorState, FetchingIndicator, LoadingState, PageHeader, Pagination } from "@wellrun/ui";
 import { KeyRound, Search, UserPlus, Wallet } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { FormSelect } from "@/components/form/form-select";
 import { CONTRACT_TYPES, STAFF_STATUS, StaffStatusBadge, formatDay } from "@/components/staff/staff-ui";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, type StaffStatus } from "@/lib/api";
 import { pkr } from "@/lib/format";
+import { useClampPage } from "@/lib/paging";
 import { queryKeys } from "@/lib/query";
 
 const statusOptions = [
@@ -23,30 +24,45 @@ export function StaffListPage() {
   const [params, setParams] = useSearchParams();
   const status = params.get("status") ?? "current";
   const q = params.get("q") ?? "";
+  const page = Math.max(1, Number(params.get("page")) || 1);
   const [search, setSearch] = useState(q);
 
-  // Search as you type, without a request per keystroke.
+  const setPage = useCallback(
+    (next: number) =>
+      setParams(
+        (current) => {
+          const out = new URLSearchParams(current);
+          if (next > 1) out.set("page", String(next));
+          else out.delete("page");
+          return out;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
+
+  // Search as you type, without a request per keystroke. A new search starts from page one.
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      if (search === q) return;
+      if (search.trim() === q) return;
       const next = new URLSearchParams(params);
       if (search.trim()) next.set("q", search.trim());
       else next.delete("q");
+      next.delete("page");
       setParams(next, { replace: true });
     }, 300);
     return () => window.clearTimeout(timer);
   }, [search, q, params, setParams]);
 
-  const query = { status: status === "current" ? "all" : status, q: q || undefined };
+  const query = { status, q: q || undefined, page: page > 1 ? String(page) : undefined };
   const { data, isPending, isFetching, isError, refetch } = useQuery({
-    queryKey: queryKeys.staffList({ status, q }),
+    queryKey: queryKeys.staffList(query),
     queryFn: () => api.staff(query),
     placeholderData: keepPreviousData,
   });
-  const rows = (data ?? []).filter((row) => status !== "current" || row.status === "ACTIVE" || row.status === "ON_LEAVE");
-  const monthly = rows.filter((row) => row.status === "ACTIVE" || row.status === "ON_LEAVE").reduce((sum, row) => sum + (row.contract?.basicSalaryPkr ?? 0), 0);
-  const noLogin = rows.filter((row) => !row.login && (row.status === "ACTIVE" || row.status === "ON_LEAVE")).length;
-  const noContract = rows.filter((row) => !row.contract && (row.status === "ACTIVE" || row.status === "ON_LEAVE")).length;
+  useClampPage(data, setPage);
+  const rows = data?.items ?? [];
+  const summary = data?.summary;
 
   return (
     <div className="flex flex-col gap-6">
@@ -65,12 +81,12 @@ export function StaffListPage() {
         }
       />
 
-      {data && status === "current" && !q ? (
+      {summary && status === "current" && !q ? (
         <dl className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Stat label="Current staff" value={String(rows.length)} />
-          <Stat label="Basic salaries / month" value={pkr(monthly)} />
-          <Stat label="Without a login" value={String(noLogin)} hint={noLogin ? "They can't see their timetable or payslips." : undefined} />
-          <Stat label="Without a contract" value={String(noContract)} hint={noContract ? "They're left out of payroll." : undefined} />
+          <Stat label="Current staff" value={String(summary.current)} />
+          <Stat label="Basic salaries / month" value={pkr(summary.monthlyPkr)} />
+          <Stat label="Without a login" value={String(summary.noLogin)} hint={summary.noLogin ? "They can't see their timetable or payslips." : undefined} />
+          <Stat label="Without a contract" value={String(summary.noContract)} hint={summary.noContract ? "They're left out of payroll." : undefined} />
         </dl>
       ) : null}
 
@@ -98,6 +114,7 @@ export function StaffListPage() {
               const next = new URLSearchParams(params);
               if (value && value !== "current") next.set("status", value);
               else next.delete("status");
+              next.delete("page");
               setParams(next, { replace: true });
             }}
             options={statusOptions}
@@ -197,6 +214,7 @@ export function StaffListPage() {
           </table>
         </div>
       )}
+      {data ? <Pagination page={data.page} pageSize={data.pageSize} total={data.total} noun="staff member" busy={isFetching} onPageChange={setPage} /> : null}
     </div>
   );
 }

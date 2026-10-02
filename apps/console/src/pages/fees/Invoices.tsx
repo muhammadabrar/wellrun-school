@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { EmptyState, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
-import { useEffect, useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { EmptyState, ErrorState, FetchingIndicator, LoadingState, PageHeader, Pagination } from "@wellrun/ui";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { FormSelect } from "@/components/form/form-select";
 import { CollectPaymentDialog } from "@/components/fees/collect-payment-dialog";
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { useCampus } from "@/hooks/use-campus";
 import { api, currentUser, type FeeInvoiceRow } from "@/lib/api";
 import { pkr } from "@/lib/format";
+import { useClampPage } from "@/lib/paging";
 import { queryKeys } from "@/lib/query";
 
 const STATUS_OPTIONS = [
@@ -35,15 +36,35 @@ export function FeeInvoicesPage() {
   const billingPeriod = params.get("billingPeriod") ?? "";
   const classId = params.get("classId") ?? "";
   const years = (params.get("years") ?? "this") as "this" | "previous" | "all";
+  const page = Math.max(1, Number(params.get("page")) || 1);
   const [search, setSearch] = useState(params.get("q") ?? "");
   const [q, setQ] = useState(search);
   const [collect, setCollect] = useState<FeeInvoiceRow | null>(null);
   const selectedClass = classes.find((cls) => cls.id === classId) ?? null;
 
+  const setPage = useCallback(
+    (next: number) =>
+      setParams(
+        (current) => {
+          const out = new URLSearchParams(current);
+          if (next > 1) out.set("page", String(next));
+          else out.delete("page");
+          return out;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
+
   useEffect(() => {
-    const timer = window.setTimeout(() => setQ(search.trim()), 300);
+    const timer = window.setTimeout(() => {
+      const next = search.trim();
+      if (next === q) return;
+      setQ(next);
+      setPage(1);
+    }, 300);
     return () => window.clearTimeout(timer);
-  }, [search]);
+  }, [search, q, setPage]);
 
   const query = {
     status,
@@ -52,18 +73,26 @@ export function FeeInvoicesPage() {
     section: selectedClass?.section,
     q: q || undefined,
     years: years === "this" ? undefined : years,
+    page: page > 1 ? String(page) : undefined,
   };
-  const { data, isPending, isError, refetch } = useQuery({ queryKey: queryKeys.feeInvoices(query), queryFn: () => api.feeInvoices(query) });
+  const { data, isPending, isFetching, isError, refetch } = useQuery({
+    queryKey: queryKeys.feeInvoices(query),
+    queryFn: () => api.feeInvoices(query),
+    placeholderData: keepPreviousData,
+  });
+  useClampPage(data, setPage);
 
+  // Changing a filter starts again from the first page.
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value);
     else next.delete(key);
+    next.delete("page");
     setParams(next, { replace: true });
   }
 
-  const rows = data ?? [];
-  const balance = rows.reduce((sum, row) => sum + row.balancePkr, 0);
+  const rows = data?.items ?? [];
+  const balance = data?.balancePkr ?? 0;
   const filtered = Boolean(billingPeriod || classId || q || status !== "unpaid" || years !== "this");
 
   return (
@@ -116,11 +145,13 @@ export function FeeInvoicesPage() {
         />
       ) : (
         <>
-          <p className="text-sm text-muted-foreground">
-            {rows.length} invoice{rows.length === 1 ? "" : "s"}
-            {balance ? ` · ${pkr(balance)} still due` : ""}
-            {rows.length >= 300 ? " · showing the latest 300, narrow the filters to see more" : ""}
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-muted-foreground">
+              {data?.total.toLocaleString("en-PK")} invoice{data?.total === 1 ? "" : "s"}
+              {balance ? ` · ${pkr(balance)} still due` : ""}
+            </p>
+            <FetchingIndicator show={isFetching && !isPending} label="Updating invoices" />
+          </div>
           <div className="overflow-x-auto rounded-3xl bg-surface">
             <table className="w-full min-w-[56rem] text-left text-sm whitespace-nowrap">
               <thead className="text-muted-foreground">
@@ -186,6 +217,7 @@ export function FeeInvoicesPage() {
               </tbody>
             </table>
           </div>
+          {data ? <Pagination page={data.page} pageSize={data.pageSize} total={data.total} noun="invoice" busy={isFetching} onPageChange={setPage} /> : null}
         </>
       )}
 

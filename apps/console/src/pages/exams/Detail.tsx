@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EXAM_KIND_LABELS } from "@wellrun/shared";
 import { Badge, Dialog, EmptyState, ErrorState, LoadingState, PageHeader } from "@wellrun/ui";
-import { CalendarCog, CircleAlert, ClipboardPen, Copy, Pencil, Plus, Printer, Trash2, Trophy } from "lucide-react";
+import { BookMarkedIcon, CalendarCog, CircleAlert, ClipboardPen, Copy, Pencil, Plus, Printer, Trash2, Trophy } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ExamStatusBadge, MarkingProgress, PaperStatusBadge, dateRange, formatDayShort, isExamAdmin } from "@/components/exams/exam-ui";
 import { DatePicker } from "@/components/form/date-picker";
 import { FormSelect } from "@/components/form/form-select";
 import { Toast } from "@/components/motion";
+import { PaperCoverageSheet } from "@/components/syllabus/coverage-picker";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -78,7 +79,7 @@ export function ExamDetailPage() {
       {tab === "schedule" ? (
         <DateSheet exam={exam} admin={admin} onToast={setToast} />
       ) : tab === "papers" ? (
-        <PapersTab exam={exam} />
+        <PapersTab exam={exam} onToast={setToast} />
       ) : (
         <Overview exam={exam} admin={admin} approved={approved} submitted={submitted} onToast={setToast} />
       )}
@@ -491,8 +492,9 @@ function EditablePaperRow({ paper, examId, staff, clash, onError }: { paper: Exa
   );
 }
 
-function PapersTab({ exam }: { exam: ExamDetail }) {
+function PapersTab({ exam, onToast }: { exam: ExamDetail; onToast: (message: string) => void }) {
   const admin = isExamAdmin();
+  const [coveragePaper, setCoveragePaper] = useState<string | null>(null);
   const byClass = useMemo(() => {
     const map = new Map<string, ExamPaperRow[]>();
     exam.papers.forEach((p) => map.set(p.className, [...(map.get(p.className) ?? []), p]));
@@ -516,9 +518,21 @@ function PapersTab({ exam }: { exam: ExamDetail }) {
                     {p.marksEntered}/{p.students} entered · out of {p.maxMarks}
                     {p.status === "RETURNED" && p.reviewNote ? ` · “${p.reviewNote}”` : ""}
                   </p>
+                  {p.topics.length ? (
+                    <p className="mt-1 max-w-xl text-xs text-muted-foreground" title={p.topics.map((t) => `${t.unit}: ${t.title}`).join("\n")}>
+                      <BookMarkedIcon className="mr-1 inline size-3 align-[-1px]" aria-hidden />
+                      {p.topics.length} {p.topics.length === 1 ? "topic" : "topics"}: {p.topics.slice(0, 3).map((t) => t.title).join(", ")}
+                      {p.topics.length > 3 ? ` +${p.topics.length - 3} more` : ""}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2">
                   <PaperStatusBadge status={p.status} />
+                  {p.canMark || admin ? (
+                    <Button size="sm" variant="ghost" icon={<BookMarkedIcon />} onClick={() => setCoveragePaper(p.id)}>
+                      {p.topics.length ? "Syllabus" : admin ? "Add syllabus" : "Syllabus"}
+                    </Button>
+                  ) : null}
                   {p.canMark || admin ? (
                     <Button size="sm" variant={p.status === "SUBMITTED" && admin ? "default" : "outline"} render={<Link to={`/exams/marks/${p.id}`} />}>
                       {p.status === "SUBMITTED" && admin ? "Verify" : p.status === "APPROVED" ? "View" : p.canMark ? "Enter marks" : "View"}
@@ -531,6 +545,7 @@ function PapersTab({ exam }: { exam: ExamDetail }) {
         </section>
       ))}
       {!admin ? <FieldDescription>You can enter marks only for subjects you teach.</FieldDescription> : null}
+      <PaperCoverageSheet paperId={coveragePaper} canEdit={admin} onClose={() => setCoveragePaper(null)} onSaved={onToast} />
     </div>
   );
 }

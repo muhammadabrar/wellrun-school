@@ -149,6 +149,11 @@ export function withinEditWindow(iso: string, today: string, editDays: number) {
   return diff >= 0 && diff <= editDays;
 }
 
+/** The month register can only be edited for the last this-many days, today included. Older days are read-only. */
+export const REGISTER_EDIT_DAYS = 2;
+
+export const withinRegisterEditWindow = (iso: string, today: string) => withinEditWindow(iso, today, REGISTER_EDIT_DAYS - 1);
+
 export type AttendanceCounts = Record<AttendanceStatus, number>;
 
 export function emptyCounts(): AttendanceCounts {

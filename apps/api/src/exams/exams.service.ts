@@ -13,6 +13,7 @@ import { audit } from "../common/audit";
 import type { CurrentUser } from "../common/current-user";
 import { assertWritableSchool } from "../common/school";
 import { PrismaService } from "../prisma/prisma.service";
+import { validateCoverage } from "../syllabus/coverage";
 import { assertCanMarkPaper, canMarkPaper, type TeacherScope } from "./access";
 import { autoSchedule, findClashes } from "./schedule.engine";
 
@@ -149,6 +150,7 @@ export class ExamsService {
             class: { select: { id: true, name: true, section: true } },
             subject: { select: { id: true, name: true } },
             invigilator: { select: { id: true, name: true } },
+            topics: { select: { topic: { select: { id: true, title: true, unit: { select: { title: true } } } } } },
             _count: { select: { marks: true } },
           },
         },
@@ -178,6 +180,8 @@ export class ExamsService {
       marksEntered: p._count.marks,
       students: strength.get(p.classId) ?? 0,
       canMark: canMarkPaper(scope, p),
+      /** Syllabus coverage: topics this paper tests (they are locked in the syllabus). */
+      topics: p.topics.map((t) => ({ id: t.topic.id, title: t.topic.title, unit: t.topic.unit.title })),
     }));
     return {
       id: exam.id,
@@ -240,6 +244,33 @@ export class ExamsService {
     };
   }
 
+  /** Topics picked for each paper must belong to its grade + subject syllabus. Returns "classId:subjectId" → topic ids. */
+  private async checkCoverage(schoolId: string, yearId: string, papers: { classId: string; subjectId: string; topicIds?: string[] }[]) {
+    const wanted = papers.filter((p) => p.topicIds?.length);
+    const out = new Map<string, string[]>();
+    if (!wanted.length) return out;
+    const classes = await this.prisma.class.findMany({ where: { schoolId, yearId, id: { in: [...new Set(wanted.map((p) => p.classId))] } }, select: { id: true, name: true } });
+    const gradeOf = new Map(classes.map((c) => [c.id, c.name]));
+    const validated = new Map<string, string[]>();
+    for (const p of wanted) {
+      const gradeName = gradeOf.get(p.classId);
+      if (!gradeName) continue;
+      const topicIds = [...new Set(p.topicIds)].sort();
+      const key = `${gradeName}:${p.subjectId}:${topicIds.join(",")}`;
+      if (!validated.has(key)) validated.set(key, await validateCoverage(this.prisma, schoolId, { yearId, gradeName, subjectId: p.subjectId }, topicIds));
+      out.set(`${p.classId}:${p.subjectId}`, validated.get(key)!);
+    }
+    return out;
+  }
+
+  /** Writes the (already validated) coverage onto the papers just created for the exam. */
+  private async linkCoverage(tx: Prisma.TransactionClient, examId: string, coverage: Map<string, string[]>) {
+    if (!coverage.size) return;
+    const papers = await tx.examPaper.findMany({ where: { examId }, select: { id: true, classId: true, subjectId: true } });
+    const rows = papers.flatMap((p) => (coverage.get(`${p.classId}:${p.subjectId}`) ?? []).map((topicId) => ({ paperId: p.id, topicId })));
+    if (rows.length) await tx.examPaperTopic.createMany({ data: rows, skipDuplicates: true });
+  }
+
   async create(schoolId: string, user: CurrentUser, yearId: string, body: unknown) {
     await assertWritableSchool(this.prisma, schoolId);
     const data = examCreateSchema.parse(body);
@@ -257,26 +288,31 @@ export class ExamsService {
       gradingScaleId: data.gradingScaleId,
       staffIds: papers.map((p) => p.invigilatorId).filter((v): v is string => Boolean(v)),
     });
+    const coverage = await this.checkCoverage(schoolId, yearId, papers);
     const scheduled = papers.some((p) => p.date);
-    const exam = await this.prisma.exam.create({
-      data: {
-        schoolId,
-        yearId,
-        kind: data.kind,
-        name: data.name,
-        code: data.code,
-        termId: data.termId || null,
-        gradingScaleId: data.gradingScaleId || null,
-        startsOn: dateOnly(data.startsOn),
-        endsOn: dateOnly(data.endsOn),
-        weight: data.weight,
-        includeInReportCard: data.includeInReportCard,
-        instructions: data.instructions,
-        status: data.publishSchedule || scheduled ? "SCHEDULED" : "DRAFT",
-        createdById: user.id,
-        papers: { create: papers.map((p) => this.paperData(schoolId, p)) },
-      },
-      select: { id: true, name: true },
+    const exam = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.exam.create({
+        data: {
+          schoolId,
+          yearId,
+          kind: data.kind,
+          name: data.name,
+          code: data.code,
+          termId: data.termId || null,
+          gradingScaleId: data.gradingScaleId || null,
+          startsOn: dateOnly(data.startsOn),
+          endsOn: dateOnly(data.endsOn),
+          weight: data.weight,
+          includeInReportCard: data.includeInReportCard,
+          instructions: data.instructions,
+          status: data.publishSchedule || scheduled ? "SCHEDULED" : "DRAFT",
+          createdById: user.id,
+          papers: { create: papers.map((p) => this.paperData(schoolId, p)) },
+        },
+        select: { id: true, name: true },
+      });
+      await this.linkCoverage(tx, created.id, coverage);
+      return created;
     });
     await audit(this.prisma, { schoolId, actorId: user.id, action: "exam_created", entity: "exam", entityId: exam.id, summary: `${exam.name} (${papers.length} papers)` });
     return exam;
@@ -398,7 +434,12 @@ export class ExamsService {
     const exam = await this.ownedExam(schoolId, id);
     const papers = z.object({ papers: z.array(examPaperInputSchema).min(1) }).parse(body).papers;
     await this.assertRefs(schoolId, exam.yearId, { classIds: papers.map((p) => p.classId), subjectIds: papers.map((p) => p.subjectId) });
-    const result = await this.prisma.examPaper.createMany({ data: papers.map((p) => ({ ...this.paperData(schoolId, p), examId: id })), skipDuplicates: true });
+    const coverage = await this.checkCoverage(schoolId, exam.yearId, papers);
+    const result = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.examPaper.createMany({ data: papers.map((p) => ({ ...this.paperData(schoolId, p), examId: id })), skipDuplicates: true });
+      await this.linkCoverage(tx, id, coverage);
+      return created;
+    });
     await audit(this.prisma, { schoolId, actorId, action: "exam_papers_added", entity: "exam", entityId: id, summary: `${result.count} papers` });
     return { added: result.count };
   }

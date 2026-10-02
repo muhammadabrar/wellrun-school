@@ -4,6 +4,7 @@ import type {
   ExamStatus,
   GradeBand,
   MarkAttendance,
+  Paged,
   PaperStatus,
   ReportCardOptions,
   ResultScope,
@@ -75,6 +76,8 @@ export type ExamPaperRow = {
   marksEntered: number;
   students: number;
   canMark: boolean;
+  /** Syllabus topics this paper covers (locked in the syllabus). */
+  topics: { id: string; title: string; unit: string }[];
 };
 
 export type ExamDetail = {
@@ -169,6 +172,7 @@ export type MarksSheet = {
     reviewNote: string;
     submittedAt: string | null;
     reviewedAt: string | null;
+    syllabus: { title: string; unit: string }[];
   };
   bands: GradeBand[];
   permissions: { canEdit: boolean; canSubmit: boolean; canReview: boolean; canRequestCorrection: boolean; canReopen: boolean };
@@ -411,7 +415,7 @@ export const examsApi = {
   scopes: () => request<ResultScopeOption[]>("/console/exam-analytics/scopes"),
   classPerformance: (query: Params) => request<ClassPerformance>(`/console/exam-analytics/classes${qs(query)}`),
   subjectPerformance: (query: Params) => request<SubjectPerformance>(`/console/exam-analytics/subjects${qs(query)}`),
-  atRisk: (query: Params) => request<{ threshold: number; atRisk: AtRiskStudent[] }>(`/console/exam-analytics/students${qs(query)}`),
+  atRisk: (query: Params) => request<Paged<AtRiskStudent> & { threshold: number }>(`/console/exam-analytics/students${qs(query)}`),
   studentTrend: (studentId: string) => request<StudentTrend>(`/console/exam-analytics/students${qs({ studentId })}`),
 
   rules: () => request<ExamRules>("/console/exam-settings/rules"),
