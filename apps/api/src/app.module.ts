@@ -24,6 +24,7 @@ import { PrismaModule } from "./prisma/prisma.module";
 import { SchoolsModule } from "./schools/schools.module";
 import { SessionModule } from "./session/session.module";
 import { SetupModule } from "./setup/setup.module";
+import { StaffAttendanceModule } from "./staff-attendance/staff-attendance.module";
 import { StaffModule } from "./staff/staff.module";
 import { StudentsModule } from "./students/students.module";
 import { SyllabusModule } from "./syllabus/syllabus.module";
@@ -59,6 +60,7 @@ import { TraceMiddleware } from "./trace/trace.middleware";
     NoticesModule,
     ParentModule,
     ReportsModule,
+    StaffAttendanceModule,
     PayrollModule,
     ClaimsModule,
     AdminModule,

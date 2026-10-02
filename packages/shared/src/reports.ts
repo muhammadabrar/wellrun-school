@@ -53,6 +53,7 @@ export const REPORTS: ReportDef[] = [
   { id: "fees.reversals", group: "fees", title: "Voided and refunded payments", description: "Payments that were reversed in a period, so nothing disappears quietly.", filters: ["range"] },
   { id: "exams.classes", group: "exams", title: "Class results", description: "Average, pass rate and topper for every class in an exam.", filters: ["scope"] },
   { id: "exams.subjects", group: "exams", title: "Subject results", description: "Which subjects are strongest and weakest across the school.", filters: ["scope"] },
+  { id: "staff.attendance", group: "staff", title: "Staff attendance", description: "How often each staff member turned up, late or was absent, with approved leave shown separately.", filters: ["range"] },
   { id: "staff.payroll", group: "staff", title: "Payroll cost by month", description: "What the school paid or owes in salaries each month.", filters: ["range"], range: "months6" },
   { id: "staff.departments", group: "staff", title: "Payroll by department", description: "Salaries for one month, split by department.", filters: ["month"] },
 ];
@@ -125,6 +126,7 @@ export type RatioKey =
   | "defaulters"
   | "discount"
   | "attendance"
+  | "staffAttendance"
   | "pass"
   | "girls";
 
@@ -154,6 +156,7 @@ export const RATIO_DEFS: RatioDef[] = [
   { key: "defaulters", group: "Fees", label: "Students with overdue fees", question: "How many families are behind on fees?", unit: "pct", numeratorLabel: "Students overdue", denominatorLabel: "Students", threshold: { good: 10, watch: 20, higherIsBetter: false }, targetText: "10% or fewer is good" },
   { key: "discount", group: "Fees", label: "Discounts given", question: "How much of the billed fees was given away as discounts?", unit: "pct", numeratorLabel: "Discounts (Rs.)", denominatorLabel: "Fees before discount (Rs.)", threshold: { good: 10, watch: 20, higherIsBetter: false }, targetText: "10% or less is good" },
   { key: "attendance", group: "Learning", label: "Student attendance", question: "How often are students in school?", unit: "pct", numeratorLabel: "Days attended", denominatorLabel: "Days counted", threshold: { good: 90, watch: 80, higherIsBetter: true }, targetText: "90% or more is good" },
+  { key: "staffAttendance", group: "Staffing", label: "Staff attendance", question: "How often are staff at work on school days? Approved leave is not counted against anyone.", unit: "pct", numeratorLabel: "Days present", denominatorLabel: "Days counted", threshold: { good: 95, watch: 90, higherIsBetter: true }, targetText: "95% or more is good" },
   { key: "pass", group: "Learning", label: "Pass rate", question: "How many students passed the latest exam results?", unit: "pct", numeratorLabel: "Passed", denominatorLabel: "Students with results", threshold: { good: 85, watch: 70, higherIsBetter: true }, targetText: "85% or more is good" },
   { key: "girls", group: "Students", label: "Girls among students", question: "What share of students are girls?", unit: "pct", numeratorLabel: "Girls", denominatorLabel: "Students", threshold: null, targetText: "No target: shown for information" },
 ];

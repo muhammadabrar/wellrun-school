@@ -16,6 +16,8 @@ const inputs = (over: Partial<RatioInputs> = {}): RatioInputs => ({
   overdueStudents: 63,
   attendedDays: 9_000,
   countedDays: 10_000,
+  staffAttendedDays: 570,
+  staffCountedDays: 600,
   passed: 700,
   resulted: 800,
   collectionTrend: [
@@ -57,6 +59,7 @@ describe("buildRatios", () => {
     expect(byKey(views, "defaulters").status).toBe("good"); // 7.5% is under 10%
     expect(byKey(views, "attendance").status).toBe("good"); // 90% is on the line
     expect(byKey(views, "pass").status).toBe("good"); // 87.5% is above 85%
+    expect(byKey(views, "staffAttendance").status).toBe("good"); // 95% is on the line
   });
 
   it("gives percentages to one decimal place", () => {
@@ -65,6 +68,7 @@ describe("buildRatios", () => {
     expect(byKey(views, "discount").display).toBe("9.1%");
     expect(byKey(views, "attendance").display).toBe("90%");
     expect(byKey(views, "pass").display).toBe("87.5%");
+    expect(byKey(views, "staffAttendance").display).toBe("95%");
     expect(byKey(views, "girls").display).toBe("47.6%");
   });
 
@@ -82,7 +86,7 @@ describe("buildRatios", () => {
 
   it("returns a value of null, not a crash, for a brand-new school", () => {
     const empty = buildRatios(
-      inputs({ students: 0, boys: 0, girls: 0, classes: 0, teachers: 0, staff: 0, billedPkr: 0, collectedPkr: 0, grossBilledPkr: 0, discountPkr: 0, overdueStudents: 0, attendedDays: 0, countedDays: 0, passed: 0, resulted: 0, collectionTrend: [], attendanceTrend: [] }),
+      inputs({ students: 0, boys: 0, girls: 0, classes: 0, teachers: 0, staff: 0, billedPkr: 0, collectedPkr: 0, grossBilledPkr: 0, discountPkr: 0, overdueStudents: 0, attendedDays: 0, countedDays: 0, staffAttendedDays: 0, staffCountedDays: 0, passed: 0, resulted: 0, collectionTrend: [], attendanceTrend: [] }),
     );
     expect(empty).toHaveLength(RATIO_DEFS.length);
     for (const view of empty) {

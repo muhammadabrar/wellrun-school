@@ -74,6 +74,9 @@ export const attendanceSettingsSchema = z.object({
   teacherEditDays: z.number().int().min(0).max(31),
   lateCountsPresent: z.boolean(),
   leaveCountsPresent: z.boolean(),
+  /** When staff are expected in, HH:MM in Pakistan time. Check-ins after this plus the grace period are late. */
+  staffStartTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a time like 08:00").default("08:00"),
+  staffLateGraceMinutes: z.number().int().min(0).max(120).default(15),
 });
 export type AttendanceSettingsInput = z.infer<typeof attendanceSettingsSchema>;
 
@@ -83,6 +86,8 @@ export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettingsInput = {
   teacherEditDays: 0,
   lateCountsPresent: true,
   leaveCountsPresent: false,
+  staffStartTime: "08:00",
+  staffLateGraceMinutes: 15,
 };
 
 export const holidaySchema = z

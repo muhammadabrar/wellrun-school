@@ -48,6 +48,8 @@ export async function loadSettings(prisma: PrismaService, schoolId: string): Pro
     teacherEditDays: row.teacherEditDays,
     lateCountsPresent: row.lateCountsPresent,
     leaveCountsPresent: row.leaveCountsPresent,
+    staffStartTime: row.staffStartTime,
+    staffLateGraceMinutes: row.staffLateGraceMinutes,
   };
 }
 

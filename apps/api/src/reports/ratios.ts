@@ -24,6 +24,8 @@ export type RatioInputs = {
   overdueStudents: number;
   attendedDays: number;
   countedDays: number;
+  staffAttendedDays: number;
+  staffCountedDays: number;
   passed: number;
   resulted: number;
   collectionTrend: { label: string; billedPkr: number; collectedPkr: number }[];
@@ -87,6 +89,13 @@ export function buildRatios(input: RatioInputs): RatioView[] {
       denominator: input.countedDays,
       trend: input.attendanceTrend.map((row) => ({ label: row.label, value: pct(row.attendedDays, row.countedDays) })),
       note: "Uses the school's attendance rules for late and leave days.",
+    },
+    staffAttendance: {
+      value: pct(input.staffAttendedDays, input.staffCountedDays),
+      numerator: input.staffAttendedDays,
+      denominator: input.staffCountedDays,
+      trend: [],
+      note: "Staff who signed in on school days, late arrivals included. Approved leave days are left out.",
     },
     pass: { value: pct(input.passed, input.resulted), numerator: input.passed, denominator: input.resulted, trend: [], note: "From the most recently calculated results this year." },
     girls: { value: pct(input.girls, input.boys + input.girls), numerator: input.girls, denominator: input.boys + input.girls, trend: [], note: "Students whose gender is recorded as male or female." },

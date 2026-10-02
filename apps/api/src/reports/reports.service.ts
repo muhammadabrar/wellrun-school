@@ -23,6 +23,7 @@ import {
 import { loadSettings } from "../attendance/rules";
 import { karachiToday } from "../common/date";
 import { ExamAnalyticsService } from "../exams/analytics.service";
+import { StaffAttendanceService } from "../staff-attendance/staff-attendance.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { byLabel, dateRange, dayName, endOf, karachiDay, karachiMonth, monthName, monthsBetween, percentOf, personName, shiftMonth, startOf, sumOf } from "./helpers";
 import { attendanceTally, buildRatios } from "./ratios";
@@ -52,6 +53,7 @@ export class ReportsService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(ExamAnalyticsService) private readonly analytics: ExamAnalyticsService,
+    @Inject(StaffAttendanceService) private readonly staffAttendance: StaffAttendanceService,
   ) {}
 
   // Scope helpers -------------------------------------------------------------------------------------------
@@ -140,6 +142,8 @@ export class ReportsService {
         return this.examClasses(ctx, params);
       case "exams.subjects":
         return this.examSubjects(ctx, params);
+      case "staff.attendance":
+        return this.staffAttendanceReport(ctx, params, today);
       case "staff.payroll":
         return this.payrollByMonth(ctx, params, today);
       case "staff.departments":
@@ -692,6 +696,37 @@ export class ReportsService {
 
   // Staff ---------------------------------------------------------------------------------------------------
 
+  private async staffAttendanceReport(ctx: ReportCtx, params: ReportParams, today: string): Promise<Built> {
+    const { from, to } = dateRange(params, today);
+    const people = await this.staffAttendance.summaries(ctx, from, to);
+    const rows: ReportRow[] = people.map((p) => ({
+      staff: p.staff.name,
+      employeeNo: p.staff.employeeNo,
+      department: p.staff.department,
+      present: p.counts.PRESENT,
+      late: p.counts.LATE,
+      absent: p.counts.ABSENT,
+      leave: p.counts.ON_LEAVE,
+      pct: p.pct,
+    }));
+    const all = people.reduce((sum, p) => ({ PRESENT: sum.PRESENT + p.counts.PRESENT, LATE: sum.LATE + p.counts.LATE, ABSENT: sum.ABSENT + p.counts.ABSENT, ON_LEAVE: sum.ON_LEAVE + p.counts.ON_LEAVE }), { PRESENT: 0, LATE: 0, ABSENT: 0, ON_LEAVE: 0 });
+    return {
+      subtitle: `${from} to ${to}. Days that have not finished yet are not counted.`,
+      columns: [
+        { key: "staff", label: "Staff member" },
+        { key: "employeeNo", label: "Employee no." },
+        { key: "department", label: "Department" },
+        { key: "present", label: "On time", format: "int", align: "end" },
+        { key: "late", label: "Late", format: "int", align: "end" },
+        { key: "absent", label: "Absent", format: "int", align: "end" },
+        { key: "leave", label: "On leave", format: "int", align: "end" },
+        { key: "pct", label: "Attendance", format: "pct", align: "end" },
+      ],
+      rows,
+      totals: { staff: "Everyone", present: all.PRESENT, late: all.LATE, absent: all.ABSENT, leave: all.ON_LEAVE, pct: percentOf(all.PRESENT + all.LATE, all.PRESENT + all.LATE + all.ABSENT) },
+    };
+  }
+
   private async payrollByMonth(ctx: ReportCtx, params: ReportParams, today: string): Promise<Built> {
     const { from, to } = dateRange(params, today, defaultRangeStart("months6", today));
     const months = monthsBetween(from, to);
@@ -791,6 +826,10 @@ export class ReportsService {
     });
     const tally = attendanceTally(countStatuses(attendance.flatMap((a) => Array<AttendanceStatus>(a._count._all).fill(a.status))), settings);
 
+    const staffPeople = await this.staffAttendance.summaries(ctx, from, to);
+    const staffAttended = staffPeople.reduce((sum, p) => sum + p.counts.PRESENT + p.counts.LATE, 0);
+    const staffCounted = staffPeople.reduce((sum, p) => sum + p.counts.PRESENT + p.counts.LATE + p.counts.ABSENT, 0);
+
     // The most recently calculated result set this year, whichever exam or term it was.
     const latest = await this.prisma.studentResult.findFirst({ where: { schoolId: ctx.schoolId, yearId: ctx.yearId }, orderBy: [{ computedAt: "desc" }, { id: "asc" }], select: { scope: true, scopeKey: true } });
     const resultWhere = latest ? { schoolId: ctx.schoolId, yearId: ctx.yearId, scope: latest.scope, scopeKey: latest.scopeKey, classId: { in: classIds } } : null;
@@ -836,6 +875,8 @@ export class ReportsService {
       overdueStudents: defaulters.length,
       attendedDays: tally.attended,
       countedDays: tally.counted,
+      staffAttendedDays: staffAttended,
+      staffCountedDays: staffCounted,
       passed,
       resulted,
       collectionTrend: months.map((m) => ({ label: monthName(m), billedPkr: billedBy.get(m)?.totalAmountPkr ?? 0, collectedPkr: billedBy.get(m)?.paidAmountPkr ?? 0 })),
