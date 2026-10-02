@@ -1,0 +1,12 @@
+{
+  "name": "Wellrun School",
+  "short_name": "School",
+  "description": "Your child's attendance, homework, fees and results in one place.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f7f8",
+  "theme_color": "#4642ff",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

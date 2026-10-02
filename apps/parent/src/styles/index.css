@@ -1,0 +1,57 @@
+@import "tailwindcss";
+@import "@wellrun/tokens/tokens.css";
+@source "../../../../packages/ui/src";
+
+@theme inline {
+  --color-ink: #16161d;
+  --color-muted: #5c5c6b;
+  --color-indigo: #4642ff;
+  --color-indigo-deep: #3a36e0;
+  --color-paper: #f7f7f8;
+  --color-surface: #ffffff;
+  --color-orange: #f26522;
+  --color-line: #ececef;
+  --color-success: #0f9d58;
+  --color-danger: #d93025;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Big, calm type: the whole app is read on a phone, often by someone who reads slowly. */
+html {
+  font-size: 18px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html[dir="rtl"] body {
+  font-family: "Noto Nastaliq Urdu", "Noto Naskh Arabic", ui-serif, serif;
+  /* Nastaliq letters are tall; without room they collide between lines. */
+  line-height: 2.1;
+}
+
+/* Phone numbers, codes and money stay left to right even inside Urdu text. */
+.ltr-num {
+  direction: ltr;
+  unicode-bidi: isolate;
+  display: inline-block;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-indigo);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

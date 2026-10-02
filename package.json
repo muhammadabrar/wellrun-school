@@ -7,6 +7,7 @@
     "dev:api": "pnpm --filter @wellrun/api dev",
     "dev:discover": "pnpm --filter @wellrun/discover dev",
     "dev:console": "pnpm --filter @wellrun/console dev",
+    "dev:parent": "pnpm --filter @wellrun/parent dev",
     "build": "turbo build",
     "db:up": "docker compose up -d",
     "db:push": "pnpm --filter @wellrun/api prisma:push",

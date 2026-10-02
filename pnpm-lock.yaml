@@ -210,6 +210,58 @@ importers:
         specifier: ^5.9.2
         version: 5.9.3
 
+  apps/parent:
+    dependencies:
+      '@tanstack/react-query':
+        specifier: ^5.102.8
+        version: 5.102.8(react@19.3.0)
+      '@wellrun/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
+      '@wellrun/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@wellrun/tokens':
+        specifier: workspace:*
+        version: link:../../packages/tokens
+      '@wellrun/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      lucide-react:
+        specifier: ^0.544.0
+        version: 0.544.0(react@19.3.0)
+      react:
+        specifier: ^19.1.1
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.1.1
+        version: 19.3.0(react@19.3.0)
+      react-router-dom:
+        specifier: ^7.8.2
+        version: 7.18.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+    devDependencies:
+      '@tailwindcss/vite':
+        specifier: ^4.1.12
+        version: 4.3.3(vite@7.3.6(@types/node@22.20.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13))
+      '@types/react':
+        specifier: ^19.1.12
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.1.9
+        version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: ^5.0.2
+        version: 5.2.0(vite@7.3.6(@types/node@22.20.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13))
+      tailwindcss:
+        specifier: ^4.1.12
+        version: 4.3.3
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vite:
+        specifier: ^7.1.4
+        version: 7.3.6(@types/node@22.20.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13)
+
   packages/i18n: {}
 
   packages/shared:
