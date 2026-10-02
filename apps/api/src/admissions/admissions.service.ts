@@ -9,6 +9,8 @@ import {
   documentUploadSchema,
 } from "@wellrun/shared";
 import { audit } from "../common/audit";
+import { createGuardian } from "../common/guardians";
+import { normalizePhone } from "../common/phone";
 import { titleCaseName } from "../common/text";
 import { invoiceLabel } from "../fees/billing";
 import { applyAdmissionQuotesToAssignment, ensureStudentFeeAssignment } from "../fees/assignment.service";
@@ -687,8 +689,9 @@ export class AdmissionsService {
     }
     if (filters.phone?.trim() || filters.guardianPhone?.trim()) {
       const phone = (filters.guardianPhone || filters.phone || "").trim();
+      const phoneNorm = normalizePhone(phone);
       const guardians = await this.prisma.guardian.findMany({
-        where: { schoolId, phone },
+        where: { schoolId, ...(phoneNorm ? { phoneNorm } : { phone }) },
         include: { students: { include: { student: true } } },
         take: 5,
       });
@@ -938,30 +941,14 @@ export class AdmissionsService {
     return String((used.length ? Math.max(...used) : 0) + 1);
   }
 
-  private async createGuardian(
-    schoolId: string,
-    actorId: string,
-    family: Record<string, string>,
-  ) {
-    const phone = family.guardianPhone;
-    const cnic = family.guardianCnic || "";
-    const guardian = await this.prisma.guardian.create({
-      data: {
-        schoolId,
-        name: family.guardianName,
-        phone,
-        cnic,
-        email: family.guardianEmail || null,
-        relation: family.guardianRelation || "Parent",
-        occupation: family.guardianOccupation || "",
-      },
-    });
-    await audit(this.prisma, {
-      schoolId,
-      actorId,
-      action: "guardian_created",
-      entity: "guardian",
-      entityId: guardian.id,
+  private async createGuardian(schoolId: string, actorId: string, family: Record<string, string>) {
+    const guardian = await createGuardian(this.prisma, schoolId, actorId, {
+      name: family.guardianName,
+      phone: family.guardianPhone,
+      cnic: family.guardianCnic,
+      email: family.guardianEmail,
+      relation: family.guardianRelation || "Parent",
+      occupation: family.guardianOccupation,
     });
     return guardian.id;
   }
@@ -1133,7 +1120,7 @@ export class AdmissionsService {
       decidedAt: Date | null;
       confirmedAt: Date | null;
       createdAt: Date;
-      guardian: { id: string; name: string; phone: string; cnic: string; relation: string } | null;
+      guardian: { id: string; name: string; phone: string; cnic: string | null; relation: string } | null;
       campus: { id: string; name: string } | null;
       year: { id: string; name: string } | null;
       targetClass: { id: string; name: string; section: string } | null;

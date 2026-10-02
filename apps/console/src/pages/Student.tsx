@@ -338,7 +338,7 @@ function EnrollmentList({ rows }: { rows: { id: string; rollNo: string; status: 
   );
 }
 
-function FamilyPanel({ data }: { data: { guardians: { id: string; name: string; phone: string; relation: string }[]; siblings: { id: string; firstName: string; lastName: string; rollNo: string; class: { name: string; section: string } | null }[] } }) {
+function FamilyPanel({ data }: { data: { guardians: { id: string; name: string; phone: string; relation: string; parentLogin?: { activated: boolean; lastSeenAt: string | null } }[]; siblings: { id: string; firstName: string; lastName: string; rollNo: string; class: { name: string; section: string } | null }[] } }) {
   return (
     <div className="space-y-6">
       <div>
@@ -347,6 +347,13 @@ function FamilyPanel({ data }: { data: { guardians: { id: string; name: string; 
           <p key={guardian.id} className="mt-2">
             {guardian.name}
             <span className="block text-sm text-muted-foreground">{guardian.relation} · {guardian.phone}</span>
+            {guardian.parentLogin ? (
+              <span className={`block text-sm ${guardian.parentLogin.activated ? "text-success" : "text-muted-foreground"}`}>
+                {guardian.parentLogin.activated
+                  ? `Parent portal: signed in${guardian.parentLogin.lastSeenAt ? `, last seen ${new Date(guardian.parentLogin.lastSeenAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : ""}`
+                  : "Parent portal: not signed in yet. They sign in with this phone number."}
+              </span>
+            ) : null}
           </p>
         ))}
       </div>

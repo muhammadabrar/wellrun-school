@@ -7,6 +7,7 @@ import "reflect-metadata";
 import { randomUUID } from "node:crypto";
 import { Prisma, PrismaClient, type QuestionPaperStatus, type QuestionType } from "@prisma/client";
 import { DEFAULT_GRADE_BANDS, SUBJECTS_BY_GRADE, paperMarks } from "@wellrun/shared";
+import { normalizeCnic, normalizePhone } from "../src/common/phone";
 import { ResultsService } from "../src/exams/results.service";
 import { ExamSettingsService } from "../src/exams/settings.service";
 import type { PrismaService } from "../src/prisma/prisma.service";
@@ -53,6 +54,9 @@ const WEEKLY: Record<string, Record<string, number>> = {
   middle: { English: 6, Urdu: 5, Mathematics: 6, Science: 5, Islamiyat: 3, "Pakistan Studies": 3, Computer: 2 },
 };
 const weeklyFor = (grade: number) => (grade <= 2 ? WEEKLY.primary12 : grade === 3 ? WEEKLY.primary3 : grade === 4 ? WEEKLY.primary4 : WEEKLY.middle);
+
+/** Parent portal demo login: sign in with this number (code 123456 when the API runs with PARENT_DEV_OTP=123456). */
+export const DEMO_PARENT_PHONE = "03001234567";
 
 const TUITION: Record<number, number> = { 1: 14500, 2: 14500, 3: 16000, 4: 16000, 5: 18500, 6: 18500, 7: 21000, 8: 21000 };
 
@@ -262,12 +266,15 @@ export async function seedDemoSchool(ctx: Ctx) {
       if (!guardianId) {
         guardianId = randomUUID();
         const father = `${pick(FATHERS)} ${last}`;
+        const seedPhone = `03${pick(["00", "21", "33", "45"])}${pad(1000000 + ((guardians.length * 7919) % 9000000), 7)}`;
         guardians.push({
           id: guardianId,
           schoolId,
           name: father,
-          phone: `03${pick(["00", "21", "33", "45"])}${pad(Math.floor(rand() * 9999999), 7)}`,
-          cnic: `42201${pad(Math.floor(rand() * 99999999), 8)}`,
+          // Distinct per family: phone and CNIC are unique within a school.
+          phone: seedPhone,
+          phoneNorm: normalizePhone(seedPhone)!,
+          cnic: normalizeCnic(`42201${pad((guardians.length * 104729) % 99999999, 8)}`),
           email: `${father.toLowerCase().replace(/[^a-z]+/g, ".")}@example.com`,
           relation: "Father",
           occupation: pick(["Business", "Engineer", "Doctor", "Banker", "Government service", "Accountant", "Shopkeeper"]),
@@ -293,6 +300,12 @@ export async function seedDemoSchool(ctx: Ctx) {
       prevFamily = { guardianId, last };
     }
   }
+  // A known parent to sign in with: the guardian with the most children keeps an easy-to-remember number.
+  const childCount = new Map<string, number>();
+  for (const link of links) childCount.set(link.guardianId, (childCount.get(link.guardianId) ?? 0) + 1);
+  const demoParent = guardians.reduce((best, g) => ((childCount.get(String(g.id)) ?? 0) > (childCount.get(String(best.id)) ?? 0) ? g : best), guardians[0]);
+  demoParent.phone = DEMO_PARENT_PHONE;
+  demoParent.phoneNorm = normalizePhone(DEMO_PARENT_PHONE)!;
   await prisma.guardian.createMany({ data: guardians });
   await prisma.student.createMany({
     data: students.map((s) => ({
@@ -546,7 +559,7 @@ export async function seedDemoSchool(ctx: Ctx) {
   for (const [index, row] of pipeline.entries()) {
     appSeq += 1;
     const guardian = await prisma.guardian.create({
-      data: { schoolId, name: `${pick(FATHERS)} ${row.last}`, phone: `0300${pad(7700000 + index * 37, 7)}`, cnic: `61101${pad(1234000 + index, 8)}`, relation: "Father" },
+      data: { schoolId, name: `${pick(FATHERS)} ${row.last}`, phone: `0300${pad(7700000 + index * 37, 7)}`, phoneNorm: normalizePhone(`0300${pad(7700000 + index * 37, 7)}`)!, cnic: normalizeCnic(`61101${pad(1234000 + index, 8)}`), relation: "Father" },
     });
     const target = classByLabel(row.grade);
     const application = await prisma.admissionApplication.create({
@@ -1480,6 +1493,72 @@ export async function seedDemoSchool(ctx: Ctx) {
     },
   });
 
+  // Diary and notices ---------------------------------------------------------------------------------------
+  console.log("  demo: diary, notices");
+  const diaryDays: Date[] = [];
+  for (let back = 0; diaryDays.length < 4 && back < 10; back += 1) {
+    const day = new Date(today.getTime() - back * 86_400_000);
+    if (day.getUTCDay() !== 0) diaryDays.push(day);
+  }
+  const HOMEWORK: Record<string, string[]> = {
+    English: ["Read the story on page 24 and answer questions 1 to 4 in your notebook.", "Write five sentences using the new words from this week's spelling list."],
+    Urdu: ["سبق نمبر 5 کے سوالات کے جواب کاپی میں لکھیں۔", "صفحہ 18 کی خوشخطی کریں۔"],
+    Mathematics: ["Exercise 6.2, questions 1 to 10. Show your working.", "Learn the 7 and 8 times tables for a quick test tomorrow."],
+    Science: ["Draw and label the parts of a plant. Colour neatly.", "Read chapter 4 and write three things you learned."],
+    Islamiyat: ["Revise Surah Al-Ikhlas and the meaning of the first two ayat.", "Learn the dua before eating."],
+    "Social Studies": ["Make a simple map of your neighbourhood showing school and home."],
+    "Pakistan Studies": ["Write a short paragraph on Allama Iqbal."],
+    Computer: ["Practice typing your name and your school's name five times."],
+  };
+  const diary: Prisma.DiaryEntryCreateManyInput[] = [];
+  for (const [dayIndex, day] of diaryDays.entries()) {
+    for (const c of classes) {
+      const names = subjectsOf(c.grade).filter((name) => HOMEWORK[name]);
+      // Rotate so each day covers two or three different subjects per class.
+      const picked = [0, 1, 2].map((n) => names[(dayIndex * 2 + n + c.grade) % names.length]).filter((name, i, all) => all.indexOf(name) === i);
+      for (const [n, name] of picked.entries()) {
+        const lines = HOMEWORK[name];
+        diary.push({
+          schoolId,
+          campusId,
+          yearId: year.id,
+          classId: c.id,
+          subjectId: subjectId.get(name)!,
+          date: day,
+          kind: n === 2 && dayIndex === 0 ? "CLASSWORK" : "HOMEWORK",
+          title: "",
+          body: lines[(dayIndex + n) % lines.length],
+          dueOn: n === 2 && dayIndex === 0 ? null : new Date(day.getTime() + 2 * 86_400_000),
+          authorStaffId: teacherFor(c.grade, name).id,
+        });
+      }
+    }
+  }
+  const classTeacherNote = (c: Cls) => byName.get(primaryTeacher[c.grade]!);
+  for (const c of classes.filter((x) => x.grade <= 4)) {
+    diary.push({
+      schoolId,
+      campusId,
+      yearId: year.id,
+      classId: c.id,
+      subjectId: null,
+      date: diaryDays[0],
+      kind: "NOTE",
+      title: "Tomorrow",
+      body: "Please send a water bottle and check that your child's school bag is packed.",
+      authorStaffId: classTeacherNote(c)?.id,
+    });
+  }
+  await chunked(diary, 500, (part) => prisma.diaryEntry.createMany({ data: part }));
+  await prisma.notice.createMany({
+    data: [
+      { schoolId, title: "Parent-teacher meeting", body: "A parent-teacher meeting will be held on the first Saturday of next month from 9:00 am to 12:00 pm. Please bring your child's diary.", pinned: true, createdById: adminId, publishedAt: new Date(today.getTime() - 86_400_000 + 9 * 3_600_000) },
+      { schoolId, title: "Fee due date reminder", body: "Monthly fees are due by the 10th. Please keep the fee slip and the receipt for your records.", createdById: adminId, publishedAt: new Date(today.getTime() - 3 * 86_400_000 + 9 * 3_600_000) },
+      { schoolId, title: "اسکول کا یومِ کھیل", body: "اگلے ماہ اسکول کا سالانہ یومِ کھیل منایا جائے گا۔ بچوں کو کھیل کا لباس پہنا کر بھیجیں۔", createdById: adminId, publishedAt: new Date(today.getTime() - 5 * 86_400_000 + 9 * 3_600_000) },
+      { schoolId, title: "Grade 5 science trip", body: "Grade 5 will visit the science museum next Thursday. Permission slips must be returned by Tuesday.", audience: "CLASSES", classIds: classes.filter((x) => x.grade === 5).map((x) => x.id), createdById: adminId, publishedAt: new Date(today.getTime() - 2 * 86_400_000 + 9 * 3_600_000) },
+    ],
+  });
+
   // Notes, documents, audit, sequences ---------------------------------------------------------------------------
   const first = students[0];
   await prisma.communicationLog.createMany({
@@ -1504,5 +1583,6 @@ export async function seedDemoSchool(ctx: Ctx) {
     ],
   });
 
+  console.log(`  demo: parent portal login ${DEMO_PARENT_PHONE} (${childCount.get(String(demoParent.id)) ?? 1} children)`);
   console.log(`  demo: ${students.length} students, ${staff.length} staff, ${classes.length} classes, ${lessons.length} lessons, ${invoices.length} invoices, ${attendance.length} attendance marks`);
 }

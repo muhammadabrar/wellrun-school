@@ -472,7 +472,7 @@ export type Guardian = {
   id: string;
   name: string;
   phone: string;
-  cnic?: string;
+  cnic?: string | null;
   email?: string | null;
   relation: string;
   occupation?: string;

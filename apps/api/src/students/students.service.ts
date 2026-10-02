@@ -14,6 +14,7 @@ import {
 } from "@wellrun/shared";
 import { Prisma } from "@prisma/client";
 import { audit } from "../common/audit";
+import { createGuardian, findOrCreateGuardian, type GuardianInput } from "../common/guardians";
 import { titleCaseName } from "../common/text";
 import { invoiceLabel } from "../fees/billing";
 import { ensureStudentFeeAssignment, FeeAssignmentService } from "../fees/assignment.service";
@@ -502,59 +503,13 @@ export class StudentsService {
     return this.byId(schoolId, id);
   }
 
-  private async findOrCreateGuardian(
-    schoolId: string,
-    actorId: string,
-    data: { name: string; phone: string; relation: string; cnic?: string; email?: string; extra?: Record<string, unknown> },
-  ) {
-    const cnic = data.cnic?.trim() || "";
-    const existing = await this.prisma.guardian.findFirst({
-      where: {
-        schoolId,
-        OR: [{ phone: data.phone }, ...(cnic ? [{ cnic }] : [])],
-      },
-    });
-    if (existing) {
-      await this.prisma.guardian.update({
-        where: { id: existing.id },
-        data: {
-          name: data.name || existing.name,
-          relation: data.relation || existing.relation,
-          cnic: cnic || existing.cnic,
-          email: data.email || existing.email,
-          extra: (data.extra ?? existing.extra ?? {}) as Prisma.InputJsonValue,
-        },
-      });
-      return existing.id;
-    }
-    return this.createGuardian(schoolId, actorId, data);
+  private async findOrCreateGuardian(schoolId: string, actorId: string, data: GuardianInput) {
+    return (await findOrCreateGuardian(this.prisma, schoolId, actorId, data)).id;
   }
 
-  private async createGuardian(
-    schoolId: string,
-    actorId: string,
-    data: { name: string; phone: string; relation: string; cnic?: string; email?: string; extra?: Record<string, unknown> },
-  ) {
-    const cnic = data.cnic?.trim() || "";
-    const guardian = await this.prisma.guardian.create({
-      data: {
-        schoolId,
-        name: data.name,
-        phone: data.phone,
-        cnic,
-        email: data.email || null,
-        relation: data.relation,
-        extra: (data.extra ?? {}) as Prisma.InputJsonValue,
-      },
-    });
-    await audit(this.prisma, {
-      schoolId,
-      actorId,
-      action: "guardian_created",
-      entity: "guardian",
-      entityId: guardian.id,
-    });
-    return guardian.id;
+  /** "New guardian" in the admit flow: a phone or CNIC that already exists is an error, not a silent reuse. */
+  private async createGuardian(schoolId: string, actorId: string, data: GuardianInput) {
+    return (await createGuardian(this.prisma, schoolId, actorId, data)).id;
   }
 
   private async resolveClass(schoolId: string, classId: string | undefined, className: string, section: string) {
@@ -630,7 +585,7 @@ export class StudentsService {
           id: string;
           name: string;
           phone: string;
-          cnic: string;
+          cnic: string | null;
           email: string | null;
           relation: string;
           students: {
@@ -965,6 +920,12 @@ export class StudentsService {
         });
       }
     }
+    // Has each guardian signed in to the parent portal yet? The school sees this so it knows who to remind.
+    const parents = await this.prisma.parentUser.findMany({
+      where: { phoneNorm: { in: student.guardians.map((link) => link.guardian.phoneNorm) } },
+      select: { phoneNorm: true, lastSeenAt: true },
+    });
+    const seen = new Map(parents.map((row) => [row.phoneNorm, row.lastSeenAt]));
     return {
       guardians: student.guardians.map((link) => ({
         id: link.guardian.id,
@@ -974,6 +935,10 @@ export class StudentsService {
         email: link.guardian.email,
         relation: link.guardian.relation,
         occupation: link.guardian.occupation,
+        parentLogin: {
+          activated: seen.has(link.guardian.phoneNorm),
+          lastSeenAt: seen.get(link.guardian.phoneNorm)?.toISOString() ?? null,
+        },
       })),
       siblings: [...siblings.values()],
     };

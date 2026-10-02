@@ -247,6 +247,11 @@ async function main() {
   console.log("Seeding: clearing tables");
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      "ParentDevice",
+      "ParentUser",
+      "OtpChallenge",
+      "DiaryEntry",
+      "Notice",
       "AdmissionTestScore",
       "SchoolDocument",
       "CommunicationLog",

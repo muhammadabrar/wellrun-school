@@ -21,6 +21,7 @@ import {
   yearSchema,
 } from "@wellrun/shared";
 import { audit } from "../common/audit";
+import { findOrCreateGuardian } from "../common/guardians";
 import { assertWritableSchool } from "../common/school";
 import { assertClassWritable, assertClassesWritable, assertYearOpen, assertYearWritable } from "../common/year-lock";
 import { PrismaService } from "../prisma/prisma.service";
@@ -661,14 +662,11 @@ export class SetupService {
         });
       }
       if (get("guardianName") && get("guardianPhone")) {
-        const guardian = await this.prisma.guardian.create({
-          data: {
-            schoolId,
-            name: get("guardianName"),
-            phone: get("guardianPhone"),
-            cnic: get("guardianCnic") || "",
-            relation: get("guardianRelation") || "Parent",
-          },
+        const guardian = await findOrCreateGuardian(this.prisma, schoolId, actorId, {
+          name: get("guardianName"),
+          phone: get("guardianPhone"),
+          cnic: get("guardianCnic"),
+          relation: get("guardianRelation") || "Parent",
         });
         await this.prisma.studentGuardian.create({ data: { studentId: student.id, guardianId: guardian.id } });
       }
