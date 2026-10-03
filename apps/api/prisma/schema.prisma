@@ -240,6 +240,7 @@ model School {
   financeCategories   FinanceCategory[]
   vouchers            Voucher[]
   inventoryItems      InventoryItem[]
+  bankQuestions       BankQuestion[]
 }
 
 model SchoolProfile {
@@ -1079,6 +1080,8 @@ model Subject {
 
   diaryEntries DiaryEntry[]
 
+  bankQuestions BankQuestion[]
+
   @@unique([schoolId, name])
   @@index([schoolId])
 }
@@ -1689,6 +1692,8 @@ model SyllabusTopic {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
+  bankQuestions BankQuestion[]
+
   @@index([unitId, sortOrder])
   @@index([syllabusId])
 }
@@ -1791,6 +1796,10 @@ model Question {
   sortOrder   Int             @default(0)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
+
+  /// Where this question was copied from, kept only so the bank can say how often a question has been used.
+  bankQuestionId String?
+  bankQuestion   BankQuestion? @relation(fields: [bankQuestionId], references: [id], onDelete: SetNull)
 
   @@index([sectionId, sortOrder])
 }
@@ -2164,4 +2173,45 @@ model InventoryMovement {
 
   @@index([itemId, date])
   @@index([schoolId, date])
+}
+
+enum QuestionDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+/// A question kept for reuse. Papers copy it, so editing or archiving it never changes a paper that already exists.
+model BankQuestion {
+  id          String             @id @default(cuid())
+  schoolId    String
+  school      School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  subjectId   String
+  subject     Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  /// Class name without the section, e.g. "Grade 5": shared by every section of the grade.
+  gradeName   String
+  topicId     String?
+  topic       SyllabusTopic?     @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  type        QuestionType
+  text        String
+  /// Fingerprint of kind + wording + choices, so the same question is never kept twice.
+  textHash    String
+  marks       Float              @default(1)
+  options     Json               @default("[]")
+  answer      String             @default("")
+  answerLines Int                @default(0)
+  difficulty  QuestionDifficulty @default(MEDIUM)
+  tags        String[]           @default([])
+  /// Right-to-left text (Urdu, Arabic).
+  rtl         Boolean            @default(false)
+  active      Boolean            @default(true)
+  usageCount  Int                @default(0)
+  lastUsedAt  DateTime?
+  createdById String?
+  uses        Question[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([schoolId, subjectId, gradeName, type, textHash])
+  @@index([schoolId, subjectId, gradeName])
 }

@@ -4,9 +4,9 @@
  * pipeline, and a complete exam cycle (monthly tests, mid term, quizzes, marking workflow, results).
  */
 import "reflect-metadata";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Prisma, PrismaClient, type QuestionPaperStatus, type QuestionType } from "@prisma/client";
-import { DEFAULT_CATEGORIES, DEFAULT_GRADE_BANDS, SUBJECTS_BY_GRADE, SYSTEM_CATEGORIES, paperMarks } from "@wellrun/shared";
+import { DEFAULT_CATEGORIES, DEFAULT_GRADE_BANDS, SUBJECTS_BY_GRADE, SYSTEM_CATEGORIES, paperMarks, questionKey } from "@wellrun/shared";
 import { normalizeCnic, normalizePhone } from "../src/common/phone";
 import { ResultsService } from "../src/exams/results.service";
 import { ExamSettingsService } from "../src/exams/settings.service";
@@ -1492,6 +1492,48 @@ export async function seedDemoSchool(ctx: Ctx) {
       requestedById: farahId!,
     },
   });
+
+  // Question bank: the seeded papers' questions, kept for reuse and linked back to the paper they came from.
+  console.log("  demo: question bank");
+  const paperQuestions = await prisma.question.findMany({
+    where: { section: { paper: { schoolId } }, NOT: { section: { type: "COMPREHENSION" } } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, text: true, marks: true, options: true, answer: true, answerLines: true, section: { select: { type: true, rtl: true, paper: { select: { gradeName: true, subjectId: true } } } } },
+  });
+  const bankByHash = new Map<string, { id: string; row: Prisma.BankQuestionCreateManyInput; uses: string[] }>();
+  const levels = ["EASY", "MEDIUM", "HARD"] as const;
+  for (const q of paperQuestions) {
+    const { type, rtl, paper } = q.section;
+    const hash = createHash("sha1").update(`${paper.subjectId}|${paper.gradeName}|${questionKey(type, q.text, q.options)}`).digest("hex");
+    const known = bankByHash.get(hash);
+    if (known) {
+      known.uses.push(q.id);
+      continue;
+    }
+    bankByHash.set(hash, {
+      id: randomUUID(),
+      uses: [q.id],
+      row: {
+        schoolId,
+        subjectId: paper.subjectId,
+        gradeName: paper.gradeName,
+        type,
+        text: q.text,
+        // Same fingerprint the API computes: kind + wording + choices.
+        textHash: createHash("sha1").update(questionKey(type, q.text, q.options)).digest("hex"),
+        marks: q.marks,
+        options: q.options as Prisma.InputJsonValue,
+        answer: q.answer,
+        answerLines: q.answerLines,
+        difficulty: levels[Math.floor(rand() * 3)],
+        tags: [],
+        rtl,
+        createdById: adminId,
+      },
+    });
+  }
+  await chunked([...bankByHash.values()], 300, (part) => prisma.bankQuestion.createMany({ data: part.map((b) => ({ ...b.row, id: b.id, usageCount: b.uses.length, lastUsedAt: new Date() })) }));
+  for (const b of bankByHash.values()) await prisma.question.updateMany({ where: { id: { in: b.uses } }, data: { bankQuestionId: b.id } });
 
   // Diary and notices ---------------------------------------------------------------------------------------
   console.log("  demo: diary, notices");
