@@ -12,6 +12,7 @@ export const keys = {
   results: (id: string) => ["child", id, "results"] as const,
   timetable: (id: string) => ["child", id, "timetable"] as const,
   notices: (id: string) => ["child", id, "notices"] as const,
+  calendar: (id: string, month: string) => ["child", id, "calendar", month] as const,
 };
 
 export function useMe() {

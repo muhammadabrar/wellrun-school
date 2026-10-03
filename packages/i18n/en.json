@@ -90,7 +90,8 @@
       "fees": "Fees",
       "results": "Results",
       "notices": "Notices",
-      "timetable": "Timetable"
+      "timetable": "Timetable",
+      "calendar": "Calendar"
     },
     "status": {
       "PRESENT": "Present",
@@ -217,6 +218,19 @@
     "languageNames": {
       "en": "English",
       "ur": "اردو"
+    },
+    "calendar": {
+      "title": "Calendar",
+      "nothing": "Nothing is planned this month.",
+      "holiday": "Holiday",
+      "exam": "Exam",
+      "event": "School event",
+      "closed": "School is closed",
+      "allDay": "All day",
+      "until": "Until {date}",
+      "timeRange": "{from} to {to}",
+      "timeFrom": "From {from}",
+      "today": "Today"
     }
   }
 }

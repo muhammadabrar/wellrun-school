@@ -90,7 +90,8 @@
       "fees": "فیس",
       "results": "نتائج",
       "notices": "اطلاعات",
-      "timetable": "ٹائم ٹیبل"
+      "timetable": "ٹائم ٹیبل",
+      "calendar": "کیلنڈر"
     },
     "status": {
       "PRESENT": "حاضر",
@@ -217,6 +218,19 @@
     "languageNames": {
       "en": "English",
       "ur": "اردو"
+    },
+    "calendar": {
+      "title": "کیلنڈر",
+      "nothing": "اس مہینے کچھ طے نہیں ہے۔",
+      "holiday": "چھٹی",
+      "exam": "امتحان",
+      "event": "اسکول کی تقریب",
+      "closed": "اسکول بند ہے",
+      "allDay": "سارا دن",
+      "until": "{date} تک",
+      "timeRange": "{from} سے {to} تک",
+      "timeFrom": "{from} سے",
+      "today": "آج"
     }
   }
 }

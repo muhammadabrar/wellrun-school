@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fmt } from "@wellrun/i18n";
 import type { AttendanceStatus } from "@wellrun/shared";
-import { CalendarCheck, Clock, Megaphone, NotebookPen, Trophy, Wallet } from "lucide-react";
+import { CalendarCheck, CalendarDays, Clock, Megaphone, NotebookPen, Trophy, Wallet } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { Avatar, Card, Chip, ErrorBox, Loading, Screen, Tile } from "@/components/ui";
 import { api, mediaUrl } from "@/lib/api";
@@ -97,6 +97,7 @@ export function ChildHomePage() {
         <Tile to={`${base}/results`} icon={<Trophy className="size-9" aria-hidden />} label={m.tiles.results} />
         <Tile to={`${base}/notices`} icon={<Megaphone className="size-9" aria-hidden />} label={m.tiles.notices} badge={s?.notice ? <Chip tone="indigo">1</Chip> : null} />
         <Tile to={`${base}/timetable`} icon={<Clock className="size-9" aria-hidden />} label={m.tiles.timetable} />
+        <Tile to={`${base}/calendar`} icon={<CalendarDays className="size-9" aria-hidden />} label={m.tiles.calendar} className="col-span-2" />
       </div>
     </Screen>
   );

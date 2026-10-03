@@ -1,4 +1,4 @@
-import type { OtpRequested, ParentAttendance, ParentDevice, ParentDiary, ParentFees, ParentLocale, ParentMe, ParentNotice, ParentResult, ParentSession, ParentSummary, ParentTimetable } from "@wellrun/shared";
+import type { CalendarItem, OtpRequested, ParentAttendance, ParentDevice, ParentDiary, ParentFees, ParentLocale, ParentMe, ParentNotice, ParentResult, ParentSession, ParentSummary, ParentTimetable } from "@wellrun/shared";
 
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 const TOKEN_KEY = "wellrun-parent-token";
@@ -84,6 +84,7 @@ export const api = {
   results: (id: string) => request<ParentResult[]>(`/parent/children/${id}/results`),
   timetable: (id: string) => request<ParentTimetable>(`/parent/children/${id}/timetable`),
   notices: (id: string) => request<ParentNotice[]>(`/parent/children/${id}/notices`),
+  calendar: (id: string, from: string, to: string) => request<CalendarItem[]>(`/parent/children/${id}/calendar?from=${from}&to=${to}`),
 };
 
 /**

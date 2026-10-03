@@ -71,9 +71,9 @@ export const SOLID_TONES: Record<Tone, string> = {
 };
 
 /** The big square buttons on a child's home. One picture, one word. */
-export function Tile({ to, icon, label, badge }: { to: string; icon: ReactNode; label: string; badge?: ReactNode }) {
+export function Tile({ to, icon, label, badge, className = "" }: { to: string; icon: ReactNode; label: string; badge?: ReactNode; className?: string }) {
   return (
-    <Link to={to} className="relative flex min-h-36 flex-col items-center justify-center gap-3 rounded-3xl bg-white p-4 text-center shadow-sm ring-1 ring-line active:bg-paper">
+    <Link to={to} className={`${className} relative flex min-h-36 flex-col items-center justify-center gap-3 rounded-3xl bg-white p-4 text-center shadow-sm ring-1 ring-line active:bg-paper`}>
       <span className="grid size-16 place-items-center rounded-2xl bg-indigo/10 text-indigo">{icon}</span>
       <span className="text-lg font-semibold leading-tight">{label}</span>
       {badge ? <span className="absolute end-3 top-3">{badge}</span> : null}

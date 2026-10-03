@@ -12,6 +12,7 @@ import { MorePage } from "@/pages/More";
 import { NoticesPage } from "@/pages/Notices";
 import { ResultsPage } from "@/pages/Results";
 import { TimetablePage } from "@/pages/Timetable";
+import { CalendarPage } from "@/pages/Calendar";
 
 function RequireSignIn({ children }: { children: ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />;
@@ -43,6 +44,7 @@ export function App() {
       <Route path="/child/:id/results" element={<RequireSignIn><ResultsPage /></RequireSignIn>} />
       <Route path="/child/:id/notices" element={<RequireSignIn><NoticesPage /></RequireSignIn>} />
       <Route path="/child/:id/timetable" element={<RequireSignIn><TimetablePage /></RequireSignIn>} />
+      <Route path="/child/:id/calendar" element={<RequireSignIn><CalendarPage /></RequireSignIn>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

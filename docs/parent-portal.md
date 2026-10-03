@@ -75,3 +75,7 @@ Built to be usable by a young child or someone who only knows WhatsApp: one ques
 | P18 | Student page → Family (in the console) | Each guardian shows whether they have signed in and when they were last seen |
 | P19 | Phone at 360 px width | No sideways scrolling; every button at least 56 px tall |
 | P20 | Offline | A plain "no internet" message with Try again, never a blank screen |
+| P21 | **Calendar** on a child | The month's holidays, events and the class's exam papers, each under its day with a coloured label; a long event says when it ends |
+| P22 | An event for another class, or for staff only | Does not appear |
+| P23 | An exam that is still a draft | Does not appear |
+| P24 | Switch to اردو on the calendar | Labels and month names turn Urdu; times and dates stay readable |
