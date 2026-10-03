@@ -49,6 +49,11 @@ export class StaffController {
     return this.staff.addContract(requireSchoolAdmin(req.user), req.user.id, id, body);
   }
 
+  @Post("staff/:id/photo")
+  photo(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Body() body: { image?: string }) {
+    return this.staff.savePhoto(requireSchoolAdmin(req.user), req.user.id, id, body?.image ?? "");
+  }
+
   @Put("staff/:id/account")
   account(@Req() req: { user: CurrentUser }, @Param("id") id: string, @Body() body: unknown) {
     return this.staff.saveAccount(requireSchoolAdmin(req.user), req.user.id, id, body);

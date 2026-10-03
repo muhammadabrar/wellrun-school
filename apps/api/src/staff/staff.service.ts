@@ -15,6 +15,7 @@ import { randomBytes } from "crypto";
 import { audit } from "../common/audit";
 import { dateOnly } from "../common/date";
 import { assertWritableSchool } from "../common/school";
+import { saveDataUrl } from "../common/uploads";
 import { assertClassWritable } from "../common/year-lock";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -348,6 +349,18 @@ export class StaffService {
   }
 
   /** Create a login for this staff member, or change its email, password or role. */
+  /** A photo for the staff ID card, stored the same way as a student's. JPG and PNG print on the card; other formats show the initial. */
+  async savePhoto(schoolId: string, actorId: string, id: string, dataUrl: string) {
+    await assertWritableSchool(this.prisma, schoolId);
+    if (!/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(dataUrl)) throw new BadRequestException("Upload a JPG or PNG photo");
+    const staff = await this.prisma.staff.findFirst({ where: { id, schoolId }, select: { id: true } });
+    if (!staff) throw new NotFoundException("Staff member not found");
+    const url = saveDataUrl(schoolId, `staff-${id}`, dataUrl);
+    await this.prisma.staff.update({ where: { id }, data: { photoUrl: url }, select: { id: true } });
+    await audit(this.prisma, { schoolId, actorId, action: "staff_photo_saved", entity: "staff", entityId: id });
+    return this.detail(schoolId, id);
+  }
+
   async saveAccount(schoolId: string, actorId: string, id: string, body: unknown) {
     await assertWritableSchool(this.prisma, schoolId);
     const staff = await this.prisma.staff.findFirst({ where: { id, schoolId } });

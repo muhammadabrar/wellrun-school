@@ -9,6 +9,7 @@ import { AiModule } from "./ai/ai.module";
 import { AdmissionsModule } from "./admissions/admissions.module";
 import { AttendanceModule } from "./attendance/attendance.module";
 import { AuthModule } from "./auth/auth.module";
+import { CertificatesModule } from "./certificates/certificates.module";
 import { ClaimsModule } from "./claims/claims.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { DiaryModule } from "./diary/diary.module";
@@ -19,6 +20,7 @@ import { FinanceModule } from "./finance/finance.module";
 import { HealthController } from "./health.controller";
 import { NoticesModule } from "./notices/notices.module";
 import { ParentModule } from "./parent/parent.module";
+import { IdCardsModule } from "./id-cards/id-cards.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { PayrollModule } from "./payroll/payroll.module";
 import { QuestionBankModule } from "./question-bank/question-bank.module";
@@ -69,6 +71,8 @@ import { TraceMiddleware } from "./trace/trace.middleware";
     InventoryModule,
     QuestionBankModule,
     EventsModule,
+    CertificatesModule,
+    IdCardsModule,
     PayrollModule,
     ClaimsModule,
     AdminModule,
