@@ -6,7 +6,7 @@
 import "reflect-metadata";
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma, PrismaClient, type QuestionPaperStatus, type QuestionType } from "@prisma/client";
-import { DEFAULT_CATEGORIES, DEFAULT_GRADE_BANDS, SUBJECTS_BY_GRADE, SYSTEM_CATEGORIES, paperMarks, questionKey } from "@wellrun/shared";
+import { DEFAULT_CATEGORIES, DEFAULT_CERTIFICATES, DEFAULT_GRADE_BANDS, SUBJECTS_BY_GRADE, SYSTEM_CATEGORIES, genderWords, paperMarks, questionKey, renderTemplate } from "@wellrun/shared";
 import { normalizeCnic, normalizePhone } from "../src/common/phone";
 import { ResultsService } from "../src/exams/results.service";
 import { ExamSettingsService } from "../src/exams/settings.service";
@@ -1768,6 +1768,65 @@ export async function seedDemoSchool(ctx: Ctx) {
   await prisma.inventoryItem.createMany({ data: stockItems.map((it) => ({ id: it.id, schoolId, name: it.name, kind: it.kind, category: it.category, unit: it.unit, location: it.location, reorderLevel: it.reorderLevel, onHand: it.onHand, unitCostPkr: it.unitCostPkr, status: "IN_USE" as const })) });
   await prisma.inventoryMovement.createMany({ data: movements });
 
+  // Events and certificates -------------------------------------------------------------------------------------
+  console.log("  demo: events, certificates");
+  const ahead = (n: number) => new Date(today.getTime() + n * 86_400_000);
+  const grade = (g: number) => classes.filter((c) => c.grade === g).map((c) => c.id);
+  await prisma.schoolEvent.createMany({
+    data: [
+      { schoolId, title: "Parent-teacher meeting", description: "Meet your child's teachers and see their progress. Please bring the diary.", kind: "MEETING", startsOn: ahead(9), allDay: false, startTime: "09:00", endTime: "12:00", location: "School hall", audience: "ALL", createdById: adminId },
+      { schoolId, title: "Annual sports day", description: "Races, relay and tug of war. Children come in sports uniform.", kind: "SPORTS", startsOn: ahead(21), allDay: true, location: "School ground", audience: "ALL", createdById: adminId },
+      { schoolId, title: "Science museum trip", description: "Permission slips must be returned a day before.", kind: "TRIP", startsOn: ahead(14), endsOn: ahead(14), allDay: false, startTime: "08:30", endTime: "14:00", location: "National Science Museum", audience: "CLASSES", classIds: grade(5), createdById: adminId },
+      { schoolId, title: "Staff training day", description: "Classroom management workshop. School is open for staff only.", kind: "OTHER", startsOn: ahead(5), allDay: false, startTime: "13:00", endTime: "16:00", location: "Staff room", audience: "STAFF", createdById: adminId },
+      { schoolId, title: "Independence Day assembly", description: "Songs, speeches and a flag ceremony.", kind: "CULTURAL", startsOn: ahead(30), endsOn: ahead(31), allDay: true, location: "School ground", audience: "ALL", createdById: adminId },
+      { schoolId, title: "Eid milad function", kind: "CULTURAL", startsOn: at(6), allDay: true, location: "School hall", audience: "ALL", createdById: adminId },
+    ],
+  });
+  await prisma.holiday.create({ data: { schoolId, name: "Iqbal Day", startsOn: ahead(36), endsOn: ahead(36) } }).catch(() => undefined);
+  const certStudents = students.slice(0, 3);
+  const certDefs = [
+    { type: "BONAFIDE" as const, fields: { purpose: "for a passport application" }, extra: { purposeLine: " This certificate is issued for a passport application." } },
+    { type: "CHARACTER" as const, fields: { conduct: "Excellent" }, extra: { conduct: "Excellent" } },
+    { type: "MERIT" as const, fields: { achievement: "first position in the annual examinations" }, extra: { achievement: "first position in the annual examinations" } },
+  ];
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const todayText = `${today.getUTCDate()} ${monthNames[today.getUTCMonth()]} ${today.getUTCFullYear()}`;
+  let certSeq = 0;
+  for (const [i, def] of certDefs.entries()) {
+    const stu = certStudents[i]!;
+    const guardianRow = guardians.find((g) => g.id === stu.guardianId);
+    const vars: Record<string, string> = {
+      student: `${stu.first} ${stu.last}`,
+      guardian: String(guardianRow?.name ?? "Guardian"),
+      admissionNo: stu.admissionNo,
+      class: `${stu.cls.name} ${stu.cls.section}`,
+      year: "2026-27",
+      dob: "",
+      school: "Greenfield Grammar School",
+      date: todayText,
+      ...genderWords(stu.gender),
+      purposeLine: "",
+      conduct: "",
+      achievement: "",
+      ...def.extra,
+    };
+    certSeq += 1;
+    const template = DEFAULT_CERTIFICATES[def.type];
+    await prisma.issuedCertificate.create({
+      data: {
+        schoolId,
+        studentId: stu.id,
+        type: def.type,
+        serial: `CERT-${today.getUTCFullYear()}-${pad(certSeq, 4)}`,
+        issuedOn: today,
+        title: template.title,
+        text: renderTemplate(template.body, vars),
+        data: { class: vars.class, year: vars.year, fields: def.fields },
+        issuedById: adminId,
+      },
+    });
+  }
+
   // Notes, documents, audit, sequences ---------------------------------------------------------------------------
   const first = students[0];
   await prisma.communicationLog.createMany({
@@ -1790,6 +1849,7 @@ export async function seedDemoSchool(ctx: Ctx) {
       { schoolId, kind: "REC", year: 2026, value: paySeq },
       { schoolId, kind: "PSL", year: 2026, value: staff.length },
       { schoolId, kind: "VCH", year: 2026, value: vchSeq },
+      { schoolId, kind: "CERT", year: today.getUTCFullYear(), value: certSeq },
     ],
   });
 

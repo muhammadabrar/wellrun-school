@@ -151,96 +151,99 @@ model User {
 }
 
 model School {
-  id                  String                 @id @default(cuid())
-  slug                String                 @unique
-  name                String
-  city                String
-  area                String                 @default("")
-  type                String                 @default("private")
-  whatsapp            String                 @default("")
-  phone               String                 @default("")
-  website             String                 @default("")
-  address             String                 @default("")
-  email               String                 @default("")
-  province            String                 @default("")
-  country             String                 @default("Pakistan")
-  registrationNo      String                 @default("")
-  taxNumber           String                 @default("")
-  ntn                 String                 @default("")
-  strn                String                 @default("")
-  primaryColor        String                 @default("#4642ff")
-  educationLevel      String                 @default("")
-  feeBand             String                 @default("10k_20k")
-  levels              Json                   @default("[]")
-  claimStatus         String                 @default("UNCLAIMED")
-  l2Active            Boolean                @default(false)
-  setupCompleted      Boolean                @default(false)
-  setupStep           Int                    @default(1)
-  published           Boolean                @default(false)
-  deletedAt           DateTime?
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @updatedAt
-  users               User[]
-  profile             SchoolProfile?
-  posts               SchoolPost[]
-  reviews             SchoolReview[]
-  media               SchoolMedia[]
-  years               AcademicYear[]
-  classes             Class[]
-  students            Student[]
-  guardians           Guardian[]
-  staff               Staff[]
-  enrollments         Enrollment[]
-  attendance          AttendanceRecord[]
-  feePlans            FeePlan[]
-  feeHeads            FeeHead[]
-  feeStructures       FeeStructure[]
-  feeAssignments      StudentFeeAssignment[]
-  discounts           Discount[]
-  studentDiscounts    StudentDiscount[]
-  feeSettings         SchoolFeeSettings?
-  invoices            Invoice[]
-  payments            Payment[]
-  receipts            Receipt[]
-  credits             StudentCredit[]
-  fbrInvoices         FbrInvoice[]
-  campuses            Campus[]
-  subjects            Subject[]
-  classSubjects       ClassSubject[]
-  admissionForms      AdmissionForm[]
-  feeItems            FeeItem[]
-  memberships         CampusMembership[]
-  claims              SchoolClaim[]
-  invites             Invite[]
-  periods             TimetablePeriod[]
-  lessons             TimetableLesson[]
-  assignments         TeacherAssignment[]
-  audits              AuditLog[]
-  exams               Exam[]
-  applications        AdmissionApplication[]
-  documents           SchoolDocument[]
-  communications      CommunicationLog[]
-  sequences           SchoolSequence[]
-  staffContracts      StaffContract[]
-  staffStatusChanges  StaffStatusChange[]
-  payslips            Payslip[]
-  terms               Term[]
-  gradingScales       GradingScale[]
-  examSettings        ExamSettings?
-  reportCardTemplates ReportCardTemplate[]
-  attendanceSettings  AttendanceSettings?
-  holidays            Holiday[]
-  syllabi             Syllabus[]
-  questionPapers      QuestionPaper[]
-  diaryEntries        DiaryEntry[]
-  notices             Notice[]
-  staffAttendance     StaffAttendance[]
-  staffLeaves         StaffLeave[]
-  financeAccounts     FinanceAccount[]
-  financeCategories   FinanceCategory[]
-  vouchers            Voucher[]
-  inventoryItems      InventoryItem[]
-  bankQuestions       BankQuestion[]
+  id                   String                 @id @default(cuid())
+  slug                 String                 @unique
+  name                 String
+  city                 String
+  area                 String                 @default("")
+  type                 String                 @default("private")
+  whatsapp             String                 @default("")
+  phone                String                 @default("")
+  website              String                 @default("")
+  address              String                 @default("")
+  email                String                 @default("")
+  province             String                 @default("")
+  country              String                 @default("Pakistan")
+  registrationNo       String                 @default("")
+  taxNumber            String                 @default("")
+  ntn                  String                 @default("")
+  strn                 String                 @default("")
+  primaryColor         String                 @default("#4642ff")
+  educationLevel       String                 @default("")
+  feeBand              String                 @default("10k_20k")
+  levels               Json                   @default("[]")
+  claimStatus          String                 @default("UNCLAIMED")
+  l2Active             Boolean                @default(false)
+  setupCompleted       Boolean                @default(false)
+  setupStep            Int                    @default(1)
+  published            Boolean                @default(false)
+  deletedAt            DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  users                User[]
+  profile              SchoolProfile?
+  posts                SchoolPost[]
+  reviews              SchoolReview[]
+  media                SchoolMedia[]
+  years                AcademicYear[]
+  classes              Class[]
+  students             Student[]
+  guardians            Guardian[]
+  staff                Staff[]
+  enrollments          Enrollment[]
+  attendance           AttendanceRecord[]
+  feePlans             FeePlan[]
+  feeHeads             FeeHead[]
+  feeStructures        FeeStructure[]
+  feeAssignments       StudentFeeAssignment[]
+  discounts            Discount[]
+  studentDiscounts     StudentDiscount[]
+  feeSettings          SchoolFeeSettings?
+  invoices             Invoice[]
+  payments             Payment[]
+  receipts             Receipt[]
+  credits              StudentCredit[]
+  fbrInvoices          FbrInvoice[]
+  campuses             Campus[]
+  subjects             Subject[]
+  classSubjects        ClassSubject[]
+  admissionForms       AdmissionForm[]
+  feeItems             FeeItem[]
+  memberships          CampusMembership[]
+  claims               SchoolClaim[]
+  invites              Invite[]
+  periods              TimetablePeriod[]
+  lessons              TimetableLesson[]
+  assignments          TeacherAssignment[]
+  audits               AuditLog[]
+  exams                Exam[]
+  applications         AdmissionApplication[]
+  documents            SchoolDocument[]
+  communications       CommunicationLog[]
+  sequences            SchoolSequence[]
+  staffContracts       StaffContract[]
+  staffStatusChanges   StaffStatusChange[]
+  payslips             Payslip[]
+  terms                Term[]
+  gradingScales        GradingScale[]
+  examSettings         ExamSettings?
+  reportCardTemplates  ReportCardTemplate[]
+  attendanceSettings   AttendanceSettings?
+  holidays             Holiday[]
+  syllabi              Syllabus[]
+  questionPapers       QuestionPaper[]
+  diaryEntries         DiaryEntry[]
+  notices              Notice[]
+  staffAttendance      StaffAttendance[]
+  staffLeaves          StaffLeave[]
+  financeAccounts      FinanceAccount[]
+  financeCategories    FinanceCategory[]
+  vouchers             Voucher[]
+  inventoryItems       InventoryItem[]
+  bankQuestions        BankQuestion[]
+  events               SchoolEvent[]
+  certificateTemplates CertificateTemplate[]
+  certificates         IssuedCertificate[]
 }
 
 model SchoolProfile {
@@ -405,6 +408,8 @@ model Student {
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
 
+  certificates IssuedCertificate[]
+
   @@unique([schoolId, admissionNo])
   @@index([schoolId])
   @@index([campusId])
@@ -510,6 +515,9 @@ model Staff {
 
   attendance StaffAttendance[]
   leaves     StaffLeave[]
+
+  /// A photo for the ID card, saved like student photos.
+  photoUrl String @default("")
 
   @@index([schoolId])
   @@index([schoolId, cnic])
@@ -1043,6 +1051,8 @@ model Campus {
 
   diaryEntries DiaryEntry[]
   notices      Notice[]
+
+  events SchoolEvent[]
 
   @@unique([schoolId, code])
   @@index([schoolId])
@@ -2214,4 +2224,101 @@ model BankQuestion {
 
   @@unique([schoolId, subjectId, gradeName, type, textHash])
   @@index([schoolId, subjectId, gradeName])
+}
+
+enum EventKind {
+  EVENT
+  MEETING
+  TRIP
+  SPORTS
+  CULTURAL
+  OTHER
+}
+
+enum EventAudience {
+  ALL
+  CLASSES
+  STAFF
+}
+
+/// Something happening at school that parents and staff should know about.
+model SchoolEvent {
+  id          String        @id @default(cuid())
+  schoolId    String
+  school      School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  /// Null means every campus.
+  campusId    String?
+  campus      Campus?       @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  title       String
+  description String        @default("")
+  kind        EventKind     @default(EVENT)
+  startsOn    DateTime      @db.Date
+  /// Last day when it runs over several days; null for a single day.
+  endsOn      DateTime?     @db.Date
+  allDay      Boolean       @default(true)
+  startTime   String        @default("")
+  endTime     String        @default("")
+  location    String        @default("")
+  audience    EventAudience @default(ALL)
+  /// Class ids when the audience is CLASSES.
+  classIds    Json          @default("[]")
+  createdById String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([schoolId, startsOn])
+}
+
+enum CertificateType {
+  BONAFIDE
+  CHARACTER
+  LEAVING
+  MERIT
+}
+
+enum CertificateStatus {
+  ISSUED
+  REVOKED
+}
+
+/// The school's own wording for one kind of certificate. Absent means the standard wording is used.
+model CertificateTemplate {
+  id          String          @id @default(cuid())
+  schoolId    String
+  school      School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  type        CertificateType
+  title       String
+  body        String
+  updatedById String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([schoolId, type])
+}
+
+/// A certificate given to a student. The finished wording is saved here, so reprinting it later gives exactly what was issued
+/// even if the student's record or the template changes afterwards.
+model IssuedCertificate {
+  id           String            @id @default(cuid())
+  schoolId     String
+  school       School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  type         CertificateType
+  serial       String
+  issuedOn     DateTime          @db.Date
+  title        String
+  text         String
+  /// The class, admission number and the fields filled in, as they were when it was issued.
+  data         Json              @default("{}")
+  status       CertificateStatus @default(ISSUED)
+  revokedAt    DateTime?
+  revokedById  String?
+  revokeReason String            @default("")
+  issuedById   String?
+  createdAt    DateTime          @default(now())
+
+  @@unique([schoolId, serial])
+  @@index([schoolId, issuedOn])
+  @@index([studentId])
 }
