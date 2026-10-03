@@ -24,6 +24,8 @@ import { loadSettings } from "../attendance/rules";
 import { karachiToday } from "../common/date";
 import { ExamAnalyticsService } from "../exams/analytics.service";
 import { StaffAttendanceService } from "../staff-attendance/staff-attendance.service";
+import { FinanceService } from "../finance/finance.service";
+import { flowSummary } from "../finance/ledger";
 import { PrismaService } from "../prisma/prisma.service";
 import { byLabel, dateRange, dayName, endOf, karachiDay, karachiMonth, monthName, monthsBetween, percentOf, personName, shiftMonth, startOf, sumOf } from "./helpers";
 import { attendanceTally, buildRatios } from "./ratios";
@@ -54,6 +56,7 @@ export class ReportsService {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(ExamAnalyticsService) private readonly analytics: ExamAnalyticsService,
     @Inject(StaffAttendanceService) private readonly staffAttendance: StaffAttendanceService,
+    @Inject(FinanceService) private readonly finance: FinanceService,
   ) {}
 
   // Scope helpers -------------------------------------------------------------------------------------------
@@ -142,6 +145,12 @@ export class ReportsService {
         return this.examClasses(ctx, params);
       case "exams.subjects":
         return this.examSubjects(ctx, params);
+      case "finance.income-expense":
+        return this.incomeExpense(ctx, params, today);
+      case "finance.categories":
+        return this.financeCategories(ctx, params, today);
+      case "finance.stock":
+        return this.inventoryStock(ctx);
       case "staff.attendance":
         return this.staffAttendanceReport(ctx, params, today);
       case "staff.payroll":
@@ -696,6 +705,90 @@ export class ReportsService {
 
   // Staff ---------------------------------------------------------------------------------------------------
 
+  private async incomeExpense(ctx: ReportCtx, params: ReportParams, today: string): Promise<Built> {
+    const { from, to } = dateRange(params, today, defaultRangeStart("months6", today));
+    const months = monthsBetween(from, to);
+    const entries = await this.finance.entries(ctx.schoolId, from, to);
+    const rows: ReportRow[] = months.map((m) => {
+      const start = `${m}-01` < from ? from : `${m}-01`;
+      const end = `${m}-31` > to ? to : `${m}-31`;
+      const f = flowSummary(entries, start, end);
+      const named = (name: string) => f.byCategory.find((c) => c.name === name)?.amountPkr ?? 0;
+      const fees = named("Fee collection");
+      const salaries = named("Salaries");
+      return { month: monthName(m), fees, otherIncome: f.incomePkr - fees, income: f.incomePkr, salaries, otherSpending: f.expensePkr - salaries, spending: f.expensePkr, surplus: f.netPkr };
+    });
+    return {
+      subtitle: `${from} to ${to}. Money actually received and paid; transfers between your own accounts are left out.`,
+      columns: [
+        { key: "month", label: "Month" },
+        { key: "fees", label: "Fee collection", format: "pkr", align: "end" },
+        { key: "otherIncome", label: "Other income", format: "pkr", align: "end" },
+        { key: "income", label: "Total income", format: "pkr", align: "end" },
+        { key: "salaries", label: "Salaries", format: "pkr", align: "end" },
+        { key: "otherSpending", label: "Other spending", format: "pkr", align: "end" },
+        { key: "spending", label: "Total spending", format: "pkr", align: "end" },
+        { key: "surplus", label: "Left over", format: "pkr", align: "end" },
+      ],
+      rows,
+      totals: { month: "Total", fees: sumOf(rows, "fees"), otherIncome: sumOf(rows, "otherIncome"), income: sumOf(rows, "income"), salaries: sumOf(rows, "salaries"), otherSpending: sumOf(rows, "otherSpending"), spending: sumOf(rows, "spending"), surplus: sumOf(rows, "surplus") },
+      chart: { labelKey: "month", valueKey: "spending", format: "pkr" },
+    };
+  }
+
+  private async financeCategories(ctx: ReportCtx, params: ReportParams, today: string): Promise<Built> {
+    const { from, to } = dateRange(params, today);
+    const flow = await this.finance.flow(ctx.schoolId, from, to);
+    const sumKind = (kind: "INCOME" | "EXPENSE") => flow.byCategory.filter((c) => c.kind === kind).reduce((s, c) => s + c.amountPkr, 0);
+    const income = sumKind("INCOME");
+    const expense = sumKind("EXPENSE");
+    const rows: ReportRow[] = flow.byCategory.map((c) => ({ category: c.name, kind: c.kind === "INCOME" ? "Income" : "Spending", amountPkr: c.amountPkr, sharePct: percentOf(c.amountPkr, c.kind === "INCOME" ? income : expense) }));
+    return {
+      subtitle: `${from} to ${to}. Shares are of income or of spending separately.`,
+      columns: [
+        { key: "category", label: "Category" },
+        { key: "kind", label: "Money" },
+        { key: "amountPkr", label: "Amount", format: "pkr", align: "end" },
+        { key: "sharePct", label: "Share", format: "pct", align: "end" },
+      ],
+      rows,
+      totals: { category: `Income ${income.toLocaleString("en-PK")}, spending ${expense.toLocaleString("en-PK")}`, kind: flow.netPkr >= 0 ? "Left over" : "Shortfall", amountPkr: flow.netPkr },
+      chart: { labelKey: "category", valueKey: "amountPkr", format: "pkr" },
+    };
+  }
+
+  private async inventoryStock(ctx: ReportCtx): Promise<Built> {
+    const items = await this.prisma.inventoryItem.findMany({ where: { schoolId: ctx.schoolId, active: true }, orderBy: [{ kind: "asc" }, { category: "asc" }, { name: "asc" }], take: LIMIT });
+    const rows: ReportRow[] = items.map((i) => ({
+      item: i.name,
+      kind: i.kind === "ASSET" ? "Asset" : "Consumable",
+      category: i.category,
+      location: i.location,
+      onHand: i.onHand,
+      unit: i.unit,
+      unitCostPkr: i.unitCostPkr,
+      valuePkr: i.onHand * i.unitCostPkr,
+      status: i.kind === "CONSUMABLE" && i.reorderLevel !== null && i.onHand <= i.reorderLevel ? "Running low" : i.status === "IN_USE" ? "In use" : i.status === "REPAIR" ? "Being repaired" : "Disposed of",
+    }));
+    return {
+      subtitle: "What is held today, valued at the latest purchase price",
+      columns: [
+        { key: "item", label: "Item" },
+        { key: "kind", label: "Kind" },
+        { key: "category", label: "Category" },
+        { key: "location", label: "Where" },
+        { key: "onHand", label: "On hand", format: "int", align: "end" },
+        { key: "unit", label: "Unit" },
+        { key: "unitCostPkr", label: "Cost of one", format: "pkr", align: "end" },
+        { key: "valuePkr", label: "Value", format: "pkr", align: "end" },
+        { key: "status", label: "State" },
+      ],
+      rows,
+      totals: { item: `${rows.length} items`, valuePkr: sumOf(rows, "valuePkr") },
+      truncated: items.length >= LIMIT,
+    };
+  }
+
   private async staffAttendanceReport(ctx: ReportCtx, params: ReportParams, today: string): Promise<Built> {
     const { from, to } = dateRange(params, today);
     const people = await this.staffAttendance.summaries(ctx, from, to);
@@ -826,6 +919,7 @@ export class ReportsService {
     });
     const tally = attendanceTally(countStatuses(attendance.flatMap((a) => Array<AttendanceStatus>(a._count._all).fill(a.status))), settings);
 
+    const flow = await this.finance.flow(ctx.schoolId, from, to);
     const staffPeople = await this.staffAttendance.summaries(ctx, from, to);
     const staffAttended = staffPeople.reduce((sum, p) => sum + p.counts.PRESENT + p.counts.LATE, 0);
     const staffCounted = staffPeople.reduce((sum, p) => sum + p.counts.PRESENT + p.counts.LATE + p.counts.ABSENT, 0);
@@ -877,6 +971,9 @@ export class ReportsService {
       countedDays: tally.counted,
       staffAttendedDays: staffAttended,
       staffCountedDays: staffCounted,
+      incomePkr: flow.incomePkr,
+      expensePkr: flow.expensePkr,
+      salariesPkr: flow.byCategory.find((c) => c.kind === "EXPENSE" && c.name === "Salaries")?.amountPkr ?? 0,
       passed,
       resulted,
       collectionTrend: months.map((m) => ({ label: monthName(m), billedPkr: billedBy.get(m)?.totalAmountPkr ?? 0, collectedPkr: billedBy.get(m)?.paidAmountPkr ?? 0 })),

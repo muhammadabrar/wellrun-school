@@ -14,9 +14,11 @@ import { DashboardModule } from "./dashboard/dashboard.module";
 import { DiaryModule } from "./diary/diary.module";
 import { ExamsModule } from "./exams/exams.module";
 import { FeesModule } from "./fees/fees.module";
+import { FinanceModule } from "./finance/finance.module";
 import { HealthController } from "./health.controller";
 import { NoticesModule } from "./notices/notices.module";
 import { ParentModule } from "./parent/parent.module";
+import { InventoryModule } from "./inventory/inventory.module";
 import { PayrollModule } from "./payroll/payroll.module";
 import { QuestionPapersModule } from "./question-papers/question-papers.module";
 import { ReportsModule } from "./reports/reports.module";
@@ -61,6 +63,8 @@ import { TraceMiddleware } from "./trace/trace.middleware";
     ParentModule,
     ReportsModule,
     StaffAttendanceModule,
+    FinanceModule,
+    InventoryModule,
     PayrollModule,
     ClaimsModule,
     AdminModule,

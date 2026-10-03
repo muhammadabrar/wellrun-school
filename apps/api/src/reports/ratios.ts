@@ -26,6 +26,9 @@ export type RatioInputs = {
   countedDays: number;
   staffAttendedDays: number;
   staffCountedDays: number;
+  incomePkr: number;
+  expensePkr: number;
+  salariesPkr: number;
   passed: number;
   resulted: number;
   collectionTrend: { label: string; billedPkr: number; collectedPkr: number }[];
@@ -97,6 +100,9 @@ export function buildRatios(input: RatioInputs): RatioView[] {
       trend: [],
       note: "Staff who signed in on school days, late arrivals included. Approved leave days are left out.",
     },
+    salaryIncome: { value: pct(input.salariesPkr, input.incomePkr), numerator: input.salariesPkr, denominator: input.incomePkr, trend: [], note: "Cash basis: salaries actually paid in the period against money actually received (fee payments and other receipts)." },
+    expenseIncome: { value: pct(input.expensePkr, input.incomePkr), numerator: input.expensePkr, denominator: input.incomePkr, trend: [], note: "Cash basis. Moving money between your own accounts is not counted as either." },
+    surplus: { value: pct(input.incomePkr - input.expensePkr, input.incomePkr), numerator: input.incomePkr - input.expensePkr, denominator: input.incomePkr, trend: [], note: "Money received minus money spent, as a share of money received. Negative means a loss in the period." },
     pass: { value: pct(input.passed, input.resulted), numerator: input.passed, denominator: input.resulted, trend: [], note: "From the most recently calculated results this year." },
     girls: { value: pct(input.girls, input.boys + input.girls), numerator: input.girls, denominator: input.boys + input.girls, trend: [], note: "Students whose gender is recorded as male or female." },
   };

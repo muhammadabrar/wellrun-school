@@ -18,6 +18,9 @@ const inputs = (over: Partial<RatioInputs> = {}): RatioInputs => ({
   countedDays: 10_000,
   staffAttendedDays: 570,
   staffCountedDays: 600,
+  incomePkr: 1_000_000,
+  expensePkr: 850_000,
+  salariesPkr: 600_000,
   passed: 700,
   resulted: 800,
   collectionTrend: [
@@ -60,6 +63,9 @@ describe("buildRatios", () => {
     expect(byKey(views, "attendance").status).toBe("good"); // 90% is on the line
     expect(byKey(views, "pass").status).toBe("good"); // 87.5% is above 85%
     expect(byKey(views, "staffAttendance").status).toBe("good"); // 95% is on the line
+    expect(byKey(views, "salaryIncome").status).toBe("good"); // 60% is on the line
+    expect(byKey(views, "expenseIncome").status).toBe("good"); // 85% is on the line
+    expect(byKey(views, "surplus").status).toBe("good"); // 15% is above 10%
   });
 
   it("gives percentages to one decimal place", () => {
@@ -69,6 +75,9 @@ describe("buildRatios", () => {
     expect(byKey(views, "attendance").display).toBe("90%");
     expect(byKey(views, "pass").display).toBe("87.5%");
     expect(byKey(views, "staffAttendance").display).toBe("95%");
+    expect(byKey(views, "salaryIncome").display).toBe("60%");
+    expect(byKey(views, "expenseIncome").display).toBe("85%");
+    expect(byKey(views, "surplus").display).toBe("15%");
     expect(byKey(views, "girls").display).toBe("47.6%");
   });
 
@@ -86,7 +95,7 @@ describe("buildRatios", () => {
 
   it("returns a value of null, not a crash, for a brand-new school", () => {
     const empty = buildRatios(
-      inputs({ students: 0, boys: 0, girls: 0, classes: 0, teachers: 0, staff: 0, billedPkr: 0, collectedPkr: 0, grossBilledPkr: 0, discountPkr: 0, overdueStudents: 0, attendedDays: 0, countedDays: 0, staffAttendedDays: 0, staffCountedDays: 0, passed: 0, resulted: 0, collectionTrend: [], attendanceTrend: [] }),
+      inputs({ students: 0, boys: 0, girls: 0, classes: 0, teachers: 0, staff: 0, billedPkr: 0, collectedPkr: 0, grossBilledPkr: 0, discountPkr: 0, overdueStudents: 0, attendedDays: 0, countedDays: 0, staffAttendedDays: 0, staffCountedDays: 0, incomePkr: 0, expensePkr: 0, salariesPkr: 0, passed: 0, resulted: 0, collectionTrend: [], attendanceTrend: [] }),
     );
     expect(empty).toHaveLength(RATIO_DEFS.length);
     for (const view of empty) {
@@ -98,6 +107,23 @@ describe("buildRatios", () => {
 
   it("covers every ratio definition exactly once", () => {
     expect(views.map((v) => v.key)).toEqual(RATIO_DEFS.map((d) => d.key));
+  });
+});
+
+describe("finance ratios when the school spends more than it receives", () => {
+  it("shows a loss as a negative surplus and flags it", () => {
+    const views = buildRatios(inputs({ incomePkr: 500_000, expensePkr: 650_000, salariesPkr: 450_000 }));
+    expect(byKey(views, "surplus").value).toBe(-30);
+    expect(byKey(views, "surplus").display).toBe("-30%");
+    expect(byKey(views, "surplus").status).toBe("bad");
+    expect(byKey(views, "expenseIncome").value).toBe(130);
+    expect(byKey(views, "expenseIncome").status).toBe("bad");
+    expect(byKey(views, "salaryIncome").status).toBe("bad"); // 90% of income
+  });
+
+  it("has nothing to judge when no money was received", () => {
+    const views = buildRatios(inputs({ incomePkr: 0, expensePkr: 1000, salariesPkr: 500 }));
+    for (const key of ["salaryIncome", "expenseIncome", "surplus"]) expect(byKey(views, key).value).toBeNull();
   });
 });
 
@@ -210,6 +236,6 @@ describe("defaultRangeStart", () => {
   });
 
   it("is declared on exactly the reports that need it", () => {
-    expect(REPORTS.filter((r) => r.range).map((r) => r.id).sort()).toEqual(["fees.discounts", "staff.payroll", "students.admissions"]);
+    expect(REPORTS.filter((r) => r.range).map((r) => r.id).sort()).toEqual(["fees.discounts", "finance.income-expense", "staff.payroll", "students.admissions"]);
   });
 });

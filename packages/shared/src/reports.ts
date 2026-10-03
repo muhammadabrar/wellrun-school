@@ -1,6 +1,6 @@
 /** The reports hub: what exists, what a result looks like, and the ratios admins watch. Server and console share it. */
 
-export type ReportGroup = "students" | "attendance" | "fees" | "exams" | "staff";
+export type ReportGroup = "students" | "attendance" | "fees" | "exams" | "staff" | "finance";
 
 export const REPORT_GROUP_LABEL: Record<ReportGroup, string> = {
   students: "Students",
@@ -8,6 +8,7 @@ export const REPORT_GROUP_LABEL: Record<ReportGroup, string> = {
   fees: "Fees",
   exams: "Exams",
   staff: "Staff and payroll",
+  finance: "Accounts and inventory",
 };
 
 export type ReportFilterKey = "range" | "class" | "month" | "threshold" | "scope";
@@ -53,6 +54,9 @@ export const REPORTS: ReportDef[] = [
   { id: "fees.reversals", group: "fees", title: "Voided and refunded payments", description: "Payments that were reversed in a period, so nothing disappears quietly.", filters: ["range"] },
   { id: "exams.classes", group: "exams", title: "Class results", description: "Average, pass rate and topper for every class in an exam.", filters: ["scope"] },
   { id: "exams.subjects", group: "exams", title: "Subject results", description: "Which subjects are strongest and weakest across the school.", filters: ["scope"] },
+  { id: "finance.income-expense", group: "finance", title: "Income and spending by month", description: "Money that came in against money that went out, month by month, with what is left over.", filters: ["range"], range: "months6" },
+  { id: "finance.categories", group: "finance", title: "Income and spending by category", description: "Where the money came from and what it was spent on over a period.", filters: ["range"] },
+  { id: "finance.stock", group: "finance", title: "Stock and asset value", description: "Everything the school holds, how many, what it is worth and what is running low.", filters: [] },
   { id: "staff.attendance", group: "staff", title: "Staff attendance", description: "How often each staff member turned up, late or was absent, with approved leave shown separately.", filters: ["range"] },
   { id: "staff.payroll", group: "staff", title: "Payroll cost by month", description: "What the school paid or owes in salaries each month.", filters: ["range"], range: "months6" },
   { id: "staff.departments", group: "staff", title: "Payroll by department", description: "Salaries for one month, split by department.", filters: ["month"] },
@@ -127,12 +131,15 @@ export type RatioKey =
   | "discount"
   | "attendance"
   | "staffAttendance"
+  | "salaryIncome"
+  | "expenseIncome"
+  | "surplus"
   | "pass"
   | "girls";
 
 export type RatioStatus = "good" | "watch" | "bad" | "na";
 
-export type RatioGroup = "Staffing" | "Fees" | "Learning" | "Students";
+export type RatioGroup = "Staffing" | "Fees" | "Finance" | "Learning" | "Students";
 
 export type RatioDef = {
   key: RatioKey;
@@ -155,6 +162,9 @@ export const RATIO_DEFS: RatioDef[] = [
   { key: "collection", group: "Fees", label: "Fee collection", question: "Of what was billed in this period, how much has been paid so far?", unit: "pct", numeratorLabel: "Collected (Rs.)", denominatorLabel: "Billed (Rs.)", threshold: { good: 85, watch: 70, higherIsBetter: true }, targetText: "85% or more is good" },
   { key: "defaulters", group: "Fees", label: "Students with overdue fees", question: "How many families are behind on fees?", unit: "pct", numeratorLabel: "Students overdue", denominatorLabel: "Students", threshold: { good: 10, watch: 20, higherIsBetter: false }, targetText: "10% or fewer is good" },
   { key: "discount", group: "Fees", label: "Discounts given", question: "How much of the billed fees was given away as discounts?", unit: "pct", numeratorLabel: "Discounts (Rs.)", denominatorLabel: "Fees before discount (Rs.)", threshold: { good: 10, watch: 20, higherIsBetter: false }, targetText: "10% or less is good" },
+  { key: "salaryIncome", group: "Finance", label: "Salaries as a share of income", question: "How much of the money coming in goes on salaries?", unit: "pct", numeratorLabel: "Salaries paid (Rs.)", denominatorLabel: "Money received (Rs.)", threshold: { good: 60, watch: 75, higherIsBetter: false }, targetText: "60% or less is good" },
+  { key: "expenseIncome", group: "Finance", label: "Spending as a share of income", question: "For every 100 rupees that came in, how many went out?", unit: "pct", numeratorLabel: "Money spent (Rs.)", denominatorLabel: "Money received (Rs.)", threshold: { good: 85, watch: 100, higherIsBetter: false }, targetText: "85% or less is good; over 100% means spending more than comes in" },
+  { key: "surplus", group: "Finance", label: "Surplus margin", question: "After all spending, how much of the money received is left over?", unit: "pct", numeratorLabel: "Left over (Rs.)", denominatorLabel: "Money received (Rs.)", threshold: { good: 10, watch: 0, higherIsBetter: true }, targetText: "10% or more is good; below zero is a loss" },
   { key: "attendance", group: "Learning", label: "Student attendance", question: "How often are students in school?", unit: "pct", numeratorLabel: "Days attended", denominatorLabel: "Days counted", threshold: { good: 90, watch: 80, higherIsBetter: true }, targetText: "90% or more is good" },
   { key: "staffAttendance", group: "Staffing", label: "Staff attendance", question: "How often are staff at work on school days? Approved leave is not counted against anyone.", unit: "pct", numeratorLabel: "Days present", denominatorLabel: "Days counted", threshold: { good: 95, watch: 90, higherIsBetter: true }, targetText: "95% or more is good" },
   { key: "pass", group: "Learning", label: "Pass rate", question: "How many students passed the latest exam results?", unit: "pct", numeratorLabel: "Passed", denominatorLabel: "Students with results", threshold: { good: 85, watch: 70, higherIsBetter: true }, targetText: "85% or more is good" },

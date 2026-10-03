@@ -744,6 +744,7 @@ export * from "./diary";
 export * from "./parent";
 export * from "./reports";
 export * from "./staff-attendance";
+export * from "./finance";
 export * from "./attendance";
 export * from "./dashboard";
 export * from "./paging";
