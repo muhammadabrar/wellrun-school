@@ -111,6 +111,11 @@ export class ParentController {
     return this.parent.timetable(req.parent, id);
   }
 
+  @Get("children/:id/calendar")
+  calendar(@Req() req: Req, @Param("id") id: string, @Query("from") from?: string, @Query("to") to?: string) {
+    return this.parent.calendar(req.parent, id, from, to);
+  }
+
   @Get("children/:id/notices")
   notices(@Req() req: Req, @Param("id") id: string) {
     return this.parent.notices(req.parent, id);

@@ -10,6 +10,6 @@ import { ExamSettingsService } from "./settings.service";
 @Module({
   controllers: [ExamsController, ExamMarksController, ExamResultsController, ExamAnalyticsController, ExamSettingsController],
   providers: [ExamsService, MarksService, ResultsService, ReportCardService, ExamAnalyticsService, ExamSettingsService],
-  exports: [ResultsService, ExamAnalyticsService, ReportCardService],
+  exports: [ResultsService, ExamAnalyticsService, ReportCardService, ExamsService],
 })
 export class ExamsModule {}

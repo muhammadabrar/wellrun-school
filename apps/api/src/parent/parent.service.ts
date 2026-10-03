@@ -4,6 +4,8 @@ import type { Response } from "express";
 import {
   addDays,
   attendancePct,
+  eventVisibleTo,
+  type CalendarItem,
   countStatuses,
   holidayOn,
   isoOf,
@@ -356,6 +358,67 @@ export class ParentService {
       this.prisma.timetableLesson.findMany({ where: { classId: ctx.classId }, select: { weekday: true, periodId: true, subject: true, staff: { select: { name: true } } } }),
     ]);
     return { periods, lessons: lessons.map((row) => ({ weekday: row.weekday, periodId: row.periodId, subject: row.subject, teacher: row.staff?.name ?? null })) };
+  }
+
+  /**
+   * What is coming up for this child: events for everyone or for their class, holidays, and their class's exam papers.
+   * Staff-only events never appear, and neither do exams that haven't been announced yet.
+   */
+  async calendar(parent: CurrentParent, studentId: string, fromInput?: string, toInput?: string): Promise<CalendarItem[]> {
+    const ctx = await this.owned(parent, studentId);
+    const today = karachiToday();
+    const isDay = (v?: string) => Boolean(v && /^\d{4}-\d{2}-\d{2}$/.test(v));
+    const from = isDay(fromInput) ? fromInput! : `${today.slice(0, 7)}-01`;
+    const to = isDay(toInput) ? toInput! : monthBounds(from.slice(0, 7)).to;
+    if (to < from || (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000 > 62) return [];
+    const [events, holidays, papers] = await Promise.all([
+      this.prisma.schoolEvent.findMany({
+        where: {
+          schoolId: ctx.schoolId,
+          audience: { not: "STAFF" },
+          startsOn: { lte: dateOnly(to) },
+          OR: [{ endsOn: { gte: dateOnly(from) } }, { endsOn: null, startsOn: { gte: dateOnly(from) } }],
+          AND: [{ OR: [{ campusId: null }, ...(ctx.campusId ? [{ campusId: ctx.campusId }] : [])] }],
+        },
+        orderBy: [{ startsOn: "asc" }, { id: "asc" }],
+        take: 300,
+      }),
+      loadHolidays(this.prisma, ctx.schoolId, from, to, ctx.campusId),
+      ctx.classId
+        ? this.prisma.examPaper.findMany({
+            where: { classId: ctx.classId, date: { gte: dateOnly(from), lte: dateOnly(to) }, exam: { status: { not: "DRAFT" } } },
+            orderBy: [{ date: "asc" }, { startTime: "asc" }],
+            take: 300,
+            select: { id: true, date: true, startTime: true, endTime: true, subject: { select: { name: true } }, exam: { select: { name: true } } },
+          })
+        : [],
+    ]);
+    const viewer = { role: "parent" as const, classIds: new Set(ctx.classId ? [ctx.classId] : []) };
+    const idsOf = (value: unknown) => (Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []);
+    return [
+      ...holidays.map((h) => ({ id: `holiday:${h.name}:${h.startsOn}`, type: "HOLIDAY" as const, title: h.name, subtitle: "", date: h.startsOn, endDate: h.endsOn, startTime: "", endTime: "", kind: null, audience: null, classLabels: [], eventId: null })),
+      ...events
+        .filter((e) => eventVisibleTo({ audience: e.audience, classIds: idsOf(e.classIds) }, viewer))
+        .map((e) => ({
+          id: e.id,
+          type: "EVENT" as const,
+          title: e.title,
+          subtitle: [e.location, e.description].filter(Boolean).join(" · "),
+          date: isoOf(e.startsOn),
+          endDate: e.endsOn ? isoOf(e.endsOn) : isoOf(e.startsOn),
+          startTime: e.allDay ? "" : e.startTime,
+          endTime: e.allDay ? "" : e.endTime,
+          kind: e.kind,
+          audience: null,
+          classLabels: [],
+          eventId: null,
+        })),
+      ...papers.flatMap((p) =>
+        p.date
+          ? [{ id: `exam:${p.id}`, type: "EXAM" as const, title: p.subject.name, subtitle: p.exam.name, date: isoOf(p.date), endDate: isoOf(p.date), startTime: p.startTime, endTime: p.endTime, kind: null, audience: null, classLabels: [], eventId: null }]
+          : [],
+      ),
+    ];
   }
 
   async notices(parent: CurrentParent, studentId: string): Promise<ParentNotice[]> {

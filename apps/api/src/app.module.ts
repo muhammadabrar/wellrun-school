@@ -12,6 +12,7 @@ import { AuthModule } from "./auth/auth.module";
 import { ClaimsModule } from "./claims/claims.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { DiaryModule } from "./diary/diary.module";
+import { EventsModule } from "./events/events.module";
 import { ExamsModule } from "./exams/exams.module";
 import { FeesModule } from "./fees/fees.module";
 import { FinanceModule } from "./finance/finance.module";
@@ -67,6 +68,7 @@ import { TraceMiddleware } from "./trace/trace.middleware";
     FinanceModule,
     InventoryModule,
     QuestionBankModule,
+    EventsModule,
     PayrollModule,
     ClaimsModule,
     AdminModule,
