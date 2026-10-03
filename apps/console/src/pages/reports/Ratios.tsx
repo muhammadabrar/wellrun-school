@@ -19,7 +19,7 @@ const STATUS: Record<RatioStatus, { label: string; tone: "success" | "warning" |
   na: { label: "No target", tone: "neutral", bar: "bg-line" },
 };
 
-const GROUP_ORDER = ["Staffing", "Fees", "Learning", "Students"] as const;
+const GROUP_ORDER = ["Staffing", "Fees", "Finance", "Learning", "Students"] as const;
 const num = (value: number | null) => (value == null ? "—" : value.toLocaleString("en-PK"));
 
 function monthStart(iso: string, back = 0) {

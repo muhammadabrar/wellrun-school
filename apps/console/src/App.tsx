@@ -35,6 +35,14 @@ const RatiosPage = lazyPage(() => import("./pages/reports/Ratios"), "RatiosPage"
 const StaffAttendancePage = lazyPage(() => import("./pages/staff/Attendance"), "StaffAttendancePage");
 const StaffLeavePage = lazyPage(() => import("./pages/staff/Leave"), "StaffLeavePage");
 const MyLeavePage = lazyPage(() => import("./pages/MyLeave"), "MyLeavePage");
+const FinanceOverviewPage = lazyPage(() => import("./pages/finance/Overview"), "FinanceOverviewPage");
+const VouchersPage = lazyPage(() => import("./pages/finance/Vouchers"), "VouchersPage");
+const VoucherNewPage = lazyPage(() => import("./pages/finance/VoucherNew"), "VoucherNewPage");
+const VoucherPage = lazyPage(() => import("./pages/finance/Voucher"), "VoucherPage");
+const LedgerPage = lazyPage(() => import("./pages/finance/Ledger"), "LedgerPage");
+const FinanceSettingsPage = lazyPage(() => import("./pages/finance/Settings"), "FinanceSettingsPage");
+const InventoryPage = lazyPage(() => import("./pages/inventory/List"), "InventoryPage");
+const InventoryItemPage = lazyPage(() => import("./pages/inventory/Item"), "InventoryItemPage");
 const TimetablePage = lazyPage(() => import("./pages/Timetable"), "TimetablePage");
 const StaffListPage = lazyPage(() => import("./pages/staff/List"), "StaffListPage");
 const StaffNewPage = lazyPage(() => import("./pages/staff/New"), "StaffNewPage");
@@ -148,6 +156,14 @@ export function App() {
         <Route path="/attendance/absent" element={<AbsentPage />} />
         <Route path="/absent" element={<Navigate to="/attendance/absent" replace />} />
         <Route path="/timetable" element={<TimetablePage />} />
+        <Route path="/finance" element={<FinanceOverviewPage />} />
+        <Route path="/finance/vouchers" element={<VouchersPage />} />
+        <Route path="/finance/vouchers/new" element={<VoucherNewPage />} />
+        <Route path="/finance/vouchers/:id" element={<VoucherPage />} />
+        <Route path="/finance/ledger" element={<LedgerPage />} />
+        <Route path="/finance/settings" element={<FinanceSettingsPage />} />
+        <Route path="/inventory" element={<InventoryPage />} />
+        <Route path="/inventory/:id" element={<InventoryItemPage />} />
         <Route path="/reports" element={<ReportsHubPage />} />
         <Route path="/reports/ratios" element={<RatiosPage />} />
         <Route path="/reports/:id" element={<ReportPage />} />

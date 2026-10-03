@@ -13,7 +13,9 @@ import {
   FilePenLineIcon,
   LayoutDashboardIcon,
   ListChecksIcon,
+  LandmarkIcon,
   MegaphoneIcon,
+  PackageIcon,
   NotebookTextIcon,
   PlaneIcon,
   NotebookPenIcon,
@@ -212,6 +214,18 @@ const financeItems: NavItem[] = [
     ],
   },
   { title: "Payroll", url: "/payroll", icon: <BanknoteIcon /> },
+  {
+    title: "Accounts",
+    url: "/finance",
+    icon: <LandmarkIcon />,
+    items: [
+      { title: "Overview", url: "/finance", end: true },
+      { title: "Vouchers", url: "/finance/vouchers" },
+      { title: "Ledger", url: "/finance/ledger" },
+      { title: "Accounts and categories", url: "/finance/settings" },
+    ],
+  },
+  { title: "Inventory", url: "/inventory", icon: <PackageIcon /> },
 ];
 
 /** Configured once per year or campus, so it sits last. Ordered the way setup happens. */

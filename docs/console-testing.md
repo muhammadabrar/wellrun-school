@@ -348,6 +348,58 @@ Recommended order: **Fee Heads → Fee structures → Generate → Invoices → 
 | F17 | Student ledger | Student profile ▸ fees | Invoices, payments, credits in order; balance matches |
 | F18 | Previous-year arrears | Close a year with unpaid invoices | Shown separately; carried as arrears on new challans |
 
+### 7.3 Accounts (cash book)
+
+A simple cash book. Fee payments and paid salaries arrive by themselves; everything else is a voucher written by hand. Vouchers are never edited or deleted: a mistake is cancelled and written again.
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| AC1 | First visit to **Accounts** | A cash box and a bank account exist, with the usual categories, both at zero from today |
+| AC2 | **Accounts and categories**: set opening balances and dates | Balances count from that date; nothing earlier is included |
+| AC3 | Add a second bank account; switch off the only cash account | The second is added; switching off the last cash or bank account is refused with a reason |
+| AC4 | Write a **Money out** voucher (rent, from the bank) | Gets the next VCH number; appears in Vouchers and the ledger; the bank balance drops |
+| AC5 | Money out for more than the account holds | A warning appears but it can still be saved; the balance shows in red |
+| AC6 | Write a **Money in** voucher (a donation) | Counted as income; the category list shows income categories only |
+| AC7 | **Move money** from cash to bank | Cash goes down, bank goes up by the same amount; total money held is unchanged; it is not counted as income or spending |
+| AC8 | Date a voucher in the future, or before the account's opening date | Refused with a plain reason |
+| AC9 | Try to use Fee collection or Salaries on a voucher | Refused: these come from fees and payroll |
+| AC10 | Record a fee payment in cash, then in bank, then pay a salary | Cash payment raises the cash balance; bank payment raises the bank balance; the paid salary lowers its account; all appear in the day book without any voucher |
+| AC11 | Void a fee payment from Fees | It disappears from the ledger and the balances |
+| AC12 | Apply a student's credit to an invoice | Not counted as money received |
+| AC13 | **Cancel** a voucher with a reason | Stays in the list marked Cancelled with who and why; balances reverse; it can't be cancelled twice |
+| AC14 | **Ledger** for one account | Opening balance, lines with a running balance, closing balance; opening + in - out = closing |
+| AC15 | Ledger over a later period | Opening is what the account held that morning, not its opening balance |
+| AC16 | Ledger for **All accounts** | Every line with its account; transfers show once and are not in either total; no running balance |
+| AC17 | Voucher page **Print** | Prints the voucher with signature lines, without the sidebar |
+| AC18 | Ledger Excel, CSV and Print | Contain every line, not only the page on screen |
+| AC19 | **Overview** | Money held, this month's in and out, the last six months as bars, the month by category, latest activity; figures match the ledger |
+| AC20 | Reports: Income and spending by month, by category | Match the Overview for the same dates |
+| AC21 | Ratio analysis: salaries, spending and surplus | Show the working; a month that spends more than it receives shows a negative surplus flagged as needing attention |
+| AC22 | A teacher opens `/finance` or calls its API | Refused (403) |
+
+### 7.4 Inventory
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| IN1 | Add a consumable with a reorder level, and an asset | Both appear; the asset has no reorder level |
+| IN2 | Add the same name in the same place twice | Refused with a pointer to the existing item |
+| IN3 | **Count stock** to 60 on a new item | On hand becomes 60; the history shows a stock count |
+| IN4 | **Bought** 40 at Rs. 1,480 with "Record the money spent" ticked | Stock goes up by 40; cost of one updates; a payment voucher appears in Accounts for Rs. 59,200 from the cash account with the supplier and a note |
+| IN5 | Bought with the box unticked, or at a cost of zero | Stock changes but no voucher is written |
+| IN6 | Choose another account for the purchase | The voucher is paid from that account |
+| IN7 | **Given out** more than is in stock | Refused: "Only N in stock" |
+| IN8 | Give out, return and mark damaged | Stock moves down, up, down; the history shows who and why |
+| IN9 | A stock count equal to the current stock | Refused: it matches what is already there |
+| IN10 | A consumable falls to its reorder level | Shows "Running low" on the list and the item; the tile counts it and filters to it |
+| IN11 | **Cancel purchase** while all of it is still on the shelf | Stock goes back down and the voucher is cancelled in Accounts |
+| IN12 | Cancel a purchase after some of it was given out | Refused with how many are left and a pointer to a stock count |
+| IN13 | Try to cancel the voucher directly in Accounts | Refused: cancel the purchase on the item instead |
+| IN14 | Mark an asset Being repaired or Disposed of | State changes; it shows in the list filter |
+| IN15 | Switch an item off | Hidden unless "Include switched-off items" is ticked; recording stock on it is refused |
+| IN16 | Two people record stock for the same item at once | One is told the stock changed and to try again; stock never goes below zero |
+| IN17 | Reports: Stock and asset value | Matches the list and the "Worth now" tile |
+| IN18 | A teacher opens `/inventory` or calls its API | Refused (403) |
+
 ### 7.2 Payroll
 
 - [ ] Open Payroll for the current month; switch month
@@ -403,6 +455,7 @@ Try each row; the "No" cells matter most.
 | Admissions | Yes | No | No | No |
 | Students | All | Own classes | No | No |
 | Staff / Payroll | Yes | Own portal + payslips only | No | No |
+| Accounts and inventory | Yes | No (refused) | No | No |
 | Staff attendance | Read-only | Own check-in on My portal | No | No |
 | Leave | Approve or decline all | Ask for and withdraw own | No | No |
 | Attendance | All + settings | Own classes, edit window applies | No | No |
