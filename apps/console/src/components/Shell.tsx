@@ -23,6 +23,7 @@ const titles: [string, string][] = [
   ["/syllabus/list", "Scheme of work"],
   ["/syllabus/", "Syllabus"],
   ["/syllabus", "Syllabus"],
+  ["/exams/question-bank", "Question bank"],
   ["/exams/question-papers/", "Question paper"],
   ["/exams/question-papers", "Question papers"],
   ["/exams/new", "Create exam"],

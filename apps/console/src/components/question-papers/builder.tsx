@@ -1,6 +1,6 @@
 import { QUESTION_TYPES, QUESTION_TYPE_INFO, parseTopicList } from "@wellrun/shared";
 import { Dialog } from "@wellrun/ui";
-import { ArrowDown, ArrowUp, ClipboardPaste, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, BookmarkCheck, BookmarkPlus, ClipboardPaste, Library, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { BankPickerSheet, type PaperRef } from "@/components/question-papers/bank-picker";
+import { questionBankApi } from "@/lib/question-bank-api";
 import { questionPapersApi, type PaperQuestionRow, type PaperSectionRow, type QuestionInputBody, type QuestionType } from "@/lib/question-papers-api";
 
 export type Run = (fn: () => Promise<unknown>, done?: string) => void;
@@ -204,6 +206,8 @@ export function SectionCard({
   run,
   onMove,
   onEditSection,
+  paperRef,
+  usedBankIds,
 }: {
   section: PaperSectionRow;
   index: number;
@@ -213,7 +217,13 @@ export function SectionCard({
   run: Run;
   onMove: (delta: number) => void;
   onEditSection: () => void;
+  /** The paper's grade and subject; with it, questions can come from and go to the question bank. */
+  paperRef?: PaperRef;
+  /** Bank questions already used somewhere in this paper. */
+  usedBankIds?: Set<string>;
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const bankable = Boolean(paperRef) && section.type !== "COMPREHENSION";
   const info = QUESTION_TYPE_INFO[section.type];
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -308,6 +318,17 @@ export function SectionCard({
                 )}
               </div>
               <span className="shrink-0 text-sm font-semibold tabular-nums">[{q.marks}]</span>
+              {bankable ? (
+                q.bankQuestionId ? (
+                  <span className="flex shrink-0 items-center self-center text-success" title="This question is in the question bank">
+                    <BookmarkCheck className="size-4" aria-label={`Question ${i + 1} is in the question bank`} />
+                  </span>
+                ) : (
+                  <Button variant="ghost" size="icon-sm" aria-label={`Save question ${i + 1} to the question bank`} title="Save to the question bank" disabled={busy || !q.text.trim()} onClick={() => run(() => questionBankApi.fromQuestion({ questionId: q.id }), "Saved to the question bank.")}>
+                    <BookmarkPlus />
+                  </Button>
+                )
+              ) : null}
               {canEdit ? (
                 <div className="flex shrink-0 items-center">
                   <Button variant="ghost" size="icon-sm" aria-label={`Move question ${i + 1} up`} disabled={busy || i === 0} onClick={() => run(() => questionPapersApi.reorderQuestions(section.id, swap(i, -1)))}>
@@ -348,6 +369,11 @@ export function SectionCard({
             <Button variant="outline" icon={<Plus />} onClick={() => { setEditingId(null); setAdding(true); }}>
               Add question
             </Button>
+            {bankable ? (
+              <Button variant="outline" icon={<Library />} onClick={() => setPickerOpen(true)}>
+                Add from bank
+              </Button>
+            ) : null}
             {bulkAllowed ? (
               <Button variant="ghost" icon={<ClipboardPaste />} onClick={() => setBulkOpen(true)}>
                 Paste several
@@ -358,6 +384,7 @@ export function SectionCard({
       ) : null}
 
       <BulkSheet open={bulkOpen} section={section} defaultMarks={lastMarks} onClose={() => setBulkOpen(false)} run={run} />
+      {paperRef && bankable ? <BankPickerSheet open={pickerOpen} section={section} paper={paperRef} usedBankIds={usedBankIds ?? new Set()} onClose={() => setPickerOpen(false)} run={run} /> : null}
       <Dialog
         open={confirmDelete}
         title={`Delete “${section.title}”?`}

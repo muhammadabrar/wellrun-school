@@ -43,6 +43,7 @@ const LedgerPage = lazyPage(() => import("./pages/finance/Ledger"), "LedgerPage"
 const FinanceSettingsPage = lazyPage(() => import("./pages/finance/Settings"), "FinanceSettingsPage");
 const InventoryPage = lazyPage(() => import("./pages/inventory/List"), "InventoryPage");
 const InventoryItemPage = lazyPage(() => import("./pages/inventory/Item"), "InventoryItemPage");
+const QuestionBankPage = lazyPage(() => import("./pages/exams/QuestionBank"), "QuestionBankPage");
 const TimetablePage = lazyPage(() => import("./pages/Timetable"), "TimetablePage");
 const StaffListPage = lazyPage(() => import("./pages/staff/List"), "StaffListPage");
 const StaffNewPage = lazyPage(() => import("./pages/staff/New"), "StaffNewPage");
@@ -193,6 +194,7 @@ export function App() {
         <Route path="/exams/list" element={<ExamsListPage />} />
         <Route path="/exams/new" element={<ExamCreatePage />} />
         <Route path="/exams/question-papers" element={<QuestionPapersPage />} />
+        <Route path="/exams/question-bank" element={<QuestionBankPage />} />
         <Route path="/exams/question-papers/:id" element={<QuestionPaperEditorPage />} />
         <Route path="/exams/question-papers/:id/print" element={<QuestionPaperPrintPage />} />
         <Route path="/exams/calendar" element={<ExamCalendarPage />} />

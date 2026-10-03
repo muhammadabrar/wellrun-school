@@ -25,6 +25,8 @@ export type PaperQuestionRow = {
   answer: string;
   answerLines: number;
   sortOrder: number;
+  /** Set when the question was copied from, or saved to, the question bank. */
+  bankQuestionId?: string | null;
 };
 
 export type PaperSectionRow = {

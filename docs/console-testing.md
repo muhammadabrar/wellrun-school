@@ -319,6 +319,40 @@ Teachers write the diary for their own classes; admins read it and can take an e
 | E15 | Analytics | Class, Subject, Student performance | Charts render; empty exam shows a helpful message |
 | E16 | Teacher scope | Teacher opens Marks | Only their class + subject papers can be entered |
 
+### 6.1 Question bank
+
+Questions kept for reuse, per grade and subject. A paper takes its own copy, so changing or archiving a bank question never changes a paper that exists. Papers can freely mix bank questions with questions typed on the spot.
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| QB1 | Open **Exams → Question bank** as a teacher | Only the grades and subjects they teach are offered; the list shows questions for those only |
+| QB2 | Open it as an admin | Every grade and subject is offered |
+| QB3 | **Add a question**: pick grade and subject, then write a multiple choice question with a marked answer | Saved; appears in the list with its kind, difficulty, marks and the correct option ticked |
+| QB4 | Save a multiple choice question with one option, no answer, or an answer pointing at an empty option | Refused with a plain reason, nothing saved |
+| QB5 | Add a true/false, a matching and a short-answer question | Each uses the right fields; matching needs two complete pairs |
+| QB6 | Add the same question again, with different capitals, spacing or punctuation | Refused: "That question is already in the bank" |
+| QB7 | Same stem with different multiple choice options | Accepted: it is a different question |
+| QB8 | Add an Urdu question with the right-to-left switch on | Shown right to left in the list, the editor and the picker |
+| QB9 | Link a question to a syllabus topic | Only that grade and subject's topics are offered; the topic shows on the question and filters the list |
+| QB10 | Add tags like "Grammar, nouns" | Saved lower case without repeats; shown as hashtags |
+| QB11 | Filter by grade, subject, kind, difficulty, topic, "Only mine", and search a word | Each narrows the list; the page resets to the first; the filters stay in the address |
+| QB12 | A teacher tries to edit another teacher's question | No Edit button; the API refuses (403). An admin can edit any |
+| QB13 | Edit your own question's wording | Saved; the grade, subject and kind can't change |
+| QB14 | Edit it into exactly another existing question | Refused as a duplicate |
+| QB15 | **Archive** a question, then tick Archived and **Restore** it | It leaves the list and the paper picker, then comes back |
+| QB16 | Open a draft paper, a section of a kind that has bank questions, and press **Add from bank** | The picker shows only this paper's grade and subject and this section's kind |
+| QB17 | Tick three questions and add them | They appear in the section with their marks; the bank shows their use count up by one; the paper's total marks update |
+| QB18 | Open the picker again | Those three show "Already in this paper" and can't be ticked |
+| QB19 | Edit or archive a bank question that a paper uses | The paper's copy is unchanged |
+| QB20 | Write a new question in a section and press **Save to bank** | A tick shows it is in the bank; it appears in the bank list; the next teacher of that subject can use it |
+| QB21 | Press Save to bank on a question that matches one already in the bank | Nothing is duplicated; the question is linked to the existing one |
+| QB22 | Save an unfinished question (a multiple choice with no marked answer) to the bank | Refused with what is missing |
+| QB23 | A comprehension section | No Add from bank or Save to bank; a reading passage's questions can't stand alone |
+| QB24 | Add a multiple choice bank question to a short-answer section through the API | Refused: the kinds don't match |
+| QB25 | An approved or submitted paper | The picker can't add questions; Save to bank still works on its questions |
+| QB26 | A closed academic year | Papers stay read-only; the bank itself still works |
+| QB27 | A teacher calls the bank API for a grade or subject they don't teach | Refused (403) or empty, never another subject's questions |
+
 ---
 
 ## 7. Finance

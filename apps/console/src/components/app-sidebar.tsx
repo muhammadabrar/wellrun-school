@@ -14,6 +14,7 @@ import {
   LayoutDashboardIcon,
   ListChecksIcon,
   LandmarkIcon,
+  LibraryIcon,
   MegaphoneIcon,
   PackageIcon,
   NotebookTextIcon,
@@ -137,6 +138,7 @@ const examItems: NavItem[] = [
     ],
   },
   { title: "Question papers", url: "/exams/question-papers", icon: <FileTextIcon /> },
+  { title: "Question bank", url: "/exams/question-bank", icon: <LibraryIcon /> },
   {
     title: "Marks",
     url: "/exams/marks",

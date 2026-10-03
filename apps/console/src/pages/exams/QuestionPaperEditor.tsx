@@ -33,6 +33,8 @@ function Editor({ paper }: { paper: QuestionPaperDetail }) {
   const tab = params.get("tab") === "preview" ? "preview" : "build";
   const { permissions } = paper;
   const canEdit = permissions.canEdit;
+  // Bank questions already in this paper, so the picker doesn't offer them twice.
+  const usedBankIds = new Set(paper.sections.flatMap((s) => s.questions.flatMap((q) => (q.bankQuestionId ? [q.bankQuestionId] : []))));
   const [toast, setToast] = useState<string | null>(null);
   const [sectionSheet, setSectionSheet] = useState<PaperSectionRow | "new" | null>(null);
   const [dialog, setDialog] = useState<"return" | "reopen" | "delete" | null>(null);
@@ -225,7 +227,7 @@ function Editor({ paper }: { paper: QuestionPaperDetail }) {
           {canEdit ? <PaperDetailsCard paper={paper} onSaved={() => { void refresh(); setToast("Paper details saved."); }} onError={setToast} /> : null}
           <section className="flex flex-col gap-4" aria-label="Sections">
             {paper.sections.map((section, index) => (
-              <SectionCard key={section.id} section={section} index={index} total={paper.sections.length} canEdit={canEdit} busy={act.isPending} run={run} onMove={(delta) => moveSection(index, delta)} onEditSection={() => setSectionSheet(section)} />
+              <SectionCard key={section.id} section={section} index={index} total={paper.sections.length} canEdit={canEdit} busy={act.isPending} run={run} onMove={(delta) => moveSection(index, delta)} onEditSection={() => setSectionSheet(section)} paperRef={{ gradeName: paper.gradeName, subjectId: paper.subject.id, subjectName: paper.subject.name }} usedBankIds={usedBankIds} />
             ))}
             {!paper.sections.length ? (
               <div className="rounded-3xl bg-surface px-6 py-12 text-center">
