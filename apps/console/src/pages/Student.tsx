@@ -127,7 +127,16 @@ export function StudentPage() {
             <PageHeader
               title={`${student.firstName} ${student.lastName}`}
               description={`${student.admissionNo} · Roll ${student.rollNo}${student.class ? ` · ${student.class.name} • Section ${student.class.section}` : ""}`}
-              actions={<Badge tone={student.status === "active" ? "indigo" : "neutral"}>{student.status}</Badge>}
+              actions={
+                <>
+                  <Badge tone={student.status === "active" ? "indigo" : "neutral"}>{student.status}</Badge>
+                  {currentUser()?.role === "SCHOOL_ADMIN" ? (
+                    <Link to={`/certificates/new?studentId=${student.id}`} className="text-sm text-indigo underline print:hidden">
+                      Issue a certificate
+                    </Link>
+                  ) : null}
+                </>
+              }
             />
             <div className="mt-4 flex flex-wrap items-end gap-4 print:hidden">
               {student.class && canMarkAttendance ? (

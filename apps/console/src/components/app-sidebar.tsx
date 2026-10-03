@@ -13,6 +13,9 @@ import {
   FilePenLineIcon,
   LayoutDashboardIcon,
   ListChecksIcon,
+  AwardIcon,
+  CalendarDaysIcon,
+  IdCardIcon,
   LandmarkIcon,
   LibraryIcon,
   MegaphoneIcon,
@@ -71,6 +74,17 @@ const peopleItems: NavItem[] = [
   },
   { title: "Students", url: "/students", icon: <GraduationCapIcon /> },
   {
+    title: "Certificates",
+    url: "/certificates",
+    icon: <AwardIcon />,
+    items: [
+      { title: "All certificates", url: "/certificates", end: true },
+      { title: "Issue a certificate", url: "/certificates/new" },
+      { title: "Edit wording", url: "/certificates/templates" },
+    ],
+  },
+  { title: "ID cards", url: "/id-cards", icon: <IdCardIcon /> },
+  {
     title: "Staff",
     url: "/staff",
     icon: <BriefcaseIcon />,
@@ -99,6 +113,7 @@ const classroomItems: NavItem[] = [
   { title: "Timetable", url: "/timetable", icon: <CalendarClockIcon /> },
   { title: "Diary", url: "/diary", icon: <NotebookTextIcon /> },
   { title: "Notices", url: "/notices", icon: <MegaphoneIcon /> },
+  { title: "Events", url: "/events", icon: <CalendarDaysIcon /> },
 ];
 
 /** Teachers mark from their first period; no overview or settings. */

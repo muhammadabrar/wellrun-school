@@ -238,6 +238,49 @@ Staff are checked in automatically the first time they use the system on a schoo
 | LV10 | A teacher on approved leave signs in that day | Recorded as On leave, not Present |
 | LV11 | **Reports → Staff attendance** and **Ratio analysis → Staff attendance** | Report matches the Whole month view for the same dates; the ratio shows the working and a Good, Watch or Needs attention label |
 
+### 4.5 Certificates
+
+Bonafide, character, school leaving and merit certificates, saved exactly as issued.
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| CT1 | **Certificates → Issue a certificate**, pick Bonafide, search a student, press Preview | The certificate wording with the student's name, guardian, class, admission number and year filled in, and "son of" or "daughter of" following the recorded gender |
+| CT2 | A student whose gender isn't recorded | The wording says "child of" and "their" instead of guessing |
+| CT3 | A student with no guardian on record | Refused: add a guardian first |
+| CT4 | Issue it | Gets the next number (CERT-year-0001); the page offers the PDF; it appears in the list |
+| CT5 | Open the PDF | Landscape A4 with the school's logo, name, title, number, date, the wording, signature lines with the principal's name and a QR code carrying the number |
+| CT6 | Issue a leaving certificate without a reason, or with a future leaving date | Refused with what is wrong |
+| CT7 | Character certificate with each conduct level | The chosen level appears in the wording |
+| CT8 | Merit certificate with an achievement | The achievement appears in the wording; it can't be issued without one |
+| CT9 | A student whose name or a field contains Urdu letters | The preview warns that they will print as question marks; the PDF shows question marks rather than garbage |
+| CT10 | **Edit wording**: change a certificate's text, save, then issue a new one | New certificates use the new wording; ones already issued keep their own |
+| CT11 | Use an unknown word in braces, such as {{studnet}} | Refused, naming it; a word from another certificate (for example leavingDate in a bonafide) is refused too |
+| CT12 | Click a placeholder button | It is inserted at the cursor |
+| CT13 | **Go back to the standard wording** | The standard text returns; the "Your own wording" badge goes |
+| CT14 | **Withdraw** a certificate with a reason | Marked Withdrawn in the list; a reprint of the PDF shows WITHDRAWN across it; it can't be withdrawn twice |
+| CT15 | Reprint a certificate after the student's class or name changes | The PDF is unchanged: it uses what was saved at issue |
+| CT16 | Filter by kind, state, and search by number, student name or admission number | Each narrows the list; paging works |
+| CT17 | The student's page | Shows an **Issue a certificate** link for admins only, opening the form with the student already chosen |
+| CT18 | A teacher opens `/certificates` or calls its API | Refused (403) |
+
+### 4.6 ID cards
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| ID1 | **ID cards → Students**, choose a class | Every enrolled student of that class, with class and roll, admission number and whether they have a photo |
+| ID2 | Choose **Staff** | Every active staff member with job title and employee number |
+| ID3 | Students without photos | A note counts them and says they will show their first letter |
+| ID4 | Add a JPG or PNG photo to a staff member (Staff page, Add photo) | It saves, shows on the page and on the card; a photo over 4 MB is refused |
+| ID5 | **Make the cards (PDF)**, front and back | A4 pages, eight cards each: fronts on one page, the matching backs on the next |
+| ID6 | Front of a card | School name and logo, photo (or first letter), name, class and roll or job title, admission or employee number, QR code with that number |
+| ID7 | Back of a student card | School name, address and phone, the guardian to call with their phone, "valid until" the end of the academic year, a principal signature line; staff cards show the department |
+| ID8 | Print double-sided, flipped along the long edge | Each back sits directly behind its front |
+| ID9 | A very long name | Shortened with "…" and stays inside the card |
+| ID10 | Scan a card's QR code | The phone shows the admission or employee number |
+| ID11 | Choose Fronts only | One page of fronts per eight cards, no backs |
+| ID12 | More than 400 people | Refused with a note to choose a class |
+| ID13 | A teacher opens `/id-cards` or calls its API | Refused (403) |
+
 ---
 
 ## 5. Classroom
@@ -268,6 +311,28 @@ Staff are checked in automatically the first time they use the system on a schoo
 - [ ] Teacher's portal shows their own week
 
 ---
+
+### 5.2b Events calendar
+
+Events, holidays and exam days in one month view. The admin writes events; teachers read.
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| EV1 | Open **Events** | This month as a grid, holidays in orange, events in indigo, exams in green; today is marked; the right panel lists the selected day |
+| EV2 | Move to the next and previous month | The grid and list update; the selected day resets to the first |
+| EV3 | Untick Holidays, Events or Exams | That kind disappears from the grid and the day list; the choice stays in the address |
+| EV4 | Admin **Add an event**: name, kind, one day, all day, everyone | Appears on that day for admin, teachers and parents |
+| EV5 | Add one with times (9:00 to 12:00) | Shows "9:00 am to 12:00 pm" on the day |
+| EV6 | Times where the end is before the start on a single day | Refused with a plain message |
+| EV7 | A three-day event | Appears on all three days in the grid and in each day's list |
+| EV8 | Audience "Chosen classes", with none chosen | Refused: pick at least one class |
+| EV9 | Audience "Chosen classes: Grade 5" | Teachers and parents of Grade 5 see it; Grade 6 teachers and parents do not |
+| EV10 | Audience "Staff only" | Admin and teachers see it with a Staff only label; no parent sees it |
+| EV11 | Edit an event, change its dates and audience | The calendar and the parent view follow |
+| EV12 | Remove an event | Asks for confirmation; it is gone for everyone |
+| EV13 | Exam days | One entry per exam per day naming a few papers and "and N more"; a teacher sees only their classes' papers |
+| EV14 | A teacher opens Events | No Add, Edit or Remove; the API refuses writes (403) |
+| EV15 | Holidays added in Attendance settings | Appear on the calendar |
 
 ### 5.3 Diary and notices
 
@@ -490,6 +555,8 @@ Try each row; the "No" cells matter most.
 | Students | All | Own classes | No | No |
 | Staff / Payroll | Yes | Own portal + payslips only | No | No |
 | Accounts and inventory | Yes | No (refused) | No | No |
+| Certificates and ID cards | Yes | No (refused) | No | No |
+| Events calendar | Read and write | Read | No | Reads events for their child |
 | Staff attendance | Read-only | Own check-in on My portal | No | No |
 | Leave | Approve or decline all | Ask for and withdraw own | No | No |
 | Attendance | All + settings | Own classes, edit window applies | No | No |

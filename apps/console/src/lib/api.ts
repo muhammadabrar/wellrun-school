@@ -410,6 +410,7 @@ export const api = {
   /** Everyone, unpaged, for pickers such as the timetable's teacher list. */
   staffRoster: () => request<Staff[]>("/console/staff/roster"),
   staffMember: (id: string) => request<StaffDetail>(`/console/staff/${id}`),
+  saveStaffPhoto: (id: string, image: string) => request<StaffDetail>(`/console/staff/${id}/photo`, { method: "POST", body: JSON.stringify({ image }) }),
   staffTimetable: (id: string) => request<StaffWeek>(`/console/staff/${id}/timetable`),
   createStaff: (payload: Record<string, unknown>) =>
     request<StaffDetail>("/console/staff", { method: "POST", body: JSON.stringify(payload) }),
@@ -1041,6 +1042,8 @@ export type StaffDetail = {
   address: string;
   title: string;
   department: string;
+  /** Photo for the ID card; empty when there isn't one. */
+  photoUrl: string;
   joinDate: string | null;
   status: StaffStatus;
   email: string | null;

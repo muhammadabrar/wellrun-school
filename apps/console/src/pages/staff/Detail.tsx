@@ -27,7 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCampus } from "@/hooks/use-campus";
 import { api, currentUser, type ContractType, type PayLine, type StaffDetail, type StaffLoginRole, type StaffStatus } from "@/lib/api";
-import { pkr, todayIso } from "@/lib/format";
+import { mediaUrl, pkr, todayIso } from "@/lib/format";
 import { queryKeys } from "@/lib/query";
 
 type Notify = (message: string, tone?: "ok" | "error") => void;
@@ -69,7 +69,8 @@ export function StaffDetailPage() {
         <ArrowLeft className="size-4" aria-hidden /> All staff
       </Link>
       <header className="flex flex-wrap items-start justify-between gap-4 rounded-3xl bg-surface p-6">
-        <div>
+        <StaffPhoto staff={staff} onSaved={saved} notify={notify} />
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="font-display text-4xl">{staff.name}</h1>
             <StaffStatusBadge status={staff.status} />
@@ -824,5 +825,42 @@ function HistoryTab({ staff }: { staff: StaffDetail }) {
         ))}
       </ol>
     </Card>
+  );
+}
+
+/** The photo on the staff ID card. JPG and PNG print on the card; anything else shows the initial. */
+function StaffPhoto({ staff, onSaved, notify }: { staff: StaffDetail; onSaved: (next: StaffDetail, message: string) => void; notify: Notify }) {
+  const [busy, setBusy] = useState(false);
+  const src = mediaUrl(staff.photoUrl);
+  const initials = staff.name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "S";
+
+  async function pick(file: File | undefined) {
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return notify("Choose a JPG or PNG photo", "error");
+    if (file.size > 4 * 1024 * 1024) return notify("That photo is over 4 MB. Choose a smaller one.", "error");
+    setBusy(true);
+    try {
+      const image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Could not read that file"));
+        reader.readAsDataURL(file);
+      });
+      onSaved(await api.saveStaffPhoto(staff.id, image), "Photo saved");
+    } catch (err) {
+      notify(errorText(err, "Couldn't save the photo"), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      {src ? <img src={src} alt="" className="size-24 rounded-full object-cover" /> : <span aria-hidden className="grid size-24 place-items-center rounded-full bg-indigo text-2xl text-white">{initials}</span>}
+      <label className="cursor-pointer text-xs text-indigo underline">
+        <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={busy} onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
+        {busy ? "Saving…" : src ? "Change photo" : "Add photo"}
+      </label>
+    </div>
   );
 }

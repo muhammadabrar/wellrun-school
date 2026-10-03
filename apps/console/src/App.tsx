@@ -44,6 +44,11 @@ const FinanceSettingsPage = lazyPage(() => import("./pages/finance/Settings"), "
 const InventoryPage = lazyPage(() => import("./pages/inventory/List"), "InventoryPage");
 const InventoryItemPage = lazyPage(() => import("./pages/inventory/Item"), "InventoryItemPage");
 const QuestionBankPage = lazyPage(() => import("./pages/exams/QuestionBank"), "QuestionBankPage");
+const EventsPage = lazyPage(() => import("./pages/events/Events"), "EventsPage");
+const CertificatesPage = lazyPage(() => import("./pages/certificates/List"), "CertificatesPage");
+const CertificateNewPage = lazyPage(() => import("./pages/certificates/New"), "CertificateNewPage");
+const CertificateTemplatesPage = lazyPage(() => import("./pages/certificates/Templates"), "CertificateTemplatesPage");
+const IdCardsPage = lazyPage(() => import("./pages/id-cards/IdCards"), "IdCardsPage");
 const TimetablePage = lazyPage(() => import("./pages/Timetable"), "TimetablePage");
 const StaffListPage = lazyPage(() => import("./pages/staff/List"), "StaffListPage");
 const StaffNewPage = lazyPage(() => import("./pages/staff/New"), "StaffNewPage");
@@ -157,6 +162,11 @@ export function App() {
         <Route path="/attendance/absent" element={<AbsentPage />} />
         <Route path="/absent" element={<Navigate to="/attendance/absent" replace />} />
         <Route path="/timetable" element={<TimetablePage />} />
+        <Route path="/events" element={<EventsPage />} />
+        <Route path="/certificates" element={<CertificatesPage />} />
+        <Route path="/certificates/new" element={<CertificateNewPage />} />
+        <Route path="/certificates/templates" element={<CertificateTemplatesPage />} />
+        <Route path="/id-cards" element={<IdCardsPage />} />
         <Route path="/finance" element={<FinanceOverviewPage />} />
         <Route path="/finance/vouchers" element={<VouchersPage />} />
         <Route path="/finance/vouchers/new" element={<VoucherNewPage />} />
