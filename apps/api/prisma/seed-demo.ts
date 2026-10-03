@@ -6,7 +6,7 @@
 import "reflect-metadata";
 import { randomUUID } from "node:crypto";
 import { Prisma, PrismaClient, type QuestionPaperStatus, type QuestionType } from "@prisma/client";
-import { DEFAULT_GRADE_BANDS, SUBJECTS_BY_GRADE, paperMarks } from "@wellrun/shared";
+import { DEFAULT_CATEGORIES, DEFAULT_GRADE_BANDS, SUBJECTS_BY_GRADE, SYSTEM_CATEGORIES, paperMarks } from "@wellrun/shared";
 import { normalizeCnic, normalizePhone } from "../src/common/phone";
 import { ResultsService } from "../src/exams/results.service";
 import { ExamSettingsService } from "../src/exams/settings.service";
@@ -1604,6 +1604,128 @@ export async function seedDemoSchool(ctx: Ctx) {
   }
   await chunked(staffAttendance, 500, (part) => prisma.staffAttendance.createMany({ data: part }));
 
+  // Accounts, vouchers and inventory --------------------------------------------------------------------------
+  console.log("  demo: accounts, vouchers, inventory");
+  const openingDay = d("2026-04-01");
+  const accountRows = [
+    { id: randomUUID(), name: "Cash in hand", kind: "CASH" as const, openingBalancePkr: 150_000, sortOrder: 0 },
+    { id: randomUUID(), name: "Bank account", kind: "BANK" as const, openingBalancePkr: 2_500_000, sortOrder: 1 },
+    { id: randomUUID(), name: "Meezan savings", kind: "BANK" as const, openingBalancePkr: 500_000, sortOrder: 2 },
+  ];
+  await prisma.financeAccount.createMany({ data: accountRows.map((a) => ({ ...a, schoolId, openingOn: openingDay })) });
+  const [cashAcc, bankAcc, savingsAcc] = accountRows;
+  const categoryRows = [
+    ...Object.values(SYSTEM_CATEGORIES).map((c) => ({ id: randomUUID(), name: c.name, kind: c.kind, systemKey: c.key as string | null })),
+    ...DEFAULT_CATEGORIES.map((c) => ({ id: randomUUID(), name: c.name, kind: c.kind, systemKey: null as string | null })),
+  ];
+  await prisma.financeCategory.createMany({ data: categoryRows.map((c) => ({ ...c, schoolId })) });
+  const cat = (prefix: string) => categoryRows.find((c) => c.name.startsWith(prefix))!.id;
+
+  let vchSeq = 0;
+  const vouchers: Prisma.VoucherCreateManyInput[] = [];
+  const voucher = (day: Date, v: { type: "PAYMENT" | "RECEIPT" | "TRANSFER"; amountPkr: number; accountId: string; toAccountId?: string; categoryId?: string; party?: string; note?: string; method?: string; reference?: string; source?: "INVENTORY"; sourceId?: string; id?: string }) => {
+    vchSeq += 1;
+    const id = v.id ?? randomUUID();
+    vouchers.push({
+      id,
+      schoolId,
+      number: `VCH-${day.getUTCFullYear()}-${pad(vchSeq, 4)}`,
+      type: v.type,
+      date: day,
+      amountPkr: v.amountPkr,
+      accountId: v.accountId,
+      toAccountId: v.toAccountId ?? null,
+      categoryId: v.categoryId ?? null,
+      party: v.party ?? "",
+      method: v.method ?? "",
+      reference: v.reference ?? "",
+      note: v.note ?? "",
+      source: v.source ?? "MANUAL",
+      sourceId: v.sourceId ?? null,
+      createdById: adminId,
+      createdAt: new Date(day.getTime() + 9 * 3_600_000),
+    });
+    return id;
+  };
+  const bookMonths: string[] = [];
+  for (let m = "2026-04"; m <= today.toISOString().slice(0, 7); m = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5)), 1)).toISOString().slice(0, 7)) bookMonths.push(m);
+  const onOrBefore = (m: string, dd: number) => {
+    const day = d(`${m}-${pad(dd, 2)}`);
+    return day <= today ? day : null;
+  };
+  for (const [i, m] of bookMonths.entries()) {
+    const at = (dd: number, make: (day: Date) => void) => {
+      const day = onOrBefore(m, dd);
+      if (day) make(day);
+    };
+    at(3, (day) => voucher(day, { type: "PAYMENT", amountPkr: 180_000, accountId: bankAcc.id, categoryId: cat("Rent"), party: "Greenfield Properties", method: "bank", reference: `Cheque ${4100 + i}`, note: "Monthly building rent" }));
+    at(8, (day) => voucher(day, { type: "TRANSFER", amountPkr: 250_000, accountId: bankAcc.id, toAccountId: cashAcc.id, note: "Cash withdrawn for small expenses" }));
+    at(12, (day) => voucher(day, { type: "PAYMENT", amountPkr: 62_000 + Math.floor(rand() * 34_000), accountId: bankAcc.id, categoryId: cat("Utilities"), party: pick(["K-Electric", "SSGC", "PTCL"]), method: "online", note: "Utility bills" }));
+    at(15, (day) => voucher(day, { type: "RECEIPT", amountPkr: 20_000 + Math.floor(rand() * 16_000), accountId: cashAcc.id, categoryId: cat("Uniform"), party: "Uniform shop counter", method: "cash", note: "Uniforms and books sold" }));
+    if (i % 2 === 0) at(18, (day) => voucher(day, { type: "PAYMENT", amountPkr: 14_000 + Math.floor(rand() * 26_000), accountId: cashAcc.id, categoryId: cat("Repairs"), party: pick(["Ali Electric Works", "City Plumbers", "Raza Carpenters"]), method: "cash", note: pick(["Fan and wiring repairs", "Washroom plumbing", "Broken desks mended"]) }));
+    if (i % 3 === 1) at(22, (day) => voucher(day, { type: "PAYMENT", amountPkr: 9_000 + Math.floor(rand() * 12_000), accountId: cashAcc.id, categoryId: cat("Transport"), party: "Generator fuel", method: "cash", note: "Diesel for the generator" }));
+    if (i === 3) at(14, (day) => voucher(day, { type: "PAYMENT", amountPkr: 45_000, accountId: cashAcc.id, categoryId: cat("Events"), party: "Sports day", method: "cash", note: "Medals, refreshments and ground set-up" }));
+    if (i === 2) at(10, (day) => voucher(day, { type: "RECEIPT", amountPkr: 100_000, accountId: bankAcc.id, categoryId: cat("Donations"), party: "Mr. Hashmi", method: "bank", note: "Donation for the library" }));
+    if (i === 5) at(9, (day) => voucher(day, { type: "RECEIPT", amountPkr: 50_000, accountId: cashAcc.id, categoryId: cat("Donations"), party: "Parents' association", method: "cash", note: "Annual contribution" }));
+    if (i === 4) at(25, (day) => voucher(day, { type: "TRANSFER", amountPkr: 300_000, accountId: bankAcc.id, toAccountId: savingsAcc.id, note: "Moved to savings" }));
+  }
+
+  // Stock: opening counts, then purchases that each write their own voucher, then things given out.
+  type Mv = Prisma.InventoryMovementCreateManyInput;
+  const movements: Mv[] = [];
+  const stockItems = [
+    { name: "A4 paper (ream)", kind: "CONSUMABLE" as const, category: "Stationery", unit: "ream", location: "Store room", reorderLevel: 20, unitCostPkr: 1_450, open: 60 },
+    { name: "Whiteboard markers", kind: "CONSUMABLE" as const, category: "Stationery", unit: "box", location: "Store room", reorderLevel: 10, unitCostPkr: 1_800, open: 14 },
+    { name: "Chalk", kind: "CONSUMABLE" as const, category: "Stationery", unit: "box", location: "Store room", reorderLevel: 8, unitCostPkr: 350, open: 24 },
+    { name: "Cleaning supplies", kind: "CONSUMABLE" as const, category: "Housekeeping", unit: "set", location: "Janitor room", reorderLevel: 6, unitCostPkr: 2_600, open: 10 },
+    { name: "Printer ink cartridge", kind: "CONSUMABLE" as const, category: "Office", unit: "pcs", location: "Office", reorderLevel: 3, unitCostPkr: 9_500, open: 5 },
+    { name: "Student desk and chair", kind: "ASSET" as const, category: "Furniture", unit: "pcs", location: "Classrooms", reorderLevel: null, unitCostPkr: 6_500, open: 360 },
+    { name: "Whiteboard", kind: "ASSET" as const, category: "Furniture", unit: "pcs", location: "Classrooms", reorderLevel: null, unitCostPkr: 12_000, open: 24 },
+    { name: "Projector", kind: "ASSET" as const, category: "Electronics", unit: "pcs", location: "Classrooms", reorderLevel: null, unitCostPkr: 85_000, open: 6 },
+    { name: "Lab computer", kind: "ASSET" as const, category: "Electronics", unit: "pcs", location: "Computer lab", reorderLevel: null, unitCostPkr: 95_000, open: 20 },
+    { name: "Ceiling fan", kind: "ASSET" as const, category: "Electronics", unit: "pcs", location: "Classrooms", reorderLevel: null, unitCostPkr: 8_500, open: 48 },
+    { name: "Water cooler", kind: "ASSET" as const, category: "Electronics", unit: "pcs", location: "Corridors", reorderLevel: null, unitCostPkr: 65_000, open: 4 },
+  ].map((it) => ({ ...it, id: randomUUID(), onHand: 0 }));
+  const at = (back: number) => new Date(today.getTime() - back * 86_400_000);
+  for (const it of stockItems) {
+    movements.push({ id: randomUUID(), schoolId, itemId: it.id, type: "ADJUST", quantity: it.open, date: d("2026-04-02"), note: "Opening stock count", createdById: adminId });
+    it.onHand += it.open;
+  }
+  const buy = (name: string, back: number, quantity: number, supplier: string, price?: number) => {
+    const it = stockItems.find((x) => x.name === name)!;
+    const unit = price ?? it.unitCostPkr;
+    const day = at(back);
+    const movementId = randomUUID();
+    const voucherId = voucher(day, { type: "PAYMENT", amountPkr: quantity * unit, accountId: cashAcc.id, categoryId: cat(it.kind === "ASSET" ? "Furniture" : "Supplies"), party: supplier, method: "cash", note: `Bought ${quantity} ${it.unit} of ${it.name}`, source: "INVENTORY", sourceId: movementId });
+    movements.push({ id: movementId, schoolId, itemId: it.id, type: "PURCHASE", quantity, unitCostPkr: unit, totalCostPkr: quantity * unit, date: day, supplier, voucherId, createdById: adminId });
+    it.onHand += quantity;
+    it.unitCostPkr = unit;
+  };
+  const give = (name: string, back: number, quantity: number, to: string, type: "ISSUE" | "DAMAGE" = "ISSUE") => {
+    const it = stockItems.find((x) => x.name === name)!;
+    movements.push({ id: randomUUID(), schoolId, itemId: it.id, type, quantity: -quantity, date: at(back), issuedTo: to, note: type === "DAMAGE" ? "Broken beyond repair" : "", createdById: adminId });
+    it.onHand -= quantity;
+  };
+  buy("A4 paper (ream)", 60, 40, "Hamid Stationers", 1_480);
+  buy("Whiteboard markers", 45, 10, "Hamid Stationers");
+  buy("Printer ink cartridge", 30, 4, "Techno Mart", 9_800);
+  buy("Cleaning supplies", 21, 6, "Clean & Co");
+  buy("Ceiling fan", 50, 6, "Al-Noor Electric", 8_900);
+  buy("Student desk and chair", 90, 40, "Raza Carpenters", 6_800);
+  give("A4 paper (ream)", 40, 25, "Examination office");
+  give("A4 paper (ream)", 18, 30, "Office and photocopying");
+  give("A4 paper (ream)", 6, 22, "Examination office");
+  give("Whiteboard markers", 35, 9, "Teachers' staff room");
+  give("Whiteboard markers", 12, 6, "Teachers' staff room");
+  give("Chalk", 28, 10, "Primary block");
+  give("Cleaning supplies", 14, 12, "Janitor room");
+  give("Printer ink cartridge", 20, 5, "Office");
+  give("Student desk and chair", 70, 6, "Classrooms", "DAMAGE");
+  give("Ceiling fan", 40, 2, "Classrooms", "DAMAGE");
+  await prisma.voucher.createMany({ data: vouchers });
+  await prisma.inventoryItem.createMany({ data: stockItems.map((it) => ({ id: it.id, schoolId, name: it.name, kind: it.kind, category: it.category, unit: it.unit, location: it.location, reorderLevel: it.reorderLevel, onHand: it.onHand, unitCostPkr: it.unitCostPkr, status: "IN_USE" as const })) });
+  await prisma.inventoryMovement.createMany({ data: movements });
+
   // Notes, documents, audit, sequences ---------------------------------------------------------------------------
   const first = students[0];
   await prisma.communicationLog.createMany({
@@ -1625,6 +1747,7 @@ export async function seedDemoSchool(ctx: Ctx) {
       { schoolId, kind: "PAY", year: 2026, value: paySeq },
       { schoolId, kind: "REC", year: 2026, value: paySeq },
       { schoolId, kind: "PSL", year: 2026, value: staff.length },
+      { schoolId, kind: "VCH", year: 2026, value: vchSeq },
     ],
   });
 

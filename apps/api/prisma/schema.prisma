@@ -236,6 +236,10 @@ model School {
   notices             Notice[]
   staffAttendance     StaffAttendance[]
   staffLeaves         StaffLeave[]
+  financeAccounts     FinanceAccount[]
+  financeCategories   FinanceCategory[]
+  vouchers            Voucher[]
+  inventoryItems      InventoryItem[]
 }
 
 model SchoolProfile {
@@ -1984,4 +1988,180 @@ model StaffLeave {
 
   @@index([schoolId, status])
   @@index([staffId, fromOn])
+}
+
+enum AccountKind {
+  CASH
+  BANK
+}
+
+/// A place the school keeps money: the cash box or a bank account.
+model FinanceAccount {
+  id                String      @id @default(cuid())
+  schoolId          String
+  school            School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name              String
+  kind              AccountKind
+  /// What the account held on `openingOn`. Nothing before that date counts towards its balance.
+  openingBalancePkr Int         @default(0)
+  openingOn         DateTime    @db.Date
+  active            Boolean     @default(true)
+  sortOrder         Int         @default(0)
+  vouchers          Voucher[]   @relation("VoucherAccount")
+  incoming          Voucher[]   @relation("VoucherToAccount")
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([schoolId, name])
+  @@index([schoolId])
+}
+
+enum CategoryKind {
+  INCOME
+  EXPENSE
+}
+
+/// What money was spent on or came from. The system ones (fee collection, salaries) are filled in by fees and payroll.
+model FinanceCategory {
+  id        String       @id @default(cuid())
+  schoolId  String
+  school    School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name      String
+  kind      CategoryKind
+  /// FEE_COLLECTION or SALARIES for the two built in; null for everything a person adds.
+  systemKey String?
+  active    Boolean      @default(true)
+  vouchers  Voucher[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([schoolId, kind, name])
+  @@unique([schoolId, systemKey])
+  @@index([schoolId])
+}
+
+enum VoucherType {
+  PAYMENT
+  RECEIPT
+  TRANSFER
+}
+
+enum VoucherSource {
+  MANUAL
+  INVENTORY
+}
+
+enum VoucherStatus {
+  POSTED
+  VOIDED
+}
+
+/// One line in the cash book. Never edited or deleted: a mistake is cancelled and written again, so the trail stays.
+model Voucher {
+  id          String           @id @default(cuid())
+  schoolId    String
+  school      School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  number      String
+  type        VoucherType
+  date        DateTime         @db.Date
+  amountPkr   Int
+  accountId   String
+  account     FinanceAccount   @relation("VoucherAccount", fields: [accountId], references: [id], onDelete: Restrict)
+  /// Only for transfers: the account the money goes into.
+  toAccountId String?
+  toAccount   FinanceAccount?  @relation("VoucherToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
+  categoryId  String?
+  category    FinanceCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  party       String           @default("")
+  method      String           @default("")
+  reference   String           @default("")
+  note        String           @default("")
+  source      VoucherSource    @default(MANUAL)
+  /// The inventory movement that created this voucher.
+  sourceId    String?
+  status      VoucherStatus    @default(POSTED)
+  voidedAt    DateTime?
+  voidedById  String?
+  voidReason  String           @default("")
+  createdById String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([schoolId, number])
+  @@index([schoolId, date])
+  @@index([accountId, date])
+  @@index([sourceId])
+}
+
+enum ItemKind {
+  ASSET
+  CONSUMABLE
+}
+
+enum ItemStatus {
+  IN_USE
+  REPAIR
+  DISPOSED
+}
+
+/// Something the school owns or uses up: desks and projectors (assets), chalk and paper (consumables).
+model InventoryItem {
+  id           String              @id @default(cuid())
+  schoolId     String
+  school       School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name         String
+  code         String              @default("")
+  kind         ItemKind
+  category     String              @default("")
+  unit         String              @default("pcs")
+  location     String              @default("")
+  /// Consumables only: running low at or below this.
+  reorderLevel Int?
+  /// Always the sum of the movements that were not cancelled.
+  onHand       Int                 @default(0)
+  /// What one cost the last time it was bought.
+  unitCostPkr  Int                 @default(0)
+  status       ItemStatus          @default(IN_USE)
+  serialNo     String              @default("")
+  notes        String              @default("")
+  active       Boolean             @default(true)
+  movements    InventoryMovement[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([schoolId, kind])
+  @@index([schoolId, name])
+}
+
+enum MovementType {
+  PURCHASE
+  ISSUE
+  RETURN
+  DAMAGE
+  ADJUST
+}
+
+/// Stock coming in or going out of an item. A purchase with a cost also writes a payment voucher.
+model InventoryMovement {
+  id           String        @id @default(cuid())
+  schoolId     String
+  itemId       String
+  item         InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type         MovementType
+  /// Signed change to stock: positive in, negative out.
+  quantity     Int
+  unitCostPkr  Int?
+  totalCostPkr Int           @default(0)
+  date         DateTime      @db.Date
+  supplier     String        @default("")
+  issuedTo     String        @default("")
+  note         String        @default("")
+  voucherId    String?
+  voidedAt     DateTime?
+  voidReason   String        @default("")
+  createdById  String?
+  createdAt    DateTime      @default(now())
+
+  @@index([itemId, date])
+  @@index([schoolId, date])
 }
