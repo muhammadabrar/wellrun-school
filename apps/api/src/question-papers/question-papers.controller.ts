@@ -111,6 +111,12 @@ export class QuestionPapersController {
     return this.papers.removeSection(schoolId, req.user, sectionId, teacher);
   }
 
+  @Post("sections/:sectionId/bank")
+  async addFromBank(@Req() req: Req, @Param("sectionId") sectionId: string, @Body() body: unknown) {
+    const { schoolId, teacher } = await this.author(req);
+    return this.papers.addFromBank(schoolId, req.user, sectionId, body, teacher);
+  }
+
   @Post("sections/:sectionId/questions")
   async createQuestions(@Req() req: Req, @Param("sectionId") sectionId: string, @Body() body: unknown) {
     const { schoolId, teacher } = await this.author(req);

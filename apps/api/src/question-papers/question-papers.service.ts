@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { Prisma, QuestionType } from "@prisma/client";
 import {
+  QUESTION_TYPE_INFO,
   classSortIndex,
   normalizeQuestion,
   paginate,
@@ -16,6 +17,8 @@ import {
   questionUpdateSchema,
   questionsCreateSchema,
   sectionMarks,
+  useFromBankSchema,
+  type UsedFromBank,
   validatePaper,
   type PaperIssue,
   type PaperSection,
@@ -268,7 +271,7 @@ export class QuestionPapersService {
         attemptCount: s.attemptCount,
         sortOrder: s.sortOrder,
         marks: sectionMarks({ attemptCount: s.attemptCount, questions: s.questions }),
-        questions: s.questions.map((q) => ({ id: q.id, text: q.text, marks: q.marks, options: q.options, answer: q.answer, answerLines: q.answerLines, sortOrder: q.sortOrder })),
+        questions: s.questions.map((q) => ({ id: q.id, text: q.text, marks: q.marks, options: q.options, answer: q.answer, answerLines: q.answerLines, sortOrder: q.sortOrder, bankQuestionId: q.bankQuestionId })),
       })),
       issues,
       permissions: {
@@ -447,6 +450,42 @@ export class QuestionPapersService {
     });
     await this.recalc(this.prisma, section.paperId, user.id);
     return { added: questions.length };
+  }
+
+  /**
+   * Copies questions out of the bank into a section. Each copy is an ordinary question, so changing or archiving the
+   * bank question later never changes this paper. A question already in this paper is skipped, not added twice.
+   */
+  async addFromBank(schoolId: string, user: CurrentUser, sectionId: string, body: unknown, teacher: TeacherScope): Promise<UsedFromBank> {
+    await assertWritableSchool(this.prisma, schoolId);
+    const { ids } = useFromBankSchema.parse(body);
+    const unique = [...new Set(ids)];
+    const section = await this.sectionForWrite(schoolId, sectionId, user, teacher);
+    const paper = await this.prisma.questionPaper.findFirstOrThrow({ where: { id: section.paperId, schoolId }, select: { gradeName: true, subjectId: true } });
+    const rows = await this.prisma.bankQuestion.findMany({ where: { id: { in: unique }, schoolId, active: true } });
+    if (rows.length !== unique.length) throw new BadRequestException("One of those questions is no longer in the bank. Refresh the list and try again.");
+    for (const row of rows) {
+      if (row.subjectId !== paper.subjectId || row.gradeName !== paper.gradeName) throw new BadRequestException("A question from another grade or subject can't be added to this paper");
+      if (row.type !== section.type) throw new BadRequestException(`"${row.text.slice(0, 40)}" is a ${QUESTION_TYPE_INFO[row.type].label.toLowerCase()} question, but this section is ${QUESTION_TYPE_INFO[section.type].label.toLowerCase()}`);
+    }
+    const already = new Set((await this.prisma.question.findMany({ where: { section: { paperId: section.paperId }, bankQuestionId: { in: unique } }, select: { bankQuestionId: true } })).map((q) => q.bankQuestionId));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const toAdd = unique.filter((id) => !already.has(id)).map((id) => byId.get(id)!);
+    if (toAdd.length) {
+      const last = await this.prisma.question.aggregate({ where: { sectionId }, _max: { sortOrder: true } });
+      const start = (last._max.sortOrder ?? -1) + 1;
+      await this.prisma.$transaction([
+        this.prisma.question.createMany({
+          data: toAdd.map((row, i) => {
+            const n = normalizeQuestion(section.type, row);
+            return { sectionId, text: n.text, marks: n.marks, options: n.options as Prisma.InputJsonValue, answer: n.answer, answerLines: n.answerLines, sortOrder: start + i, bankQuestionId: row.id };
+          }),
+        }),
+        this.prisma.bankQuestion.updateMany({ where: { id: { in: toAdd.map((r) => r.id) } }, data: { usageCount: { increment: 1 }, lastUsedAt: new Date() } }),
+      ]);
+      await this.recalc(this.prisma, section.paperId, user.id);
+    }
+    return { added: toAdd.length, skipped: unique.length - toAdd.length };
   }
 
   async updateQuestion(schoolId: string, user: CurrentUser, questionId: string, body: unknown, teacher: TeacherScope) {

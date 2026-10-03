@@ -20,6 +20,7 @@ import { NoticesModule } from "./notices/notices.module";
 import { ParentModule } from "./parent/parent.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { PayrollModule } from "./payroll/payroll.module";
+import { QuestionBankModule } from "./question-bank/question-bank.module";
 import { QuestionPapersModule } from "./question-papers/question-papers.module";
 import { ReportsModule } from "./reports/reports.module";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -65,6 +66,7 @@ import { TraceMiddleware } from "./trace/trace.middleware";
     StaffAttendanceModule,
     FinanceModule,
     InventoryModule,
+    QuestionBankModule,
     PayrollModule,
     ClaimsModule,
     AdminModule,

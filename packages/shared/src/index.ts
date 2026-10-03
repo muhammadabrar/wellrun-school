@@ -745,6 +745,7 @@ export * from "./parent";
 export * from "./reports";
 export * from "./staff-attendance";
 export * from "./finance";
+export * from "./question-bank";
 export * from "./attendance";
 export * from "./dashboard";
 export * from "./paging";
